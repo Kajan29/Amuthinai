@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Amuthinai",
+    "slug": "amuthinai",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "amuthinai",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "backgroundColor": "#FFFFFF",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "lk.amuthinai.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Amuthinai uses your location to show nearby donations and pickups.",
+        "NSCameraUsageDescription": "Amuthinai uses the camera to capture pickup and delivery proof photos.",
+        "NSPhotoLibraryUsageDescription": "Amuthinai needs photo access to attach food images to a donation."
+      }
+    },
+    "android": {
+      "package": "lk.amuthinai.app",
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Amuthinai uses your location to match you with nearby pickups."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Amuthinai needs photo access to attach food images to a donation.",
+          "cameraPermission": "Amuthinai uses the camera to capture pickup and delivery proof photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0F7B4F"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

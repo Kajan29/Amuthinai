@@ -1,0 +1,102 @@
+{
+  "common": {
+    "appName": "අමුතිනෙයි",
+    "continue": "ඉදිරියට",
+    "back": "ආපසු",
+    "cancel": "අවලංගු කරන්න",
+    "submit": "යොමු කරන්න",
+    "next": "ඊළඟ",
+    "retry": "නැවත උත්සාහ කරන්න",
+    "loading": "පූරණය වෙමින්…",
+    "language": "භාෂාව",
+    "signOut": "ඉවත් වන්න",
+    "empty": "තවම කිසිවක් නැත"
+  },
+  "auth": {
+    "login": "පිවිසෙන්න",
+    "register": "ගිණුමක් සාදන්න",
+    "email": "විද්‍යුත් තැපෑල",
+    "password": "මුරපදය",
+    "name": "සම්පූර්ණ නම",
+    "phone": "දුරකථන අංකය",
+    "selectRole": "ඔබ අමුතිනෙයි භාවිත කරන්නේ කෙසේද?",
+    "roleDonor": "ආහාර පරිත්‍යාග කිරීම",
+    "roleVolunteer": "ආහාර බෙදා හැරීම",
+    "roleRecipient": "ආහාර ලබා ගැනීම",
+    "noAccount": "ගිණුමක් නැද්ද?",
+    "haveAccount": "දැනටමත් ගිණුමක් තිබේද?"
+  },
+  "donor": {
+    "dashboard": "මගේ පරිත්‍යාග",
+    "postDonation": "පරිත්‍යාගයක් පළ කරන්න",
+    "tabAll": "සියල්ල",
+    "tabInTransit": "ගමනේ",
+    "tabHistory": "ඉතිහාසය",
+    "totalDonations": "පරිත්‍යාග",
+    "servingsShared": "බෙදාගත් කොටස්",
+    "karmaPoints": "කර්ම ලකුණු",
+    "foodDetails": "ආහාර විස්තර",
+    "timing": "වේලාව",
+    "review": "පරීක්ෂා කරන්න",
+    "cookedAt": "පිසූ වේලාව?",
+    "safeForHours": "ආරක්ෂිත කාලය (පැය)",
+    "servings": "කොටස් ගණන",
+    "foodType": "ආහාර වර්ගය",
+    "pickupAddress": "රැගෙන යන ලිපිනය",
+    "posted": "පරිත්‍යාගය පළ විය",
+    "postedBody": "පරිපාලකයා ඉක්මනින් සමාලෝචනය කරයි."
+  },
+  "volunteer": {
+    "dashboard": "ආසන්න කාර්ය",
+    "urgent": "හදිසි",
+    "accept": "භාර ගන්න",
+    "decline": "ප්‍රතික්ෂේප කරන්න",
+    "pickup": "රැගැනීම තහවුරු කරන්න",
+    "delivery": "බෙදාහැරීම තහවුරු කරන්න",
+    "enterPin": "ලබන්නාගේ PIN අංකය ඇතුළු කරන්න",
+    "capturePhoto": "ඡායාරූපය ගන්න",
+    "vehicle": "වාහනය",
+    "travelRadius": "ගමන් පරාසය",
+    "karma": "මගේ කර්මය"
+  },
+  "recipient": {
+    "dashboard": "මගේ ඉල්ලීම",
+    "newRequest": "ආහාර ඉල්ලන්න",
+    "location": "බෙදාහරින ස්ථානය",
+    "details": "ඉල්ලීමේ විස්තර",
+    "servingsNeeded": "අවශ්‍ය කොටස්",
+    "neededBy": "අවශ්‍ය වන වේලාව",
+    "raiseConcern": "පැමිණිල්ලක් ඉදිරිපත් කරන්න",
+    "concernSubject": "මාතෘකාව",
+    "concernBody": "ගැටලුව විස්තර කරන්න"
+  },
+  "admin": {
+    "dashboard": "දළ විශ්ලේෂණය",
+    "approvals": "අනුමැතීන්",
+    "approve": "අනුමත කරන්න",
+    "reject": "ප්‍රතික්ෂේප කරන්න",
+    "rejectionReason": "ප්‍රතික්ෂේප කිරීමට හේතුව",
+    "assign": "ස්වේච්ඡා සේවකයා පවරන්න",
+    "recommended": "නිර්දේශිත",
+    "disputes": "ගැටලු",
+    "analytics": "විශ්ලේෂණ",
+    "verifyVolunteers": "ස්වේච්ඡා සේවක තහවුරු කිරීම"
+  },
+  "status": {
+    "pending_approval": "අනුමැතිය බලාපොරොත්තුවෙන්",
+    "approved": "අනුමත කළා",
+    "rejected": "ප්‍රතික්ෂේප කළා",
+    "assigned": "ස්වේච්ඡා සේවකයා පවරා ඇත",
+    "picked_up": "රැගෙන ගියා",
+    "in_transit": "ගමනේ",
+    "delivered": "බෙදා හැරියා",
+    "expired": "කල් ඉකුත් විය",
+    "cancelled": "අවලංගු කළා"
+  },
+  "freshness": {
+    "fresh": "නැවුම්",
+    "urgent": "හදිසි",
+    "expired": "කල් ඉකුත්",
+    "timeLeft": "{{time}} ඉතිරිව"
+  }
+}

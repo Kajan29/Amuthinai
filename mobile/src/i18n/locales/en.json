@@ -1,0 +1,102 @@
+{
+  "common": {
+    "appName": "Amuthinai",
+    "continue": "Continue",
+    "back": "Back",
+    "cancel": "Cancel",
+    "submit": "Submit",
+    "next": "Next",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "language": "Language",
+    "signOut": "Sign out",
+    "empty": "Nothing here yet"
+  },
+  "auth": {
+    "login": "Log in",
+    "register": "Create account",
+    "email": "Email",
+    "password": "Password",
+    "name": "Full name",
+    "phone": "Phone number",
+    "selectRole": "How will you use Amuthinai?",
+    "roleDonor": "Donate food",
+    "roleVolunteer": "Deliver food",
+    "roleRecipient": "Receive food",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?"
+  },
+  "donor": {
+    "dashboard": "My donations",
+    "postDonation": "Post a donation",
+    "tabAll": "All",
+    "tabInTransit": "In transit",
+    "tabHistory": "History",
+    "totalDonations": "Donations",
+    "servingsShared": "Servings shared",
+    "karmaPoints": "Karma points",
+    "foodDetails": "Food details",
+    "timing": "Timing",
+    "review": "Review",
+    "cookedAt": "When was it cooked?",
+    "safeForHours": "Safe to eat for (hours)",
+    "servings": "Number of servings",
+    "foodType": "Food type",
+    "pickupAddress": "Pickup address",
+    "posted": "Donation posted",
+    "postedBody": "An admin will review it shortly."
+  },
+  "volunteer": {
+    "dashboard": "Nearby tasks",
+    "urgent": "Urgent",
+    "accept": "Accept",
+    "decline": "Decline",
+    "pickup": "Confirm pickup",
+    "delivery": "Confirm delivery",
+    "enterPin": "Enter the recipient's PIN",
+    "capturePhoto": "Capture photo",
+    "vehicle": "Vehicle",
+    "travelRadius": "Travel radius",
+    "karma": "My karma"
+  },
+  "recipient": {
+    "dashboard": "My request",
+    "newRequest": "Request food",
+    "location": "Delivery location",
+    "details": "Request details",
+    "servingsNeeded": "Servings needed",
+    "neededBy": "Needed by",
+    "raiseConcern": "Raise a concern",
+    "concernSubject": "Subject",
+    "concernBody": "Describe the issue"
+  },
+  "admin": {
+    "dashboard": "Overview",
+    "approvals": "Approvals",
+    "approve": "Approve",
+    "reject": "Reject",
+    "rejectionReason": "Reason for rejection",
+    "assign": "Assign volunteer",
+    "recommended": "Recommended",
+    "disputes": "Disputes",
+    "analytics": "Analytics",
+    "verifyVolunteers": "Volunteer verification"
+  },
+  "status": {
+    "pending_approval": "Pending approval",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "assigned": "Volunteer assigned",
+    "picked_up": "Picked up",
+    "in_transit": "In transit",
+    "delivered": "Delivered",
+    "expired": "Expired",
+    "cancelled": "Cancelled"
+  },
+  "freshness": {
+    "fresh": "Fresh",
+    "urgent": "Urgent",
+    "expired": "Expired",
+    "timeLeft": "{{time}} left"
+  }
+}

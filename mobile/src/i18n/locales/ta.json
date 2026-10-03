@@ -1,0 +1,102 @@
+{
+  "common": {
+    "appName": "அமுதினை",
+    "continue": "தொடரவும்",
+    "back": "பின்செல்",
+    "cancel": "ரத்து செய்",
+    "submit": "சமர்ப்பிக்கவும்",
+    "next": "அடுத்து",
+    "retry": "மீண்டும் முயற்சி",
+    "loading": "ஏற்றுகிறது…",
+    "language": "மொழி",
+    "signOut": "வெளியேறு",
+    "empty": "இன்னும் எதுவும் இல்லை"
+  },
+  "auth": {
+    "login": "உள்நுழைக",
+    "register": "கணக்கை உருவாக்கு",
+    "email": "மின்னஞ்சல்",
+    "password": "கடவுச்சொல்",
+    "name": "முழுப் பெயர்",
+    "phone": "தொலைபேசி எண்",
+    "selectRole": "அமுதினையை எவ்வாறு பயன்படுத்துவீர்கள்?",
+    "roleDonor": "உணவு வழங்க",
+    "roleVolunteer": "உணவு வழங்கிச் செல்ல",
+    "roleRecipient": "உணவு பெற",
+    "noAccount": "கணக்கு இல்லையா?",
+    "haveAccount": "ஏற்கனவே கணக்கு உள்ளதா?"
+  },
+  "donor": {
+    "dashboard": "எனது நன்கொடைகள்",
+    "postDonation": "நன்கொடை இடுகை",
+    "tabAll": "அனைத்தும்",
+    "tabInTransit": "பயணத்தில்",
+    "tabHistory": "வரலாறு",
+    "totalDonations": "நன்கொடைகள்",
+    "servingsShared": "பங்கிட்ட பகிர்வுகள்",
+    "karmaPoints": "கர்ம புள்ளிகள்",
+    "foodDetails": "உணவு விவரங்கள்",
+    "timing": "நேரம்",
+    "review": "சரிபார்",
+    "cookedAt": "எப்போது சமைக்கப்பட்டது?",
+    "safeForHours": "பாதுகாப்பான நேரம் (மணி)",
+    "servings": "பகிர்வுகளின் எண்ணிக்கை",
+    "foodType": "உணவு வகை",
+    "pickupAddress": "எடுக்கும் முகவரி",
+    "posted": "நன்கொடை இடப்பட்டது",
+    "postedBody": "நிர்வாகி விரைவில் சரிபார்ப்பார்."
+  },
+  "volunteer": {
+    "dashboard": "அருகிலுள்ள பணிகள்",
+    "urgent": "அவசரம்",
+    "accept": "ஏற்கிறேன்",
+    "decline": "மறுக்கிறேன்",
+    "pickup": "எடுத்ததை உறுதிப்படுத்து",
+    "delivery": "வழங்கியதை உறுதிப்படுத்து",
+    "enterPin": "பெறுநரின் பின் எண்ணை உள்ளிடவும்",
+    "capturePhoto": "புகைப்படம் எடுக்கவும்",
+    "vehicle": "வாகனம்",
+    "travelRadius": "பயண எல்லை",
+    "karma": "எனது கர்மா"
+  },
+  "recipient": {
+    "dashboard": "எனது கோரிக்கை",
+    "newRequest": "உணவு கோரிக்கை",
+    "location": "வழங்கும் இடம்",
+    "details": "கோரிக்கை விவரங்கள்",
+    "servingsNeeded": "தேவையான பகிர்வுகள்",
+    "neededBy": "தேவைப்படும் நேரம்",
+    "raiseConcern": "குறை தெரிவிக்க",
+    "concernSubject": "தலைப்பு",
+    "concernBody": "பிரச்சினையை விவரிக்கவும்"
+  },
+  "admin": {
+    "dashboard": "மேலோட்டம்",
+    "approvals": "அனுமதிகள்",
+    "approve": "அனுமதி",
+    "reject": "நிராகரி",
+    "rejectionReason": "நிராகரிப்புக்கான காரணம்",
+    "assign": "தொண்டரை நியமி",
+    "recommended": "பரிந்துரைக்கப்பட்டது",
+    "disputes": "தகராறுகள்",
+    "analytics": "பகுப்பாய்வு",
+    "verifyVolunteers": "தொண்டர் சரிபார்ப்பு"
+  },
+  "status": {
+    "pending_approval": "அனுமதிக்கு காத்திருக்கிறது",
+    "approved": "அனுமதிக்கப்பட்டது",
+    "rejected": "நிராகரிக்கப்பட்டது",
+    "assigned": "தொண்டர் நியமிக்கப்பட்டார்",
+    "picked_up": "எடுக்கப்பட்டது",
+    "in_transit": "பயணத்தில்",
+    "delivered": "வழங்கப்பட்டது",
+    "expired": "காலாவதியானது",
+    "cancelled": "ரத்து செய்யப்பட்டது"
+  },
+  "freshness": {
+    "fresh": "புதிது",
+    "urgent": "அவசரம்",
+    "expired": "காலாவதி",
+    "timeLeft": "{{time}} மீதம்"
+  }
+}

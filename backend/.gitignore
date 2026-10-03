@@ -1,7 +1,10 @@
 node_modules/
-dist/
-coverage/
-uploads/
+/dist/
+/coverage/
+
+# Local image store (UPLOAD_DIR). Anchored, or it would also match src/modules/uploads/.
+/uploads/
+
 *.tsbuildinfo
 .env
 .env.local

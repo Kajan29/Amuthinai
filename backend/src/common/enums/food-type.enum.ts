@@ -3,6 +3,7 @@ export enum FoodType {
   Raw = 'raw',
   Packaged = 'packaged',
   Bakery = 'bakery',
+  Dairy = 'dairy',
   Beverage = 'beverage',
 }
 
@@ -12,5 +13,6 @@ export const MAX_SAFE_HOURS: Record<FoodType, number> = {
   [FoodType.Raw]: 24,
   [FoodType.Packaged]: 72,
   [FoodType.Bakery]: 24,
+  [FoodType.Dairy]: 12,
   [FoodType.Beverage]: 12,
 };

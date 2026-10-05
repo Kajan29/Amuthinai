@@ -305,6 +305,20 @@ export class AssignmentsService {
     return this.model.countDocuments({ status: AssignmentStatus.Accepted }).exec();
   }
 
+  /** Offers, the accepted volunteer, and the linked request for a donor's donations. */
+  activityForDonations(donationIds: string[]): Promise<AssignmentDocument[]> {
+    if (donationIds.length === 0) return Promise.resolve([]);
+
+    return this.model
+      .find({
+        donationId: { $in: donationIds.map((id) => new Types.ObjectId(id)) },
+        status: {
+          $in: [AssignmentStatus.Offered, AssignmentStatus.Accepted, AssignmentStatus.Completed],
+        },
+      })
+      .exec();
+  }
+
   private async findOwned(id: string, volunteerId: string): Promise<AssignmentDocument> {
     const assignment = await this.findById(id);
     if (assignment.volunteerId.toString() !== volunteerId) {

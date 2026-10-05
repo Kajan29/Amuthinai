@@ -54,6 +54,17 @@ export class FoodRequestsService {
     return paginate(items, total, query);
   }
 
+  findByIds(ids: string[]): Promise<FoodRequestDocument[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.model.find({ _id: { $in: ids } }).exec();
+  }
+
+  /** Requests already matched to one of these donations (FR6). */
+  findByDonationIds(donationIds: string[]): Promise<FoodRequestDocument[]> {
+    if (donationIds.length === 0) return Promise.resolve([]);
+    return this.model.find({ matchedDonationId: { $in: donationIds } }).exec();
+  }
+
   async findById(id: string): Promise<FoodRequestDocument> {
     const request = await this.model.findById(id).exec();
     if (!request) throw new NotFoundException('Request not found');

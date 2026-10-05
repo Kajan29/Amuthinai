@@ -50,6 +50,11 @@ export class UsersService {
     return user;
   }
 
+  findManyByIds(ids: string[]): Promise<UserDocument[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.userModel.find({ _id: { $in: ids } }).exec();
+  }
+
   async findAll(query: QueryUsersDto): Promise<PaginatedDto<UserDocument>> {
     const filter: FilterQuery<User> = {};
     if (query.role) filter.role = query.role;

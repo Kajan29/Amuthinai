@@ -8,7 +8,7 @@ export const APP_VERSION: string = Constants.expoConfig?.version ?? '0.0.0';
 
 export const ROLES: Role[] = ['donor', 'volunteer', 'recipient', 'admin'];
 
-export const FOOD_TYPES: FoodType[] = ['cooked', 'raw', 'packaged', 'bakery', 'beverage'];
+export const FOOD_TYPES: FoodType[] = ['cooked', 'raw', 'packaged', 'bakery', 'dairy', 'beverage'];
 
 export const VEHICLE_TYPES: VehicleType[] = [
   'foot',

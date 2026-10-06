@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { FlatList, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { assignmentsApi } from '@/api/assignments.api';
 import { DonationCard } from '@/components/DonationCard';
@@ -11,6 +10,7 @@ import { URGENT_THRESHOLD_MINUTES } from '@/constants';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { colors, radius, spacing, typography } from '@/theme';
 import { toLatLng } from '@/utils/geo';
+import { MapView, Marker } from '@/utils/maps';
 
 /** FR8 — map of nearby pickups plus the urgency-ordered task list. */
 export default function VolunteerDashboard() {
@@ -23,30 +23,32 @@ export default function VolunteerDashboard() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.mapFrame}>
-        <MapView
-          style={styles.map}
-          initialRegion={{
-            ...(first
-              ? toLatLng(first.donation.pickupAddress.location)
-              : { latitude: 6.9271, longitude: 79.8612 }),
-            latitudeDelta: 0.1,
-            longitudeDelta: 0.1,
-          }}
-        >
-          {items.map((task) => (
-            <Marker
-              key={task.assignment.id}
-              coordinate={toLatLng(task.donation.pickupAddress.location)}
-              title={task.donation.title}
-              description={`${task.distanceKm} km · ${task.donation.servings} servings`}
-              pinColor={
-                task.minutesLeft <= URGENT_THRESHOLD_MINUTES ? colors.danger : colors.primary
-              }
-            />
-          ))}
-        </MapView>
-      </View>
+      {Platform.OS !== 'web' && MapView && (
+        <View style={styles.mapFrame}>
+          <MapView
+            style={styles.map}
+            initialRegion={{
+              ...(first
+                ? toLatLng(first.donation.pickupAddress.location)
+                : { latitude: 6.9271, longitude: 79.8612 }),
+              latitudeDelta: 0.1,
+              longitudeDelta: 0.1,
+            }}
+          >
+            {items.map((task) => (
+              <Marker
+                key={task.assignment.id}
+                coordinate={toLatLng(task.donation.pickupAddress.location)}
+                title={task.donation.title}
+                description={`${task.distanceKm} km · ${task.donation.servings} servings`}
+                pinColor={
+                  task.minutesLeft <= URGENT_THRESHOLD_MINUTES ? colors.danger : colors.primary
+                }
+              />
+            ))}
+          </MapView>
+        </View>
+      )}
 
       <FlatList
         style={styles.list}

@@ -14,6 +14,32 @@ export interface RegisterPayload {
   phone: string;
   password: string;
   language: Language;
+  role: Role;
+}
+
+export interface GoogleAuthPayload {
+  idToken: string;
+  role?: Role;
+}
+
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface VerifyOtpPayload {
+  email: string;
+  otp: string;
+}
+
+export interface ResetPasswordPayload {
+  email: string;
+  otp: string;
+  newPassword: string;
+}
+
+export interface VerifyEmailPayload {
+  email: string;
+  otp: string;
 }
 
 /** FR1 — registration, login and role selection. */
@@ -30,4 +56,25 @@ export const authApi = {
 
   refresh: (refreshToken: string) =>
     request<AuthResponse>(client.post('/auth/refresh', { refreshToken })),
+
+  // Google OAuth
+  googleAuth: (payload: GoogleAuthPayload) =>
+    request<AuthResponse>(client.post('/auth/google', payload)),
+
+  // Forgot Password Flow
+  forgotPassword: (payload: ForgotPasswordPayload) =>
+    request<{ message: string }>(client.post('/auth/forgot-password', payload)),
+
+  verifyOtp: (payload: VerifyOtpPayload) =>
+    request<{ message: string; valid: boolean }>(client.post('/auth/verify-otp', payload)),
+
+  resetPassword: (payload: ResetPasswordPayload) =>
+    request<{ message: string }>(client.post('/auth/reset-password', payload)),
+
+  // Email Verification
+  resendVerificationOtp: (email: string) =>
+    request<{ message: string }>(client.post('/auth/resend-verification', { email })),
+
+  verifyEmail: (payload: VerifyEmailPayload) =>
+    request<{ message: string }>(client.post('/auth/verify-email', payload)),
 };

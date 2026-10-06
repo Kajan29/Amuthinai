@@ -17,6 +17,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { DeliveryProofModule } from './modules/delivery-proof/delivery-proof.module';
 import { DonationsModule } from './modules/donations/donations.module';
+import { EmailModule } from './modules/email/email.module';
 import { EnquiriesModule } from './modules/enquiries/enquiries.module';
 import { FoodRequestsModule } from './modules/food-requests/food-requests.module';
 import { NgosModule } from './modules/ngos/ngos.module';
@@ -26,6 +27,7 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { StatusHistoryModule } from './modules/status-history/status-history.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { UsersModule } from './modules/users/users.module';
+import { TestEmailController } from './test-email.controller';
 
 @Module({
   imports: [
@@ -43,6 +45,7 @@ import { UsersModule } from './modules/users/users.module';
 
     AuthModule,
     UsersModule,
+    EmailModule,
     DonationsModule,
     FoodRequestsModule,
     AssignmentsModule,
@@ -57,6 +60,7 @@ import { UsersModule } from './modules/users/users.module';
     UploadsModule,
     SchedulerModule,
   ],
+  controllers: [TestEmailController],
   providers: [
     // Order matters: authenticate, then rate-limit, then check the role.
     { provide: APP_GUARD, useClass: JwtAuthGuard },

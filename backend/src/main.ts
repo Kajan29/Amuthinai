@@ -6,8 +6,12 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { join } from 'node:path';
 
 import { AppModule } from './app.module';
+import { configureDNS } from './config/dns.config';
 
 async function bootstrap() {
+  // Configure DNS to use public DNS servers (fixes MongoDB SRV connection issues)
+  configureDNS();
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');

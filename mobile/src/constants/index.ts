@@ -6,6 +6,15 @@ export const API_URL: string = process.env.EXPO_PUBLIC_API_URL ?? 'http://localh
 
 export const APP_VERSION: string = Constants.expoConfig?.version ?? '0.0.0';
 
+export const MAPBOX_ACCESS_TOKEN: string = 
+  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
+
+export const CLOUDINARY_CLOUD_NAME: string =
+  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
+
+export const CLOUDINARY_UPLOAD_PRESET: string =
+  process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
+
 export const ROLES: Role[] = ['donor', 'volunteer', 'recipient', 'admin'];
 
 export const FOOD_TYPES: FoodType[] = ['cooked', 'raw', 'packaged', 'bakery', 'beverage'];
@@ -52,3 +61,6 @@ export const DONATION_FLOW: DonationStatus[] = [
   'in_transit',
   'delivered',
 ];
+
+// Export images
+export { images, logo, onboardingImages } from './images';

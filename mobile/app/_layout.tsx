@@ -9,18 +9,24 @@ import '@/i18n';
 
 import { queryClient } from '@/api/queryClient';
 import { useAuthStore } from '@/store/auth.store';
+import { useOnboardingStore } from '@/store/onboarding.store';
 import { useLanguageStore } from '@/store/language.store';
 import { colors } from '@/theme';
+import { configureGoogleSignIn } from '@/utils/googleAuth';
 
 export default function RootLayout() {
   const restoreAuth = useAuthStore((state) => state.restore);
+  const restoreOnboarding = useOnboardingStore((state) => state.restore);
   const restoreLanguage = useLanguageStore((state) => state.restore);
 
-  // Rehydrate the stored session and language before the first screen paints.
+  // Rehydrate the stored session, onboarding state, and language before the first screen paints.
   useEffect(() => {
     void restoreAuth();
+    void restoreOnboarding();
     void restoreLanguage();
-  }, [restoreAuth, restoreLanguage]);
+    // Initialize Google Sign-In
+    configureGoogleSignIn();
+  }, [restoreAuth, restoreOnboarding, restoreLanguage]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -36,6 +42,7 @@ export default function RootLayout() {
             }}
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(donor)" options={{ headerShown: false }} />
             <Stack.Screen name="(volunteer)" options={{ headerShown: false }} />

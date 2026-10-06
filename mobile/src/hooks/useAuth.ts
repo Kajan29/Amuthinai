@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { authApi, type RegisterPayload } from '@/api/auth.api';
+import { authApi, type RegisterPayload, type GoogleAuthPayload, type ForgotPasswordPayload, type VerifyOtpPayload, type ResetPasswordPayload } from '@/api/auth.api';
 import { useAuthStore } from '@/store/auth.store';
 import type { Role } from '@/types';
 
@@ -26,6 +26,15 @@ export function useAuth() {
     [signIn],
   );
 
+  const googleAuth = useCallback(
+    async (idToken: string, role?: Role) => {
+      const result = await authApi.googleAuth({ idToken, role });
+      await signIn(result.user, result.accessToken, result.refreshToken);
+      return result.user;
+    },
+    [signIn],
+  );
+
   /** FR1 — role is chosen after the account exists. */
   const selectRole = useCallback(
     async (role: Role) => {
@@ -36,6 +45,26 @@ export function useAuth() {
     [setUser],
   );
 
+  const forgotPassword = useCallback(async (payload: ForgotPasswordPayload) => {
+    return await authApi.forgotPassword(payload);
+  }, []);
+
+  const verifyOtp = useCallback(async (payload: VerifyOtpPayload) => {
+    return await authApi.verifyOtp(payload);
+  }, []);
+
+  const resetPassword = useCallback(async (payload: ResetPasswordPayload) => {
+    return await authApi.resetPassword(payload);
+  }, []);
+
+  const resendVerificationOtp = useCallback(async (email: string) => {
+    return await authApi.resendVerificationOtp(email);
+  }, []);
+
+  const verifyEmail = useCallback(async (email: string, otp: string) => {
+    return await authApi.verifyEmail({ email, otp });
+  }, []);
+
   return {
     user,
     role: user?.role,
@@ -43,7 +72,13 @@ export function useAuth() {
     isReady,
     login,
     register,
+    googleAuth,
     selectRole,
     logout: signOut,
+    forgotPassword,
+    verifyOtp,
+    resetPassword,
+    resendVerificationOtp,
+    verifyEmail,
   };
 }

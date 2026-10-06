@@ -9,6 +9,11 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { SelectRoleDto } from './dto/select-role.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { UsersService } from 'src/modules/users/users.service';
 
 @ApiTags('auth')
@@ -42,9 +47,17 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Authenticate with Google ID token' })
+  googleAuth(@Body() dto: GoogleAuthDto) {
+    return this.authService.googleAuth(dto);
+  }
+
   @Patch('role')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'FR1 — choose donor, volunteer or recipient' })
+  @ApiOperation({ summary: 'FR1 — update role (only allowed if no role is set)' })
   selectRole(@CurrentUser('id') userId: string, @Body() dto: SelectRoleDto) {
     return this.authService.selectRole(userId, dto.role);
   }
@@ -54,5 +67,45 @@ export class AuthController {
   @ApiOperation({ summary: 'Resolve the bearer token to a user' })
   me(@CurrentUser('id') userId: string) {
     return this.usersService.findById(userId);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send OTP for password reset' })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Public()
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify OTP for password reset' })
+  verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtp(dto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password using OTP' })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
+
+  @Public()
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend email verification OTP' })
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendVerificationOtp(dto.email);
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify email using OTP' })
+  verifyEmail(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyEmail(dto);
   }
 }

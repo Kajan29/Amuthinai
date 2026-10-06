@@ -30,13 +30,17 @@ export class User {
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
   email!: string;
 
-  @ApiProperty()
-  @Prop({ required: true, trim: true })
-  phone!: string;
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  phone?: string;
 
   @ApiHideProperty()
-  @Prop({ required: true, select: false })
-  passwordHash!: string;
+  @Prop({ select: false })
+  passwordHash?: string;
+
+  @ApiHideProperty()
+  @Prop({ unique: true, sparse: true })
+  googleId?: string;
 
   /** FR1 — unset until the user picks a role on the onboarding screen. */
   @ApiPropertyOptional({ enum: Role })
@@ -74,6 +78,24 @@ export class User {
   @ApiHideProperty()
   @Prop({ select: false })
   pushToken?: string;
+
+  /** OTP for email verification and password reset */
+  @ApiHideProperty()
+  @Prop({ select: false })
+  otp?: string;
+
+  @ApiHideProperty()
+  @Prop({ select: false })
+  otpExpiry?: Date;
+
+  @ApiHideProperty()
+  @Prop({ select: false })
+  otpPurpose?: 'email-verification' | 'password-reset';
+
+  /** Email verification status */
+  @ApiProperty({ default: false })
+  @Prop({ default: false })
+  emailVerified!: boolean;
 
   // Maintained by `timestamps: true`; declared so they are typed and documented.
   @ApiProperty()

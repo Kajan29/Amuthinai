@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { Role } from 'src/common/enums/role.enum';
 
 /** FR1 */
 export class RegisterDto {
@@ -26,4 +27,8 @@ export class RegisterDto {
   @IsOptional()
   @IsIn(['en', 'ta', 'si'])
   language: 'en' | 'ta' | 'si' = 'en';
+
+  @ApiProperty({ enum: Role, description: 'User role' })
+  @IsEnum(Role)
+  role!: Role;
 }

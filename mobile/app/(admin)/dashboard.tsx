@@ -1,13 +1,13 @@
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Circle } from 'react-native-maps';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { adminApi } from '@/api/admin.api';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button, Card, Screen } from '@/components/ui';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { colors, radius, spacing, typography } from '@/theme';
+import { MapView, Circle } from '@/utils/maps';
 
 /** FR8 — KPI cards over a demand heat-map built from open recipient requests. */
 export default function AdminDashboard() {
@@ -35,27 +35,33 @@ export default function AdminDashboard() {
 
       <Card>
         <Text style={styles.cardTitle}>Demand heat-map</Text>
-        <View style={styles.mapFrame}>
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: cells[0]?.latitude ?? 7.8731,
-              longitude: cells[0]?.longitude ?? 80.7718,
-              latitudeDelta: 3,
-              longitudeDelta: 3,
-            }}
-          >
-            {cells.map((cell) => (
-              <Circle
-                key={cell.district}
-                center={{ latitude: cell.latitude, longitude: cell.longitude }}
-                radius={4000 + (cell.servingsNeeded / peak) * 16000}
-                fillColor={`rgba(208, 52, 44, ${0.15 + (cell.servingsNeeded / peak) * 0.4})`}
-                strokeColor="transparent"
-              />
-            ))}
-          </MapView>
-        </View>
+        {Platform.OS === 'web' || !MapView ? (
+          <View style={[styles.mapFrame, styles.webPlaceholder]}>
+            <Text style={styles.webText}>Map not available on web</Text>
+          </View>
+        ) : (
+          <View style={styles.mapFrame}>
+            <MapView
+              style={styles.map}
+              initialRegion={{
+                latitude: cells[0]?.latitude ?? 7.8731,
+                longitude: cells[0]?.longitude ?? 80.7718,
+                latitudeDelta: 3,
+                longitudeDelta: 3,
+              }}
+            >
+              {cells.map((cell) => (
+                <Circle
+                  key={cell.district}
+                  center={{ latitude: cell.latitude, longitude: cell.longitude }}
+                  radius={4000 + (cell.servingsNeeded / peak) * 16000}
+                  fillColor={`rgba(208, 52, 44, ${0.15 + (cell.servingsNeeded / peak) * 0.4})`}
+                  strokeColor="transparent"
+                />
+              ))}
+            </MapView>
+          </View>
+        )}
         <Text style={styles.caption}>
           Circle size and shade follow the servings still unmatched in each district.
         </Text>
@@ -110,4 +116,13 @@ const styles = StyleSheet.create({
   mapFrame: { borderRadius: radius.md, height: 240, overflow: 'hidden' },
   map: { flex: 1 },
   caption: { ...typography.caption, color: colors.textMuted },
+  webPlaceholder: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    justifyContent: 'center',
+  },
+  webText: {
+    ...typography.body,
+    color: colors.textMuted,
+  },
 });

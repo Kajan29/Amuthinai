@@ -24,6 +24,7 @@ export class UsersService {
     phone: string;
     password: string;
     language: 'en' | 'ta' | 'si';
+    role?: Role;
   }): Promise<UserDocument> {
     const existing = await this.userModel.exists({ email: input.email.toLowerCase() });
     if (existing) throw new ConflictException('An account with this email already exists');
@@ -36,12 +37,38 @@ export class UsersService {
       phone: input.phone,
       language: input.language,
       passwordHash,
+      role: input.role,
+      // Donors and recipients are usable immediately; volunteers need vetting.
+      isVerified: input.role && input.role !== Role.Volunteer ? true : false,
     });
   }
 
   /** Includes the password hash, which is `select: false` on the schema. */
   findByEmailWithPassword(email: string) {
     return this.userModel.findOne({ email: email.toLowerCase() }).select('+passwordHash').exec();
+  }
+
+  findByEmail(email: string) {
+    return this.userModel.findOne({ email: email.toLowerCase() }).exec();
+  }
+
+  async createGoogleUser(input: {
+    name: string;
+    email: string;
+    googleId: string;
+    role?: Role;
+  }): Promise<UserDocument> {
+    const existing = await this.userModel.exists({ email: input.email.toLowerCase() });
+    if (existing) throw new ConflictException('An account with this email already exists');
+
+    return this.userModel.create({
+      name: input.name,
+      email: input.email.toLowerCase(),
+      googleId: input.googleId,
+      role: input.role,
+      isVerified: input.role ? input.role !== Role.Volunteer : false,
+      // No password hash for Google users
+    });
   }
 
   async findById(id: string): Promise<UserDocument> {

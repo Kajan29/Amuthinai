@@ -6,6 +6,7 @@
 export const MapView = null;
 export const Marker = null;
 export const Circle = null;
+export const Polyline = null;
 
 export type MapPressEvent = any;
 export type Region = any;

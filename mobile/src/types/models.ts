@@ -51,6 +51,8 @@ export interface User {
   /** Volunteers only — FR7. */
   vehicleType?: VehicleType;
   travelRadiusKm?: number;
+  address?: Address;
+  pushToken?: string;
   createdAt: string;
 }
 

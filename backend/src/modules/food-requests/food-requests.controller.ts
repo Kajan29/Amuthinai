@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
@@ -50,9 +50,37 @@ export class FoodRequestsController {
     return this.donationsService.getAvailableForRecipient(recipientId, query);
   }
 
+  @Get('nearby-active')
+  @Roles(Role.Recipient)
+  @ApiOperation({ summary: 'Check for nearby active requests within 1km' })
+  async getNearbyActive(
+    @CurrentUser('id') recipientId: string,
+    @Query('lat') lat: number,
+    @Query('lng') lng: number,
+    @Query('radiusKm') radiusKm: number = 1,
+  ) {
+    if (!lat || !lng) return [];
+    return this.foodRequestsService.findNearby(
+      [Number(lng), Number(lat)],
+      Number(radiusKm) || 1,
+      recipientId,
+    );
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.foodRequestsService.findById(id);
+  }
+
+  @Patch(':id')
+  @Roles(Role.Recipient)
+  @ApiOperation({ summary: 'Update an open food request' })
+  update(
+    @CurrentUser('id') recipientId: string,
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateFoodRequestDto>,
+  ) {
+    return this.foodRequestsService.update(id, recipientId, dto);
   }
 
   @Post(':id/cancel')

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -47,6 +48,8 @@ const WEIGHTS = { proximity: 0.5, capacity: 0.3, workload: 0.2 };
 
 @Injectable()
 export class AssignmentsService {
+  private readonly logger = new Logger(AssignmentsService.name);
+
   constructor(
     @InjectModel(Assignment.name) private readonly model: Model<Assignment>,
     private readonly donationsService: DonationsService,
@@ -140,6 +143,18 @@ export class AssignmentsService {
 
     if (input.requestId) {
       await this.foodRequestsService.markMatched(input.requestId, input.donationId);
+      try {
+        const foodReq = await this.foodRequestsService.findById(input.requestId);
+        if (foodReq?.recipientId) {
+          await this.notificationsService.sendToUsers([foodReq.recipientId.toString()], {
+            title: '🚴 Volunteer Assigned!',
+            body: `A volunteer has been assigned to deliver ${donation.title}. You can track live on your dashboard.`,
+            data: { requestId: input.requestId, assignmentId: assignment.id as string },
+          });
+        }
+      } catch (err) {
+        this.logger.warn('Could not notify recipient of volunteer assignment', err as Error);
+      }
     }
 
     // FR8
@@ -205,7 +220,24 @@ export class AssignmentsService {
 
     assignment.status = AssignmentStatus.Accepted;
     assignment.acceptedAt = new Date();
-    return assignment.save();
+    await assignment.save();
+
+    if (assignment.requestId) {
+      try {
+        const foodReq = await this.foodRequestsService.findById(assignment.requestId.toString());
+        if (foodReq?.recipientId) {
+          await this.notificationsService.sendToUsers([foodReq.recipientId.toString()], {
+            title: '🚴 Volunteer Accepted Delivery!',
+            body: 'A volunteer has accepted your food delivery and is preparing to collect it from the relief center.',
+            data: { assignmentId: assignment.id as string },
+          });
+        }
+      } catch (err) {
+        this.logger.warn('Could not notify recipient of volunteer acceptance', err as Error);
+      }
+    }
+
+    return assignment;
   }
 
   /** A decline returns the donation to the pool so an admin can offer it to someone else. */
@@ -249,6 +281,21 @@ export class AssignmentsService {
       note: 'On the way to the recipient',
     });
 
+    if (assignment.requestId) {
+      try {
+        const foodReq = await this.foodRequestsService.findById(assignment.requestId.toString());
+        if (foodReq?.recipientId) {
+          await this.notificationsService.sendToUsers([foodReq.recipientId.toString()], {
+            title: '🛵 Food Picked Up & In Transit!',
+            body: 'Your food has been collected and the volunteer is currently on the way to your location.',
+            data: { assignmentId: assignment.id as string },
+          });
+        }
+      } catch (err) {
+        this.logger.warn('Could not notify recipient of pickup', err as Error);
+      }
+    }
+
     return proof;
   }
 
@@ -279,6 +326,18 @@ export class AssignmentsService {
 
     if (assignment.requestId) {
       await this.foodRequestsService.markFulfilled(assignment.requestId.toString());
+      try {
+        const foodReq = await this.foodRequestsService.findById(assignment.requestId.toString());
+        if (foodReq?.recipientId) {
+          await this.notificationsService.sendToUsers([foodReq.recipientId.toString()], {
+            title: '✅ Food Delivered Successfully!',
+            body: 'Your meal delivery has been completed safely. Thank you for using Amuthinai!',
+            data: { assignmentId: assignment.id as string },
+          });
+        }
+      } catch (err) {
+        this.logger.warn('Could not notify recipient of delivery completion', err as Error);
+      }
     }
 
     // FR10
@@ -303,6 +362,57 @@ export class AssignmentsService {
 
   countActiveDeliveries() {
     return this.model.countDocuments({ status: AssignmentStatus.Accepted }).exec();
+  }
+
+  async getTrackingForRequest(requestId: string, recipientId: string) {
+    const foodReq = await this.foodRequestsService.findById(requestId);
+    if (foodReq.recipientId.toString() !== recipientId) {
+      throw new ForbiddenException('Not authorized to view tracking for this request');
+    }
+
+    const assignment = await this.model
+      .findOne({ requestId: new Types.ObjectId(requestId) })
+      .exec();
+
+    let volunteer: any = null;
+    let donation: any = null;
+
+    if (assignment) {
+      try {
+        volunteer = await this.usersService.findById(assignment.volunteerId.toString());
+      } catch {}
+      if (assignment.donationId) {
+        try {
+          donation = await this.donationsService.findById(assignment.donationId.toString());
+        } catch {}
+      }
+    } else if (foodReq.matchedDonationId) {
+      try {
+        donation = await this.donationsService.findById(foodReq.matchedDonationId.toString());
+      } catch {}
+    }
+
+    return {
+      request: foodReq,
+      assignment: assignment ? assignment.toJSON() : null,
+      volunteer: volunteer
+        ? {
+            id: volunteer.id,
+            name: volunteer.name,
+            phone: volunteer.phone,
+            vehicleType: volunteer.vehicleType || 'Motorbike',
+            rating: 4.9,
+          }
+        : null,
+      donation: donation
+        ? {
+            id: donation.id,
+            title: donation.title,
+            pickupAddress: donation.pickupAddress,
+            servings: donation.servings,
+          }
+        : null,
+    };
   }
 
   private async findOwned(id: string, volunteerId: string): Promise<AssignmentDocument> {

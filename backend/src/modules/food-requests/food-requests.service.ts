@@ -47,7 +47,12 @@ export class FoodRequestsService {
     const filter = { recipientId: new Types.ObjectId(recipientId) };
 
     const [items, total] = await Promise.all([
-      this.model.find(filter).sort({ createdAt: -1 }).skip(query.skip).limit(query.pageSize),
+      this.model
+        .find(filter)
+        .populate('matchedDonationId')
+        .sort({ createdAt: -1 })
+        .skip(query.skip)
+        .limit(query.pageSize),
       this.model.countDocuments(filter),
     ]);
 
@@ -70,6 +75,27 @@ export class FoodRequestsService {
     return request.save();
   }
 
+  async update(
+    id: string,
+    recipientId: string,
+    patch: Partial<CreateFoodRequestDto>,
+  ): Promise<FoodRequestDocument> {
+    const request = await this.findById(id);
+    if (request.recipientId.toString() !== recipientId) {
+      throw new ForbiddenException('This request belongs to another recipient');
+    }
+    if (request.status !== RequestStatus.Open) {
+      throw new BadRequestException('Only open requests can be modified');
+    }
+
+    if (patch.servingsNeeded) request.servingsNeeded = patch.servingsNeeded;
+    if (patch.neededBy) request.neededBy = new Date(patch.neededBy);
+    if (patch.notes !== undefined) request.notes = patch.notes;
+    if (patch.dropAddress) request.dropAddress = patch.dropAddress as any;
+
+    return request.save();
+  }
+
   /** FR6 — open requests near a donation's pickup point, soonest deadline first. */
   findOpenNear(coordinates: [number, number], radiusKm: number) {
     return this.model
@@ -79,6 +105,25 @@ export class FoodRequestsService {
         'dropAddress.location': nearSphere(coordinates, radiusKm),
       })
       .limit(25)
+      .exec();
+  }
+
+  async findNearby(
+    coordinates: [number, number],
+    radiusKm: number = 1,
+    excludeRecipientId?: string,
+  ) {
+    const filter: any = {
+      status: { $in: [RequestStatus.Open, RequestStatus.Matched] },
+      'dropAddress.location': nearSphere(coordinates, radiusKm),
+    };
+    if (excludeRecipientId) {
+      filter.recipientId = { $ne: new Types.ObjectId(excludeRecipientId) };
+    }
+    return this.model
+      .find(filter)
+      .populate('recipientId', 'name phone email')
+      .limit(10)
       .exec();
   }
 

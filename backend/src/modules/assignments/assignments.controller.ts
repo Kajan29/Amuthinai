@@ -44,6 +44,16 @@ export class AssignmentsController {
     return this.assignmentsService.findMine(volunteerId, query);
   }
 
+  @Get('for-request/:requestId')
+  @Roles(Role.Recipient, Role.Admin)
+  @ApiOperation({ summary: 'Recipient live tracking info for a food request' })
+  getForRequest(
+    @CurrentUser('id') recipientId: string,
+    @Param('requestId') requestId: string,
+  ) {
+    return this.assignmentsService.getTrackingForRequest(requestId, recipientId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.assignmentsService.findById(id);

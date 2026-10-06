@@ -8,12 +8,17 @@ import { Role } from 'src/common/enums/role.enum';
 
 import { CreateFoodRequestDto } from './dto/create-food-request.dto';
 import { FoodRequestsService } from './food-requests.service';
+import { DonationsService } from '../donations/donations.service';
+import { QueryDonationsDto } from '../donations/dto/query-donations.dto';
 
 @ApiTags('food-requests')
 @ApiBearerAuth()
 @Controller('food-requests')
 export class FoodRequestsController {
-  constructor(private readonly foodRequestsService: FoodRequestsService) {}
+  constructor(
+    private readonly foodRequestsService: FoodRequestsService,
+    private readonly donationsService: DonationsService,
+  ) {}
 
   @Post()
   @Roles(Role.Recipient)
@@ -26,6 +31,23 @@ export class FoodRequestsController {
   @Roles(Role.Recipient)
   findMine(@CurrentUser('id') recipientId: string, @Query() query: PaginationQueryDto) {
     return this.foodRequestsService.findMine(recipientId, query);
+  }
+
+  @Get('stats')
+  @Roles(Role.Recipient)
+  @ApiOperation({ summary: 'Dashboard counters for the signed-in recipient' })
+  async stats(@CurrentUser('id') recipientId: string) {
+    return this.foodRequestsService.statsFor(recipientId);
+  }
+
+  @Get('available-distributions')
+  @Roles(Role.Recipient)
+  @ApiOperation({ summary: 'Get available approved donations near recipient location' })
+  async availableDistributions(
+    @CurrentUser('id') recipientId: string,
+    @Query() query: QueryDonationsDto,
+  ) {
+    return this.donationsService.getAvailableForRecipient(recipientId, query);
   }
 
   @Get(':id')

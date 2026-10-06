@@ -223,4 +223,28 @@ export class DonationsService {
 
     return result ?? { totalDonations: 0, servingsShared: 0 };
   }
+
+  /** Available distributions for recipient dashboard */
+  async getAvailableForRecipient(
+    recipientId: string,
+    query: QueryDonationsDto,
+  ): Promise<PaginatedDto<DonationDocument>> {
+    // Get recipient location to find nearby donations
+    // For now, we'll just get approved donations that haven't expired
+    const filter: FilterQuery<Donation> = {
+      status: DonationStatus.Approved,
+      expiresAt: { $gt: new Date() },
+    };
+
+    const [items, total] = await Promise.all([
+      this.donationModel
+        .find(filter)
+        .sort({ expiresAt: 1 }) // Soonest expiring first
+        .skip(query.skip)
+        .limit(query.pageSize),
+      this.donationModel.countDocuments(filter),
+    ]);
+
+    return paginate(items, total, query);
+  }
 }

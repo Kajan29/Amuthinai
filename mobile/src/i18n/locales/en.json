@@ -10,6 +10,8 @@
     "loading": "Loading…",
     "language": "Language",
     "signOut": "Sign out",
+    "logout": "Logout",
+    "logoutConfirm": "Are you sure you want to logout?",
     "empty": "Nothing here yet"
   },
   "auth": {

@@ -14,7 +14,7 @@ import type { VehicleType } from '@/types';
 /** FR7 — vehicle and travel radius drive which pickups the volunteer is offered. */
 export default function VolunteerProfile() {
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, confirmLogout } = useAuth();
 
   const [vehicleType, setVehicleType] = useState<VehicleType>(user?.vehicleType ?? 'motorbike');
   const [travelRadiusKm, setTravelRadiusKm] = useState(user?.travelRadiusKm ?? 5);
@@ -25,7 +25,7 @@ export default function VolunteerProfile() {
 
   return (
     <Screen
-      footer={<Button label={t('common.signOut')} variant="ghost" onPress={() => void logout()} />}
+      footer={<Button label={t('common.signOut')} variant="ghost" onPress={() => void confirmLogout()} />}
     >
       <View style={styles.headerRow}>
         <Text style={styles.name}>{user?.name}</Text>

@@ -1,7 +1,9 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 
 import { AppModule } from '../app.module';
+import { configureDNS } from '../config/dns.config';
 import { FoodType } from '../common/enums/food-type.enum';
 import { Role } from '../common/enums/role.enum';
 import { VehicleType } from '../common/enums/vehicle-type.enum';
@@ -22,8 +24,9 @@ const DEHIWALA: [number, number] = [79.8656, 6.8511];
 const PASSWORD = 'amuthinai123';
 
 async function seed() {
+  configureDNS();
   const logger = new Logger('Seed');
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['warn', 'error'] });
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['warn', 'error', 'log'] });
 
   const usersService = app.get(UsersService);
   const donationsService = app.get(DonationsService);

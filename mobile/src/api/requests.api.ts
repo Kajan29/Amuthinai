@@ -1,6 +1,6 @@
 import { client, request } from './client';
 
-import type { Address, Enquiry, FoodRequest, Paginated } from '@/types';
+import type { Address, Enquiry, FoodRequest, Paginated, Donation } from '@/types';
 
 export interface CreateRequestPayload {
   servingsNeeded: number;
@@ -16,6 +16,13 @@ export interface CreateEnquiryPayload {
   donationId?: string;
 }
 
+export interface RecipientStats {
+  activeNeeds: number;
+  totalRequests: number;
+  mealsShared: number;
+  nearbyHubs: number;
+}
+
 export const requestsApi = {
   /** FR5 */
   create: (payload: CreateRequestPayload) =>
@@ -26,6 +33,13 @@ export const requestsApi = {
   byId: (id: string) => request<FoodRequest>(client.get(`/food-requests/${id}`)),
 
   cancel: (id: string) => request<FoodRequest>(client.post(`/food-requests/${id}/cancel`)),
+
+  /** Recipient dashboard stats */
+  stats: () => request<RecipientStats>(client.get('/food-requests/stats')),
+
+  /** Available distributions near recipient */
+  availableDistributions: (params?: { page?: number; pageSize?: number }) =>
+    request<Paginated<Donation>>(client.get('/food-requests/available-distributions', { params })),
 
   /** FR12 — recipient raises a concern with the admin. */
   raiseConcern: (payload: CreateEnquiryPayload) =>

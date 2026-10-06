@@ -28,7 +28,7 @@ export function RoleGuard({ role, children }: RoleGuardProps) {
   }
 
   if (!isAuthenticated) return <Redirect href="/(auth)/login" />;
-  if (!user?.role) return <Redirect href="/(auth)/select-role" />;
+  if (!user?.role) return <Redirect href="/(auth)/register" />;
   if (user.role !== role) return <Redirect href={HOME_ROUTE[user.role] as never} />;
 
   return <>{children}</>;

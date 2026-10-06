@@ -114,8 +114,8 @@ export default function VerifyEmail() {
           const homeRoute = HOME_ROUTE[user.role];
           router.replace(homeRoute as never);
         } else {
-          // Fallback to select-role if somehow role is not set
-          router.replace('/(auth)/select-role');
+          // If the role is missing, return to the role-aware registration page.
+          router.replace('/(auth)/register');
         }
       }, 1500);
     } catch (cause) {

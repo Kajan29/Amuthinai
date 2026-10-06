@@ -1,10 +1,12 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { adminApi } from '@/api/admin.api';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button, Card, Screen } from '@/components/ui';
+import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { colors, radius, spacing, typography } from '@/theme';
 import { MapView, Circle } from '@/utils/maps';
@@ -12,6 +14,7 @@ import { MapView, Circle } from '@/utils/maps';
 /** FR8 — KPI cards over a demand heat-map built from open recipient requests. */
 export default function AdminDashboard() {
   const { t } = useTranslation();
+  const { confirmLogout } = useAuth();
 
   const kpis = useOfflineQuery('admin.kpis', () => adminApi.kpis());
   const demand = useOfflineQuery('admin.demand', () => adminApi.demandHeatmap());
@@ -23,7 +26,12 @@ export default function AdminDashboard() {
     <Screen>
       <View style={styles.headerRow}>
         <Text style={styles.heading}>{t('admin.dashboard')}</Text>
-        <LanguageSwitcher />
+        <View style={styles.headerRight}>
+          <LanguageSwitcher />
+          <TouchableOpacity onPress={confirmLogout} style={styles.logoutButton}>
+            <Ionicons name="log-out-outline" size={24} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.kpiGrid}>
@@ -98,6 +106,8 @@ const KPI_COLORS = {
 
 const styles = StyleSheet.create({
   headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  headerRight: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  logoutButton: { padding: spacing.xs },
   heading: { ...typography.h3, color: colors.text },
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   kpi: {
@@ -118,7 +128,7 @@ const styles = StyleSheet.create({
   caption: { ...typography.caption, color: colors.textMuted },
   webPlaceholder: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
   },
   webText: {

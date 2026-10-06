@@ -6,3 +6,4 @@ export { donationsApi } from './donations.api';
 export { pointsApi } from './points.api';
 export { requestsApi } from './requests.api';
 export { uploadsApi } from './uploads.api';
+export { usersApi } from './users.api';

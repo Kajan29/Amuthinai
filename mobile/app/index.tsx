@@ -28,8 +28,9 @@ export default function Index() {
   // Authenticated users go to their role's home
   if (!isAuthenticated) return <Redirect href="/(auth)/login" />;
   
-  // If user doesn't have a role (legacy accounts), send to select-role
-  if (!user?.role) return <Redirect href="/(auth)/select-role" />;
+  // If a user is logged in but has no role yet, send them back through registration so they can
+  // select one there instead of hitting the removed standalone role page.
+  if (!user?.role) return <Redirect href="/(auth)/register" />;
 
   // User has a role, go to their dashboard
   return <Redirect href={HOME_ROUTE[user.role] as never} />;

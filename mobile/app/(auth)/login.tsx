@@ -62,8 +62,9 @@ export default function Login() {
 
     try {
       const user = await login(email.trim(), password);
-      // If user has a role, go to their dashboard, otherwise go to select-role (for legacy accounts)
-      const route = user.role ? (HOME_ROUTE[user.role] as never) : '/(auth)/select-role';
+      // Use the role already attached to the account. If there is no role yet, send the user
+      // back to registration so they can pick one from the role selector there.
+      const route = user.role ? (HOME_ROUTE[user.role] as never) : '/(auth)/register';
       router.replace(route);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Login failed');
@@ -86,8 +87,8 @@ export default function Login() {
       // Authenticate with backend using the ID token
       const user = await googleAuth(idToken);
       
-      // Navigate to appropriate screen
-      router.replace(user.role ? (HOME_ROUTE[user.role] as never) : '/(auth)/select-role');
+      // Navigate to the user's dashboard or back to registration if no role is present.
+      router.replace(user.role ? (HOME_ROUTE[user.role] as never) : '/(auth)/register');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Google sign-in failed');
     } finally {

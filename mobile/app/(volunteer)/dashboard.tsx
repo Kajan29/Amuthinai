@@ -1,12 +1,14 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Platform, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { assignmentsApi } from '@/api/assignments.api';
 import { DonationCard } from '@/components/DonationCard';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Badge, EmptyState } from '@/components/ui';
 import { URGENT_THRESHOLD_MINUTES } from '@/constants';
+import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { colors, radius, spacing, typography } from '@/theme';
 import { toLatLng } from '@/utils/geo';
@@ -15,6 +17,7 @@ import { MapView, Marker } from '@/utils/maps';
 /** FR8 — map of nearby pickups plus the urgency-ordered task list. */
 export default function VolunteerDashboard() {
   const { t } = useTranslation();
+  const { confirmLogout } = useAuth();
   const tasks = useOfflineQuery('volunteer.nearby', () => assignmentsApi.nearby());
 
   const items = tasks.data ?? [];
@@ -61,7 +64,12 @@ export default function VolunteerDashboard() {
           <View style={styles.listHeader}>
             <View style={styles.headerRow}>
               <Text style={styles.heading}>{t('volunteer.dashboard')}</Text>
-              <LanguageSwitcher />
+              <View style={styles.headerRight}>
+                <LanguageSwitcher />
+                <TouchableOpacity onPress={confirmLogout} style={styles.logoutButton}>
+                  <Ionicons name="log-out-outline" size={24} color={colors.danger} />
+                </TouchableOpacity>
+              </View>
             </View>
             {urgentCount > 0 && (
               <Badge label={`${urgentCount} ${t('volunteer.urgent')}`} tone="danger" />
@@ -94,6 +102,16 @@ const styles = StyleSheet.create({
   listContent: { gap: spacing.md, padding: spacing.lg },
   listHeader: { gap: spacing.sm },
   headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logoutButton: {
+    padding: spacing.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background,
+  },
   heading: { ...typography.h3, color: colors.text },
   badge: { borderRadius: radius.pill },
 });

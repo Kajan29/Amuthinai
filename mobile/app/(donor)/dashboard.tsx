@@ -1,13 +1,15 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { donationsApi } from '@/api/donations.api';
 import { DonationCard } from '@/components/DonationCard';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button, Card, EmptyState } from '@/components/ui';
 import { IN_TRANSIT_STATUSES, TERMINAL_STATUSES } from '@/constants';
+import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { colors, radius, spacing, typography } from '@/theme';
 
@@ -21,6 +23,7 @@ const TABS: { key: Tab; labelKey: string }[] = [
 
 export default function DonorDashboard() {
   const { t } = useTranslation();
+  const { confirmLogout } = useAuth();
   const [tab, setTab] = useState<Tab>('all');
 
   const donations = useOfflineQuery('donor.donations', () => donationsApi.list());
@@ -43,7 +46,13 @@ export default function DonorDashboard() {
       onRefresh={() => void donations.refetch()}
       ListHeaderComponent={
         <View style={styles.header}>
-          <LanguageSwitcher />
+          <View style={styles.topBar}>
+            <LanguageSwitcher />
+            <TouchableOpacity onPress={confirmLogout} style={styles.logoutButton}>
+              <Ionicons name="log-out-outline" size={24} color={colors.danger} />
+              <Text style={styles.logoutText}>{t('common.logout') || 'Logout'}</Text>
+            </TouchableOpacity>
+          </View>
 
           <Card>
             <View style={styles.statsRow}>
@@ -101,6 +110,25 @@ const styles = StyleSheet.create({
   root: { backgroundColor: colors.surface, flex: 1 },
   content: { gap: spacing.md, padding: spacing.lg },
   header: { gap: spacing.md },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background,
+  },
+  logoutText: {
+    ...typography.caption,
+    color: colors.danger,
+    fontWeight: '600',
+  },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between' },
   stat: { alignItems: 'center', flex: 1, gap: 2 },
   statValue: { ...typography.h2, color: colors.primary },

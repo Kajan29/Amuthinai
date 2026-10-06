@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Button } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
+import { HOME_ROUTE } from '@/store/auth.store';
 import { useLanguageStore } from '@/store/language.store';
 import { colors, spacing, typography, radius } from '@/theme';
 import { logo } from '@/constants';
@@ -127,8 +128,8 @@ export default function Register() {
       // Authenticate with backend using the ID token and selected role
       const user = await googleAuth(idToken, selectedRole);
       
-      // Navigate to role selection if no role was set, otherwise go to home
-      router.replace(user.role ? '/(auth)/select-role' : '/(auth)/select-role');
+      // Go straight to the matching dashboard when a role is available.
+      router.replace(user.role ? (HOME_ROUTE[user.role] as never) : '/(auth)/register');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Google sign-up failed');
     } finally {

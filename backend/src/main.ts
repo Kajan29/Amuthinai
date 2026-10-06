@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -9,8 +10,9 @@ import { AppModule } from './app.module';
 import { configureDNS } from './config/dns.config';
 
 async function bootstrap() {
-  // Configure DNS to use public DNS servers (fixes MongoDB SRV connection issues)
-  configureDNS();
+  if (process.env.MONGODB_DNS_SERVERS) {
+    configureDNS();
+  }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);

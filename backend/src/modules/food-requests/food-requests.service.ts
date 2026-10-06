@@ -127,4 +127,46 @@ export class FoodRequestsService {
       { $sort: { servingsNeeded: -1 } },
     ]);
   }
+
+  /** Stats for recipient dashboard */
+  async statsFor(recipientId: string) {
+    const [activeNeedsCount, totalRequests, fulfilledCount] = await Promise.all([
+      this.model.countDocuments({
+        recipientId: new Types.ObjectId(recipientId),
+        status: { $in: [RequestStatus.Open, RequestStatus.Matched] },
+      }),
+      this.model.countDocuments({
+        recipientId: new Types.ObjectId(recipientId),
+      }),
+      this.model.countDocuments({
+        recipientId: new Types.ObjectId(recipientId),
+        status: RequestStatus.Fulfilled,
+      }),
+    ]);
+
+    // Calculate total servings received
+    const servingsResult = await this.model.aggregate([
+      {
+        $match: {
+          recipientId: new Types.ObjectId(recipientId),
+          status: RequestStatus.Fulfilled,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalServings: { $sum: '$servingsNeeded' },
+        },
+      },
+    ]);
+
+    const mealsShared = servingsResult.length > 0 ? servingsResult[0].totalServings : 0;
+
+    return {
+      activeNeeds: activeNeedsCount,
+      totalRequests,
+      mealsShared,
+      nearbyHubs: 4, // TODO: Calculate based on actual hub/NGO locations
+    };
+  }
 }

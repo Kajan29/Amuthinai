@@ -1,11 +1,16 @@
 import { useCallback } from 'react';
+import { Alert, Platform } from 'react-native';
+import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
-import { authApi, type RegisterPayload, type GoogleAuthPayload, type ForgotPasswordPayload, type VerifyOtpPayload, type ResetPasswordPayload } from '@/api/auth.api';
+import { authApi, type RegisterPayload, type ForgotPasswordPayload, type VerifyOtpPayload, type ResetPasswordPayload } from '@/api/auth.api';
+import { queryClient } from '@/api/queryClient';
 import { useAuthStore } from '@/store/auth.store';
 import type { Role } from '@/types';
 
 /** Single entry point for authentication so screens never touch the store directly. */
 export function useAuth() {
+  const { t } = useTranslation();
   const { user, accessToken, isReady, signIn, signOut, setUser } = useAuthStore();
 
   const login = useCallback(
@@ -65,6 +70,43 @@ export function useAuth() {
     return await authApi.verifyEmail({ email, otp });
   }, []);
 
+  const logout = useCallback(async () => {
+    try {
+      await signOut();
+      queryClient.clear();
+    } finally {
+      router.replace('/(auth)/login');
+    }
+  }, [signOut]);
+
+  const confirmLogout = useCallback(async () => {
+    const doLogout = async () => {
+      await logout();
+    };
+
+    const title = t('common.logout') || 'Logout';
+    const message = t('common.logoutConfirm') || 'Are you sure you want to logout?';
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' ? window.confirm(message) : true;
+      if (confirmed) {
+        await doLogout();
+      }
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: t('common.cancel') || 'Cancel', style: 'cancel' },
+      {
+        text: title,
+        style: 'destructive',
+        onPress: () => {
+          void doLogout();
+        },
+      },
+    ]);
+  }, [logout, t]);
+
   return {
     user,
     role: user?.role,
@@ -74,7 +116,8 @@ export function useAuth() {
     register,
     googleAuth,
     selectRole,
-    logout: signOut,
+    logout,
+    confirmLogout,
     forgotPassword,
     verifyOtp,
     resetPassword,

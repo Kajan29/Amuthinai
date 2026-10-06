@@ -61,6 +61,23 @@ export class PointsService {
     await this.usersService.addKarmaPoints(userId, points);
   }
 
+  /** Karma awarded to this user for each donation, summed across ledger reasons. */
+  async totalsForDonations(userId: string, donationIds: string[]): Promise<Map<string, number>> {
+    if (donationIds.length === 0) return new Map();
+
+    const rows = await this.model.aggregate<{ _id: Types.ObjectId; points: number }>([
+      {
+        $match: {
+          userId: new Types.ObjectId(userId),
+          donationId: { $in: donationIds.map((id) => new Types.ObjectId(id)) },
+        },
+      },
+      { $group: { _id: '$donationId', points: { $sum: '$points' } } },
+    ]);
+
+    return new Map(rows.map((row) => [row._id.toString(), row.points]));
+  }
+
   async balanceOf(userId: string): Promise<number> {
     const [result] = await this.model.aggregate<{ balance: number }>([
       { $match: { userId: new Types.ObjectId(userId) } },

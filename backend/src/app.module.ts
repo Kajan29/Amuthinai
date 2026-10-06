@@ -18,6 +18,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { DeliveryProofModule } from './modules/delivery-proof/delivery-proof.module';
 import { DonationsModule } from './modules/donations/donations.module';
 import { EmailModule } from './modules/email/email.module';
+import { DonorDashboardModule } from './modules/donor-dashboard/donor-dashboard.module';
 import { EnquiriesModule } from './modules/enquiries/enquiries.module';
 import { FoodRequestsModule } from './modules/food-requests/food-requests.module';
 import { NgosModule } from './modules/ngos/ngos.module';
@@ -47,6 +48,7 @@ import { TestEmailController } from './test-email.controller';
     UsersModule,
     EmailModule,
     DonationsModule,
+    DonorDashboardModule,
     FoodRequestsModule,
     AssignmentsModule,
     DeliveryProofModule,

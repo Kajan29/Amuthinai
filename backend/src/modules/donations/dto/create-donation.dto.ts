@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -9,12 +10,20 @@ import {
   IsString,
   IsUrl,
   Max,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 
 import { AddressDto } from 'src/common/dto/address.dto';
+import {
+  DeliveryMethod,
+  DietaryTag,
+  HandlingInstruction,
+  PickupSource,
+  QuantityUnit,
+} from 'src/common/enums/donation-details.enum';
 import { FoodType } from 'src/common/enums/food-type.enum';
 
 /** FR2, FR3 */
@@ -34,9 +43,26 @@ export class CreateDonationDto {
   @Max(5000)
   servings!: number;
 
+  @ApiPropertyOptional({ enum: QuantityUnit })
+  @IsOptional()
+  @IsEnum(QuantityUnit)
+  quantityUnit?: QuantityUnit;
+
+  @ApiPropertyOptional({ enum: DietaryTag, isArray: true })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(DietaryTag, { each: true })
+  dietaryTags?: DietaryTag[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  foodSafetyVerified?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(300)
   description?: string;
 
   @ApiPropertyOptional({ type: [String] })
@@ -44,6 +70,38 @@ export class CreateDonationDto {
   @IsArray()
   @IsUrl({ require_tld: false }, { each: true })
   photoUrls?: string[];
+
+  @ApiPropertyOptional({ enum: PickupSource })
+  @IsOptional()
+  @IsEnum(PickupSource)
+  pickupSource?: PickupSource;
+
+  @ApiPropertyOptional({ description: 'FR3 — earliest pickup time, ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  readyFrom?: string;
+
+  @ApiPropertyOptional({ description: 'FR3 — consume-before time, ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  consumeBefore?: string;
+
+  @ApiPropertyOptional({ enum: HandlingInstruction, isArray: true })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(HandlingInstruction, { each: true })
+  handling?: HandlingInstruction[];
+
+  @ApiPropertyOptional({ enum: DeliveryMethod })
+  @IsOptional()
+  @IsEnum(DeliveryMethod)
+  deliveryMethod?: DeliveryMethod;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  handoverInstructions?: string;
 
   @ApiProperty({ description: 'FR3 — when the food was cooked, ISO 8601' })
   @IsDateString()

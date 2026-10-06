@@ -19,6 +19,7 @@
     "@react-native-google-signin/google-signin": "^16.1.5",
     "@tanstack/react-query": "^5.90.2",
     "axios": "^1.12.2",
+    "babel-preset-expo": "~54.0.10",
     "expo": "~54.0.12",
     "expo-blur": "^57.0.3",
     "expo-constants": "~18.0.9",

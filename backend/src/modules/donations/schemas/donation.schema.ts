@@ -2,6 +2,13 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HydratedDocument, Types } from 'mongoose';
 
+import {
+  DeliveryMethod,
+  DietaryTag,
+  HandlingInstruction,
+  PickupSource,
+  QuantityUnit,
+} from 'src/common/enums/donation-details.enum';
 import { DonationStatus } from 'src/common/enums/donation-status.enum';
 import { FoodType } from 'src/common/enums/food-type.enum';
 import { Address, AddressSchema } from 'src/common/schemas/address.schema';
@@ -36,6 +43,18 @@ export class Donation {
   @Prop({ required: true, min: 1 })
   servings!: number;
 
+  @ApiPropertyOptional({ enum: QuantityUnit })
+  @Prop({ type: String, enum: QuantityUnit })
+  quantityUnit?: QuantityUnit;
+
+  @ApiPropertyOptional({ enum: DietaryTag, isArray: true })
+  @Prop({ type: [String], enum: DietaryTag, default: [] })
+  dietaryTags!: DietaryTag[];
+
+  @ApiPropertyOptional()
+  @Prop({ default: false })
+  foodSafetyVerified!: boolean;
+
   @ApiPropertyOptional()
   @Prop({ trim: true })
   description?: string;
@@ -43,6 +62,32 @@ export class Donation {
   @ApiProperty({ type: [String] })
   @Prop({ type: [String], default: [] })
   photoUrls!: string[];
+
+  @ApiPropertyOptional({ enum: PickupSource })
+  @Prop({ type: String, enum: PickupSource })
+  pickupSource?: PickupSource;
+
+  /** FR3 — when a volunteer may start collecting. */
+  @ApiPropertyOptional()
+  @Prop()
+  readyFrom?: Date;
+
+  /** FR3 — last moment the food should be eaten. */
+  @ApiPropertyOptional()
+  @Prop()
+  consumeBefore?: Date;
+
+  @ApiPropertyOptional({ enum: HandlingInstruction, isArray: true })
+  @Prop({ type: [String], enum: HandlingInstruction, default: [] })
+  handling!: HandlingInstruction[];
+
+  @ApiPropertyOptional({ enum: DeliveryMethod })
+  @Prop({ type: String, enum: DeliveryMethod })
+  deliveryMethod?: DeliveryMethod;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true, maxlength: 150 })
+  handoverInstructions?: string;
 
   /** FR3 — declared by the donor. */
   @ApiProperty()

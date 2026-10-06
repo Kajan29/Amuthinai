@@ -206,6 +206,15 @@ export class DonationsService {
       .exec();
   }
 
+  /** Every donation the donor has posted, newest first. Used by the donor home screen. */
+  listForDonor(donorId: string): Promise<DonationDocument[]> {
+    return this.donationModel
+      .find({ donorId: new Types.ObjectId(donorId) })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .exec();
+  }
+
   async statsFor(donorId: string): Promise<Omit<DonorStats, 'karmaPoints'>> {
     const [result] = await this.donationModel.aggregate<{
       totalDonations: number;

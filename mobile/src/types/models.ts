@@ -20,7 +20,26 @@ export type RequestStatus = 'open' | 'matched' | 'fulfilled' | 'cancelled';
 
 export type AssignmentStatus = 'offered' | 'accepted' | 'declined' | 'completed' | 'cancelled';
 
-export type FoodType = 'cooked' | 'raw' | 'packaged' | 'bakery' | 'beverage';
+export type FoodType = 'cooked' | 'raw' | 'packaged' | 'bakery' | 'dairy' | 'beverage';
+
+export type QuantityUnit = 'packets' | 'kg' | 'pieces' | 'litres' | 'portions';
+
+export type PickupSource = 'registered' | 'custom';
+
+export type HandlingInstruction =
+  | 'keep_warm'
+  | 'requires_refrigeration'
+  | 'individually_packed'
+  | 'fragile_liquid';
+
+export type DeliveryMethod = 'volunteer_rider' | 'self_drop';
+
+export type DietaryTag =
+  | 'pure_vegetarian'
+  | 'halal_friendly'
+  | 'cooked_today'
+  | 'nut_free'
+  | 'contains_egg_meat';
 
 export type VehicleType = 'foot' | 'bicycle' | 'motorbike' | 'three_wheeler' | 'car' | 'van';
 
@@ -62,8 +81,17 @@ export interface Donation {
   title: string;
   foodType: FoodType;
   servings: number;
+  quantityUnit?: QuantityUnit;
+  dietaryTags?: DietaryTag[];
+  foodSafetyVerified?: boolean;
   description?: string;
   photoUrls: string[];
+  pickupSource?: PickupSource;
+  readyFrom?: string;
+  consumeBefore?: string;
+  handling?: HandlingInstruction[];
+  deliveryMethod?: DeliveryMethod;
+  handoverInstructions?: string;
   /** FR3 — when the food was cooked and how long it stays safe. */
   cookedAt: string;
   safeForHours: number;

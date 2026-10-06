@@ -17,7 +17,7 @@ export const CLOUDINARY_UPLOAD_PRESET: string =
 
 export const ROLES: Role[] = ['donor', 'volunteer', 'recipient', 'admin'];
 
-export const FOOD_TYPES: FoodType[] = ['cooked', 'raw', 'packaged', 'bakery', 'beverage'];
+export const FOOD_TYPES: FoodType[] = ['cooked', 'raw', 'packaged', 'bakery', 'dairy', 'beverage'];
 
 export const VEHICLE_TYPES: VehicleType[] = [
   'foot',

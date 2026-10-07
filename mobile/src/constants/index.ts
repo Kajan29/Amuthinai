@@ -2,7 +2,11 @@ import Constants from 'expo-constants';
 
 import type { DonationStatus, FoodType, Language, Role, VehicleType } from '@/types';
 
-export const API_URL: string = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+export const API_URL: string =
+  process.env.EXPO_PUBLIC_API_URL ||
+  (Constants.expoConfig?.hostUri
+    ? `http://${Constants.expoConfig.hostUri.split(':')[0]}:3000/api/v1`
+    : 'http://localhost:3000/api/v1');
 
 export const APP_VERSION: string = Constants.expoConfig?.version ?? '0.0.0';
 

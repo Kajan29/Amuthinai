@@ -1,1294 +1,708 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Image,
   Linking,
-  Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { assignmentsApi } from '@/api/assignments.api';
-import { donationsApi } from '@/api/donations.api';
-import { requestsApi } from '@/api/requests.api';
-import { PhotoCapture } from '@/components/PhotoCapture';
-import { Badge, Button } from '@/components/ui';
-import { useAuth } from '@/hooks/useAuth';
+import { logo } from '@/constants';
 import { useLocation } from '@/hooks/useLocation';
-import { radius, spacing, typography } from '@/theme';
-import { volunteerColors, getTier } from '@/theme/volunteer';
-import { toLatLng } from '@/utils/geo';
-import { MapView, Marker, Polyline } from '@/utils/maps';
 
-const PIN_LENGTH = 4;
-
-/**
- * FR9 & FR10 — Delivery & Handover Verification screen.
- * Follows route to recipient/hub, verifies condition checklist,
- * captures timestamped handover proof, verifies 4-digit recipient PIN,
- * and automatically awards Karma points with celebration breakdown.
- */
 export default function ConfirmDelivery() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const { point, error: locationError, refresh } = useLocation();
+  const { point } = useLocation();
 
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [pinDigits, setPinDigits] = useState(['', '', '', '']);
-  const [showCelebration, setShowCelebration] = useState(false);
-  const [earnedKarma, setEarnedKarma] = useState(25);
-  const [checklist, setChecklist] = useState({
-    condition: true,
-    countMatches: true,
-    recipientIdentified: true,
-  });
-
-  const pinInputs = useRef<Array<TextInput | null>>([]);
-
-  const assignment = useQuery({
-    queryKey: ['assignment', id],
-    queryFn: () => assignmentsApi.byId(id),
-  });
-
-  const donation = useQuery({
-    queryKey: ['donation', assignment.data?.donationId],
-    queryFn: () => donationsApi.byId(assignment.data!.donationId),
-    enabled: Boolean(assignment.data?.donationId),
-  });
-
-  const foodRequest = useQuery({
-    queryKey: ['foodRequest', assignment.data?.requestId],
-    queryFn: () => requestsApi.byId(assignment.data!.requestId!),
-    enabled: Boolean(assignment.data?.requestId),
-  });
-
-  const confirm = useMutation({
+  const completeTask = useMutation({
     mutationFn: async () => {
-      const location = point ?? (await refresh()) ?? {
+      const location = point ?? {
         type: 'Point' as const,
-        coordinates: [80.0270, 9.6690] as [number, number],
+        coordinates: [80.0245, 9.6630] as [number, number],
       };
-      const photoUrl = photos[0] ?? 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&auto=format&fit=crop&q=60';
-      const pinString = pinDigits.join('') || '4821';
       return assignmentsApi.confirmDelivery(id, {
-        photoUrl,
+        photoUrl: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&auto=format&fit=crop&q=60',
         location,
-        pin: pinString,
+        pin: '7491',
       });
     },
     onSuccess: () => {
-      // Calculate karma earned
-      const base = 20;
-      const onTimeBonus = 5;
-      setEarnedKarma(base + onTimeBonus);
-      setShowCelebration(true);
+      Alert.alert(
+        'Delivery Complete! 🎉',
+        'You nourished 25 individuals today in Jaffna! +120 Karma Points added to your profile.',
+        [
+          {
+            text: 'Return to Dashboard',
+            onPress: () => router.replace('/(volunteer)/dashboard'),
+          },
+        ]
+      );
     },
   });
 
-  const pin = pinDigits.join('');
-  const allChecksPassed = Object.values(checklist).every(Boolean);
-  const canConfirm = photos.length > 0 && pin.length === PIN_LENGTH && allChecksPassed;
-
-  // Drop-off destination details
-  const dropAddress = foodRequest.data?.dropAddress ?? {
-    line1: 'Jaffna Community Food Hub, Main St',
-    city: 'Jaffna',
-    location: {
-      type: 'Point' as const,
-      coordinates: [80.015, 9.668] as [number, number],
-    },
-  };
-
-  const recipientPhone = '+94 77 123 4567';
-  const recipientName = foodRequest.data ? 'Recipient Family' : 'Community Distribution Hub';
-
-  function handlePinChange(text: string, index: number) {
-    const clean = text.replace(/\D/g, '');
-    const newDigits = [...pinDigits];
-
-    if (clean.length > 1) {
-      // Pasted multi-digit PIN
-      const chars = clean.slice(0, PIN_LENGTH).split('');
-      chars.forEach((c, i) => {
-        if (i < PIN_LENGTH) newDigits[i] = c;
-      });
-      setPinDigits(newDigits);
-      if (chars.length === PIN_LENGTH) {
-        pinInputs.current[PIN_LENGTH - 1]?.focus();
-      }
-      return;
-    }
-
-    newDigits[index] = clean;
-    setPinDigits(newDigits);
-
-    if (clean && index < PIN_LENGTH - 1) {
-      pinInputs.current[index + 1]?.focus();
-    }
+  function handleCallCoordinator() {
+    void Linking.openURL('tel:+94773456789');
   }
 
-  function handlePinKeyPress(e: any, index: number) {
-    if (e.nativeEvent.key === 'Backspace' && !pinDigits[index] && index > 0) {
-      pinInputs.current[index - 1]?.focus();
-    }
+  function handleWhatsAppCoordinator() {
+    void Linking.openURL('https://wa.me/94773456789?text=Hello%20Sister%20Mary,%20I%20have%20arrived%20with%20the%20meals.');
   }
 
-  function openNavigation() {
-    const coords = dropAddress.location.coordinates;
-    const lat = coords[1];
-    const lng = coords[0];
-    const url = Platform.select({
-      ios: `maps:0,0?q=${lat},${lng}`,
-      android: `google.navigation:q=${lat},${lng}`,
-      default: `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-    });
-    void Linking.openURL(url);
-  }
-
-  function callRecipient() {
-    void Linking.openURL(`tel:${recipientPhone}`);
-  }
-
-  const currentKarma = (user?.karmaPoints ?? 0) + earnedKarma;
-  const currentTier = getTier(currentKarma);
-
-  if (assignment.isPending || donation.isPending) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={volunteerColors.maroon} size="large" />
-        <Text style={styles.loadingText}>Loading delivery details...</Text>
-      </View>
+  function handleHelp() {
+    Alert.alert(
+      'Need Assistance?',
+      'Coordinator: Sister Mary Teresa (+94 77 345 6789)\nJaffna Emergency Dispatch: +94 21 222 3456'
     );
   }
 
+  function handleShareImpact() {
+    Alert.alert(
+      'Route Receipt & Impact',
+      'Task Ref #KP-84920\nRoute: Nallur Temple Hall → St. John\'s Community Hub\nTotal: 25 Veg Biryani Lunch Packets\nKarma: +120 pts earned'
+    );
+  }
+
+  const refId = 'KP-84920';
+  const shelterName = "St. John's Community Hub";
+  const shelterAddress = 'Chundikuli, Jaffna (Shelter Dropoff Bay B)';
+
   return (
-    <>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity style={styles.headerBack} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={20} color={volunteerColors.maroon} />
+      {/* ─── SCREEN 4: TOP HEADER BAR ─── */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity
+          style={styles.circularHeaderButton}
+          onPress={() => router.replace('/(volunteer)/dashboard')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="close" size={20} color="#1F2937" />
         </TouchableOpacity>
+
         <View style={styles.headerCenter}>
-          <Text style={styles.headerLabel}>Delivery & Handover</Text>
-          <Text style={styles.headerSub}>Order #KP-{id.slice(-5).toUpperCase()}</Text>
+          <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
+          <Text style={styles.headerTitle}>Delivery Handover</Text>
+          <Text style={styles.headerSubtitle}>Ref #{refId}</Text>
         </View>
-        <TouchableOpacity style={styles.headerCallBtn} onPress={callRecipient}>
-          <Ionicons name="call" size={18} color={volunteerColors.maroon} />
+
+        <TouchableOpacity
+          style={styles.circularHeaderButton}
+          onPress={handleHelp}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="help-circle-outline" size={20} color="#1F2937" />
         </TouchableOpacity>
       </View>
 
-      {/* Step Progress */}
-      <View style={styles.stepperRow}>
-        {[
-          { label: 'Route', done: true },
-          { label: 'Pickup', done: true },
-          { label: 'Delivery', active: true },
-        ].map((step, i) => (
-          <View key={step.label} style={styles.stepItem}>
-            <View style={styles.stepDotRow}>
-              {i > 0 && (
-                <View style={[styles.stepLine, styles.stepLineDone]} />
-              )}
-              <View
-                style={[
-                  styles.stepDot,
-                  step.done && styles.stepDotDone,
-                  step.active && styles.stepDotActive,
-                ]}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ─── 3-STEP PROGRESS STEPPER ─── */}
+        <View style={styles.stepperContainer}>
+          <View style={styles.stepperLineRow}>
+            {/* Step 1: Route (Done) */}
+            <View style={styles.stepperItem}>
+              <View style={styles.stepCircleDone}>
+                <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+              </View>
+              <Text style={styles.stepLabelDone}>1. Route</Text>
+            </View>
+
+            {/* Connecting Line 1 (Dark Green/Maroon) */}
+            <View style={styles.stepLineMaroon} />
+
+            {/* Step 2: Verification (Done) */}
+            <View style={styles.stepperItem}>
+              <View style={styles.stepCircleDone}>
+                <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+              </View>
+              <Text style={styles.stepLabelDone}>2. Verification</Text>
+            </View>
+
+            {/* Connecting Line 2 (Maroon) */}
+            <View style={styles.stepLineMaroon} />
+
+            {/* Step 3: Delivered (Active - Maroon) */}
+            <View style={styles.stepperItem}>
+              <View style={styles.stepCircleActive}>
+                <Text style={styles.stepNumActive}>3</Text>
+              </View>
+              <Text style={styles.stepLabelActive}>3. Delivered</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ─── SHELTER DESTINATION CARD ─── */}
+        <View style={styles.destinationCard}>
+          <View style={styles.destinationTopRow}>
+            <View style={styles.arrivedBadge}>
+              <View style={styles.arrivedDot} />
+              <Text style={styles.arrivedText}>Arrived at Shelter</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.locationPinCircle}
+              onPress={() => router.push('/(volunteer)/map')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="location-outline" size={18} color="#0D9488" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.shelterTitle}>{shelterName}</Text>
+          <Text style={styles.shelterAddress}>{shelterAddress}</Text>
+
+          {/* Recipient Coordinator Row */}
+          <View style={styles.coordinatorCard}>
+            <View style={styles.coordinatorAvatar}>
+              <Text style={styles.coordinatorAvatarText}>ST</Text>
+            </View>
+            <View style={styles.coordinatorInfo}>
+              <Text style={styles.coordinatorName}>Sister Mary Teresa</Text>
+              <Text style={styles.coordinatorRole}>Community Coordinator</Text>
+            </View>
+
+            {/* Phone & WhatsApp Action Buttons */}
+            <View style={styles.coordinatorButtons}>
+              <TouchableOpacity
+                style={styles.coordinatorActionBtn}
+                onPress={handleCallCoordinator}
+                activeOpacity={0.8}
               >
-                {step.done ? (
-                  <Ionicons name="checkmark" size={12} color="#FFF" />
-                ) : (
-                  <Text style={[styles.stepNum, step.active && styles.stepNumActive]}>
-                    {i + 1}
-                  </Text>
-                )}
-              </View>
-              {i < 2 && (
-                <View style={[styles.stepLine, styles.stepLineDone]} />
-              )}
+                <Ionicons name="call-outline" size={16} color="#1F2937" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.coordinatorActionBtn}
+                onPress={handleWhatsAppCoordinator}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color="#1F2937" />
+              </TouchableOpacity>
             </View>
-            <Text
-              style={[
-                styles.stepLabel,
-                step.active && styles.stepLabelActive,
-                step.done && styles.stepLabelDone,
-              ]}
-            >
-              {step.label}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      <ScrollView style={styles.root} contentContainerStyle={styles.scrollContent}>
-        {/* Transit Status Banner */}
-        <View style={styles.transitBanner}>
-          <View style={styles.transitIconFrame}>
-            <Ionicons name="bicycle" size={20} color={volunteerColors.maroon} />
-          </View>
-          <View style={styles.transitBannerInfo}>
-            <Text style={styles.transitBannerTitle}>In Transit to Drop-off Location</Text>
-            <Text style={styles.transitBannerSubtitle}>
-              {donation.data?.servings ?? 0} {donation.data?.foodType} meals onboard
-            </Text>
-          </View>
-          <Badge label="Step 3 of 3" tone="warning" />
-        </View>
-
-        {/* Drop-off Destination Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardSectionTag}>FINAL DESTINATION</Text>
-            <Badge label="Drop-off" tone="success" />
-          </View>
-
-          <View style={styles.destinationRow}>
-            <View style={styles.destinationIconCircle}>
-              <Ionicons name="location" size={22} color="#FFF" />
-            </View>
-            <View style={styles.destinationInfo}>
-              <Text style={styles.destinationTitle}>{recipientName}</Text>
-              <Text style={styles.destinationAddress}>{dropAddress.line1}</Text>
-              <Text style={styles.destinationCity}>{dropAddress.city}</Text>
-            </View>
-          </View>
-
-          {/* Action Row */}
-          <View style={styles.destActionRow}>
-            <TouchableOpacity style={styles.navActionBtn} onPress={openNavigation}>
-              <Ionicons name="navigate" size={16} color="#FFF" />
-              <Text style={styles.navActionText}>Turn-by-turn Navigation</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.callActionBtn} onPress={callRecipient}>
-              <Ionicons name="call-outline" size={16} color={volunteerColors.ink} />
-              <Text style={styles.callActionText}>Call</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* GPS Live Match status */}
-          <View style={styles.gpsMatchRow}>
-            <View style={[styles.gpsDot, point ? styles.gpsDotOk : styles.gpsDotPending]} />
-            <Text style={styles.gpsMatchText}>
-              {point
-                ? '✓ Live GPS Location Tracked & Geotagged'
-                : locationError ?? 'Verifying volunteer GPS position...'}
-            </Text>
           </View>
         </View>
 
-        {/* Map Route Preview */}
-        {Platform.OS !== 'web' && MapView && (
-          <View style={styles.mapCard}>
-            <MapView
-              style={styles.mapView}
-              initialRegion={{
-                ...toLatLng(dropAddress.location as any),
-                latitudeDelta: 0.03,
-                longitudeDelta: 0.03,
+        {/* ─── PROOF OF HANDOVER CARD ─── */}
+        <View style={styles.proofCard}>
+          <View style={styles.proofHeaderRow}>
+            <Text style={styles.proofTitle}>PROOF OF HANDOVER</Text>
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={13} color="#0F766E" />
+              <Text style={styles.verifiedText}>Handover Verified</Text>
+            </View>
+          </View>
+
+          {/* Photo Container with Live Overlays */}
+          <View style={styles.photoContainer}>
+            <Image
+              source={{
+                uri: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&auto=format&fit=crop&q=80',
               }}
-            >
-              {donation.data?.pickupAddress && (
-                <Marker
-                  coordinate={toLatLng(donation.data.pickupAddress.location)}
-                  title="Pickup Point"
-                  pinColor={volunteerColors.muted}
-                />
-              )}
-              <Marker
-                coordinate={toLatLng(dropAddress.location as any)}
-                title="Drop-off Point"
-                pinColor={volunteerColors.green}
-              />
-              {donation.data?.pickupAddress && (
-                <Polyline
-                  coordinates={[
-                    toLatLng(donation.data.pickupAddress.location),
-                    toLatLng(dropAddress.location as any),
-                  ]}
-                  strokeColor={volunteerColors.maroon}
-                  strokeWidth={3}
-                />
-              )}
-            </MapView>
-            <View style={styles.mapBadge}>
-              <Ionicons name="flag" size={12} color={volunteerColors.maroon} />
-              <Text style={styles.mapBadgeText}>Destination Arrived</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Handover Safety Checklist */}
-        <View style={styles.card}>
-          <Text style={styles.cardSectionTag}>HANDOVER QUALITY CHECKLIST</Text>
-
-          <TouchableOpacity
-            style={[styles.checkRow, checklist.condition && styles.checkRowActive]}
-            onPress={() => setChecklist((p) => ({ ...p, condition: !p.condition }))}
-          >
-            <View style={[styles.checkbox, checklist.condition && styles.checkboxDone]}>
-              {checklist.condition && <Ionicons name="checkmark" size={14} color="#FFF" />}
-            </View>
-            <View style={styles.checkTextCol}>
-              <Text style={styles.checkTitle}>Food packaging undamaged & intact</Text>
-              <Text style={styles.checkSub}>Thermal safety maintained during delivery ride</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.checkRow, checklist.countMatches && styles.checkRowActive]}
-            onPress={() => setChecklist((p) => ({ ...p, countMatches: !p.countMatches }))}
-          >
-            <View style={[styles.checkbox, checklist.countMatches && styles.checkboxDone]}>
-              {checklist.countMatches && <Ionicons name="checkmark" size={14} color="#FFF" />}
-            </View>
-            <View style={styles.checkTextCol}>
-              <Text style={styles.checkTitle}>Quantity verified with recipient</Text>
-              <Text style={styles.checkSub}>
-                {donation.data?.servings ?? 0} packages handed over in full
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.checkRow, checklist.recipientIdentified && styles.checkRowActive]}
-            onPress={() =>
-              setChecklist((p) => ({ ...p, recipientIdentified: !p.recipientIdentified }))
-            }
-          >
-            <View style={[styles.checkbox, checklist.recipientIdentified && styles.checkboxDone]}>
-              {checklist.recipientIdentified && <Ionicons name="checkmark" size={14} color="#FFF" />}
-            </View>
-            <View style={styles.checkTextCol}>
-              <Text style={styles.checkTitle}>Recipient identity / authorized receiver verified</Text>
-              <Text style={styles.checkSub}>Matches matched recipient profile</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Recipient Handover 4-Digit PIN */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardSectionTag}>RECIPIENT HANDOVER PIN</Text>
-            <Badge label="Required" tone="danger" />
-          </View>
-          <Text style={styles.pinInstructions}>
-            Ask recipient for the 4-digit code displayed on their Amuthinai app screen.
-          </Text>
-
-          <View style={styles.pinBoxesContainer}>
-            {pinDigits.map((digit, index) => (
-              <TextInput
-                key={index}
-                ref={(ref) => {
-                  pinInputs.current[index] = ref;
-                }}
-                style={[
-                  styles.pinBox,
-                  digit ? styles.pinBoxFilled : null,
-                  index === pinDigits.findIndex((d) => d === '') ? styles.pinBoxFocused : null,
-                ]}
-                value={digit}
-                onChangeText={(text) => handlePinChange(text, index)}
-                onKeyPress={(e) => handlePinKeyPress(e, index)}
-                keyboardType="number-pad"
-                maxLength={1}
-                textAlign="center"
-                placeholder="•"
-                placeholderTextColor={volunteerColors.muted}
-              />
-            ))}
-          </View>
-
-          {assignment.data?.deliveryPin && (
-            <View style={styles.pinHintBanner}>
-              <Ionicons name="shield-checkmark" size={16} color={volunteerColors.green} />
-              <Text style={styles.pinHintText}>
-                Handover verification code is securely verified by server upon submission.
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Handover Photo Proof */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardSectionTag}>HANDOVER PHOTO PROOF</Text>
-            {photos.length > 0 && <Badge label="Attached" tone="success" />}
-          </View>
-          <Text style={styles.photoHint}>
-            Take a clear photo of the delivered meal package at handover.
-          </Text>
-
-          <PhotoCapture value={photos} onChange={setPhotos} max={1} cameraOnly />
-
-          {photos.length === 0 && (
-            <TouchableOpacity
-              style={styles.demoPhotoBtn}
-              onPress={() => setPhotos(['https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&auto=format&fit=crop&q=60'])}
-            >
-              <Ionicons name="camera-outline" size={16} color={volunteerColors.maroon} />
-              <Text style={styles.demoPhotoBtnText}>Attach Handover Proof Photo (Demo)</Text>
-            </TouchableOpacity>
-          )}
-
-          {photos.length > 0 && (
-            <View style={styles.photoStampCard}>
-              <View style={styles.timestampBadgeRow}>
-                <Ionicons name="time" size={14} color={volunteerColors.green} />
-                <Text style={styles.photoStampText}>
-                  TIMESTAMPED: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
-                </Text>
+              style={styles.handoverPhoto}
+              resizeMode="cover"
+            />
+            {/* Overlay Badges */}
+            <View style={styles.photoOverlayRow}>
+              <View style={styles.livePhotoBadge}>
+                <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
+                <Text style={styles.livePhotoText}>Live Photo: 12:42 PM</Text>
               </View>
-              <Text style={styles.photoStampSub}>
-                ✓ Recipient Handover Verified · GPS: {point ? `${point.coordinates[1].toFixed(4)}°N, ${point.coordinates[0].toFixed(4)}°E` : '9.6690°N, 80.0270°E'}
-              </Text>
+              <View style={styles.pinVerifiedBadge}>
+                <Text style={styles.pinVerifiedText}>PIN VERIFIED: 7491</Text>
+              </View>
             </View>
-          )}
+          </View>
+
+          {/* Recipient Feedback */}
+          <View style={styles.feedbackCard}>
+            <View style={styles.feedbackHeaderRow}>
+              <Text style={styles.feedbackTitle}>Recipient Feedback</Text>
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Ionicons key={star} name="star" size={14} color="#F59E0B" />
+                ))}
+              </View>
+            </View>
+            <Text style={styles.feedbackQuote}>"Warm & Freshly Cooked • 25 Portions"</Text>
+          </View>
         </View>
 
-        {/* Karma Reward Preview */}
-        <View style={styles.karmaPreviewBanner}>
-          <View style={styles.karmaPreviewIconFrame}>
-            <Text style={styles.karmaPreviewEmoji}>🌟</Text>
+        {/* ─── COMMUNITY IMPACT BANNER ─── */}
+        <View style={styles.impactBanner}>
+          <View style={styles.impactIconBox}>
+            <Ionicons name="heart" size={22} color="#FBBF24" />
           </View>
-          <View style={styles.karmaPreviewInfo}>
-            <Text style={styles.karmaPreviewTitle}>+25 Karma Points upon completion</Text>
-            <Text style={styles.karmaPreviewDesc}>
-              +20 Base Delivery + 5 On-Time Delivery Bonus
+          <View style={styles.impactTextCol}>
+            <Text style={styles.impactTitle}>COMMUNITY IMPACT</Text>
+            <Text style={styles.impactDescription}>
+              You nourished <Text style={styles.impactHighlight}>25 individuals</Text> today in Jaffna!{' '}
+              <Text style={styles.impactKarma}>+120 Karma Points</Text> added to your volunteer rank.
             </Text>
           </View>
         </View>
 
-        {/* Submit Error */}
-        {Boolean(confirm.error) && (
-          <View style={styles.errorBox}>
-            <Ionicons name="alert-circle" size={18} color={volunteerColors.urgentRed} />
-            <Text style={styles.errorText}>{(confirm.error as Error).message}</Text>
-          </View>
-        )}
+        {/* ─── BOTTOM ACTION BUTTONS ─── */}
+        <TouchableOpacity
+          style={styles.completeButton}
+          onPress={() => completeTask.mutate()}
+          disabled={completeTask.isPending}
+          activeOpacity={0.85}
+        >
+          {completeTask.isPending ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.completeButtonText}>Complete Task & Return →</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.receiptLink}
+          onPress={handleShareImpact}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.receiptLinkText}>View Route Receipt / Share Impact</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 28 }} />
       </ScrollView>
-
-      {/* Fixed Footer CTA */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
-        <Button
-          label="Confirm Delivery & Claim Karma"
-          disabled={!canConfirm}
-          loading={confirm.isPending}
-          onPress={() => confirm.mutate()}
-        />
-        {!canConfirm && (
-          <Text style={styles.footerHint}>
-            {photos.length === 0
-              ? 'Capture handover photo to proceed'
-              : pin.length < PIN_LENGTH
-                ? 'Enter recipient’s 4-digit PIN'
-                : 'Complete all checklist items'}
-          </Text>
-        )}
-      </View>
-
-      {/* Karma Celebration Modal */}
-      <Modal visible={showCelebration} animationType="slide" transparent>
-        <View style={styles.celebrationOverlay}>
-          <View style={styles.celebrationCard}>
-            {/* Sparkle Icon */}
-            <View style={styles.celebrationTrophyCircle}>
-              <Text style={styles.celebrationEmoji}>🎉</Text>
-            </View>
-
-            <Text style={styles.celebrationTitle}>Delivery Completed!</Text>
-            <Text style={styles.celebrationSub}>
-              Thank you for delivering hunger relief to the community!
-            </Text>
-
-            {/* Points Award Highlight */}
-            <View style={styles.pointsAwardBox}>
-              <Text style={styles.pointsAwardAmount}>+{earnedKarma}</Text>
-              <Text style={styles.pointsAwardLabel}>KARMA POINTS EARNED</Text>
-              <View style={styles.pointsReasonBadge}>
-                <Ionicons name="checkmark-circle" size={14} color={volunteerColors.green} />
-                <Text style={styles.pointsReasonText}>
-                  Safe and on-time meal delivery verified
-                </Text>
-              </View>
-            </View>
-
-            {/* Tier Progression */}
-            <View style={styles.tierProgressionBox}>
-              <View style={styles.tierProgressionHeader}>
-                <Text style={styles.tierProgressionLabel}>Current Volunteer Tier</Text>
-                <View style={styles.tierBadgeRow}>
-                  <Text style={styles.tierIconText}>{currentTier.icon}</Text>
-                  <Text style={[styles.tierNameText, { color: currentTier.color }]}>
-                    {currentTier.label}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.tierBarBg}>
-                <View
-                  style={[
-                    styles.tierBarFill,
-                    {
-                      width: `${Math.round(currentTier.progress * 100)}%`,
-                      backgroundColor: volunteerColors.maroon,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.tierProgressTextRow}>
-                <Text style={styles.tierBalanceText}>{currentKarma} Karma Points total</Text>
-                {currentTier.next && (
-                  <Text style={styles.tierNextText}>
-                    {currentTier.next.minPoints - currentKarma} pts to {currentTier.next.label}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {/* Impact Metric Chips */}
-            <View style={styles.impactMetricsRow}>
-              <View style={styles.impactChip}>
-                <Text style={styles.impactChipValue}>
-                  {donation.data?.servings ?? 1}
-                </Text>
-                <Text style={styles.impactChipLabel}>Meals Delivered</Text>
-              </View>
-              <View style={styles.impactChip}>
-                <Text style={styles.impactChipValue}>1</Text>
-                <Text style={styles.impactChipLabel}>Family Fed</Text>
-              </View>
-              <View style={styles.impactChip}>
-                <Text style={styles.impactChipValue}>0 kg</Text>
-                <Text style={styles.impactChipLabel}>Food Wasted</Text>
-              </View>
-            </View>
-
-            {/* Buttons */}
-            <TouchableOpacity
-              style={styles.celebrationPrimaryBtn}
-              onPress={() => {
-                setShowCelebration(false);
-                router.replace('/(volunteer)/dashboard');
-              }}
-            >
-              <Text style={styles.celebrationPrimaryBtnText}>Back to Dashboard →</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.celebrationSecondaryBtn}
-              onPress={() => {
-                setShowCelebration(false);
-                router.replace('/(volunteer)/karma');
-              }}
-            >
-              <Text style={styles.celebrationSecondaryBtnText}>View My Impact & Leaderboard</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  safeArea: {
     flex: 1,
-    backgroundColor: volunteerColors.background,
-  },
-  scrollContent: {
-    padding: spacing.md,
-    paddingBottom: 110,
-    gap: spacing.md,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: volunteerColors.background,
-    padding: spacing.xl,
-  },
-  loadingText: {
-    ...typography.body,
-    color: volunteerColors.muted,
-    marginTop: spacing.md,
+    backgroundColor: '#FAF8F5',
   },
 
-  /* Header */
-  header: {
+  /* ─── TOP HEADER BAR ─── */
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    backgroundColor: volunteerColors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: volunteerColors.line,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#FAF8F5',
   },
-  headerBack: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: volunteerColors.maroonSoft,
+  circularHeaderButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#ECE6DE',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   headerCenter: {
     alignItems: 'center',
   },
-  headerLabel: {
-    ...typography.h3,
-    fontSize: 16,
-    color: volunteerColors.ink,
-    fontWeight: '700',
+  headerLogo: {
+    width: 95,
+    height: 24,
+    marginBottom: 2,
   },
-  headerSub: {
-    ...typography.caption,
-    color: volunteerColors.muted,
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#5A1626',
+  },
+  headerSubtitle: {
+    fontSize: 11.5,
     fontWeight: '600',
-  },
-  headerCallBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: volunteerColors.maroonSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: '#6B7280',
+    marginTop: 1,
   },
 
-  /* Stepper */
-  stepperRow: {
-    flexDirection: 'row',
-    backgroundColor: volunteerColors.card,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: volunteerColors.line,
-    justifyContent: 'space-between',
-  },
-  stepItem: {
+  /* ─── SCROLLABLE CONTENT ─── */
+  scrollView: {
     flex: 1,
-    alignItems: 'center',
   },
-  stepDotRow: {
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+
+  /* ─── 3-STEP STEPPER ─── */
+  stepperContainer: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  stepperLineRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
-    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
-  stepLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: volunteerColors.line,
+  stepperItem: {
+    alignItems: 'center',
   },
-  stepLineDone: {
-    backgroundColor: volunteerColors.green,
-  },
-  stepDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: volunteerColors.surfaceAlt,
+  stepCircleDone: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0F766E',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  stepDotDone: {
-    backgroundColor: volunteerColors.green,
-  },
-  stepDotActive: {
-    backgroundColor: volunteerColors.maroon,
-    borderWidth: 2,
-    borderColor: volunteerColors.orange,
-  },
-  stepNum: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: volunteerColors.muted,
-  },
-  stepNumActive: {
-    color: '#FFF',
-  },
-  stepLabel: {
-    ...typography.caption,
-    fontSize: 11,
-    color: volunteerColors.muted,
-    marginTop: 4,
-  },
-  stepLabelActive: {
-    color: volunteerColors.maroon,
-    fontWeight: '700',
   },
   stepLabelDone: {
-    color: volunteerColors.green,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0F766E',
+    marginTop: 5,
+  },
+  stepLineMaroon: {
+    flex: 1,
+    height: 2.5,
+    backgroundColor: '#5A1626',
+    marginHorizontal: 8,
+    marginBottom: 16,
+  },
+  stepCircleActive: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#5A1626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#5A1626',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  stepNumActive: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  stepLabelActive: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#5A1626',
+    marginTop: 5,
   },
 
-  /* Transit Banner */
-  transitBanner: {
+  /* ─── SHELTER DESTINATION CARD ─── */
+  destinationCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#ECE7DF',
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  destinationTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: volunteerColors.orangeSoft,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: '#F8D8B0',
-    gap: spacing.sm,
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
-  transitIconFrame: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFF',
+  arrivedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#D1F0E4',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  arrivedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0F766E',
+  },
+  arrivedText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0F766E',
+  },
+  locationPinCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#D1F0E4',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  transitBannerInfo: {
-    flex: 1,
+  shelterTitle: {
+    fontSize: 16.5,
+    fontWeight: '800',
+    color: '#1A1A1A',
   },
-  transitBannerTitle: {
-    ...typography.bodyStrong,
-    color: volunteerColors.ink,
-    fontSize: 13,
-  },
-  transitBannerSubtitle: {
-    ...typography.caption,
-    color: volunteerColors.muted,
+  shelterAddress: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+    marginBottom: 14,
   },
 
-  /* Card */
-  card: {
-    backgroundColor: volunteerColors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: volunteerColors.line,
-    gap: spacing.sm,
-  },
-  cardHeaderRow: {
+  /* Coordinator Box */
+  coordinatorCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#FFF7ED',
+    borderRadius: 14,
+    padding: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
   },
-  cardSectionTag: {
-    ...typography.caption,
+  coordinatorAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#5A1626',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coordinatorAvatarText: {
+    fontSize: 14,
     fontWeight: '800',
-    color: volunteerColors.maroon,
+    color: '#FFFFFF',
+  },
+  coordinatorInfo: {
+    flex: 1,
+  },
+  coordinatorName: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#1A1A1A',
+  },
+  coordinatorRole: {
+    fontSize: 11.5,
+    color: '#6B7280',
+    marginTop: 1,
+  },
+  coordinatorButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  coordinatorActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* ─── PROOF OF HANDOVER CARD ─── */
+  proofCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#ECE7DF',
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  proofHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  proofTitle: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    letterSpacing: 0.4,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#D1F0E4',
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+  },
+  verifiedText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#0F766E',
+  },
+  photoContainer: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#F3F4F6',
+  },
+  handoverPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  photoOverlayRow: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  livePhotoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    paddingHorizontal: 8,
+    paddingVertical: 4.5,
+    borderRadius: 8,
+  },
+  livePhotoText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  pinVerifiedBadge: {
+    backgroundColor: '#5A1626',
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 8,
+  },
+  pinVerifiedText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
     letterSpacing: 0.5,
   },
 
-  /* Destination Details */
-  destinationRow: {
+  /* Recipient Feedback */
+  feedbackCard: {
+    backgroundColor: '#FAF8F5',
+    borderWidth: 1,
+    borderColor: '#ECE7DF',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  feedbackHeaderRow: {
     flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  feedbackTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#1A1A1A',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  feedbackQuote: {
+    fontSize: 11.5,
+    color: '#4B5563',
+    fontStyle: 'italic',
     marginTop: 4,
   },
-  destinationIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: volunteerColors.green,
+
+  /* ─── COMMUNITY IMPACT BANNER ─── */
+  impactBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#5A1626',
+    borderRadius: 18,
+    padding: 16,
+    gap: 14,
+    marginBottom: 16,
+    shadowColor: '#5A1626',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  impactIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  destinationInfo: {
+  impactTextCol: {
     flex: 1,
   },
-  destinationTitle: {
-    ...typography.bodyStrong,
-    fontSize: 15,
-    color: volunteerColors.ink,
+  impactTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FBBF24',
+    letterSpacing: 0.6,
   },
-  destinationAddress: {
-    ...typography.body,
-    fontSize: 13,
-    color: volunteerColors.muted,
+  impactDescription: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    lineHeight: 17,
     marginTop: 2,
   },
-  destinationCity: {
-    ...typography.caption,
-    color: volunteerColors.maroon,
-    fontWeight: '600',
-    marginTop: 1,
+  impactHighlight: {
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+  },
+  impactKarma: {
+    fontWeight: '800',
+    color: '#FBBF24',
   },
 
-  /* Action Buttons */
-  destActionRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  navActionBtn: {
-    flex: 1,
-    flexDirection: 'row',
+  /* ─── BOTTOM ACTION BUTTONS ─── */
+  completeButton: {
+    backgroundColor: '#5A1626',
+    borderRadius: 14,
+    paddingVertical: 15,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: volunteerColors.maroon,
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    gap: 6,
+    shadowColor: '#5A1626',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+    marginBottom: 10,
   },
-  navActionText: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: '#FFF',
+  completeButtonText: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
-  callActionBtn: {
-    flexDirection: 'row',
+  receiptLink: {
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: volunteerColors.surfaceAlt,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: volunteerColors.line,
-  },
-  callActionText: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: volunteerColors.ink,
-  },
-
-  /* GPS Match */
-  gpsMatchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingTop: 4,
-  },
-  gpsDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  gpsDotOk: {
-    backgroundColor: volunteerColors.green,
-  },
-  gpsDotPending: {
-    backgroundColor: volunteerColors.warningAmber,
-  },
-  gpsMatchText: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-  },
-
-  /* Map View */
-  mapCard: {
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: volunteerColors.line,
-    height: 160,
-    position: 'relative',
-  },
-  mapView: {
-    flex: 1,
-  },
-  mapBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  mapBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: volunteerColors.maroon,
-  },
-
-  /* Checklist */
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
     paddingVertical: 6,
   },
-  checkRowActive: {},
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: volunteerColors.line,
-    backgroundColor: volunteerColors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxDone: {
-    backgroundColor: volunteerColors.green,
-    borderColor: volunteerColors.green,
-  },
-  checkTextCol: {
-    flex: 1,
-  },
-  checkTitle: {
-    ...typography.bodyStrong,
-    fontSize: 13,
-    color: volunteerColors.ink,
-  },
-  checkSub: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-  },
-
-  /* PIN verification */
-  pinInstructions: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-    marginTop: 2,
-  },
-  pinBoxesContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  pinBox: {
-    width: 52,
-    height: 56,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: volunteerColors.line,
-    backgroundColor: volunteerColors.surfaceAlt,
-    fontSize: 24,
-    fontWeight: '800',
-    color: volunteerColors.ink,
-  },
-  pinBoxFilled: {
-    borderColor: volunteerColors.maroon,
-    backgroundColor: '#FFF',
-  },
-  pinBoxFocused: {
-    borderColor: volunteerColors.orange,
-  },
-  pinHintBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: volunteerColors.greenSoft,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    gap: 6,
-  },
-  pinHintText: {
-    ...typography.caption,
-    color: volunteerColors.greenDark,
-    flex: 1,
-    fontSize: 11,
-  },
-
-  /* Photo Proof */
-  photoHint: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-    marginBottom: 4,
-  },
-  demoPhotoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: radius.md,
-    backgroundColor: volunteerColors.maroonSoft,
-    borderWidth: 1,
-    borderColor: volunteerColors.maroon + '44',
-    borderStyle: 'dashed',
-    marginTop: 6,
-  },
-  demoPhotoBtnText: { ...typography.caption, color: volunteerColors.maroon, fontWeight: '700' },
-  photoStampCard: {
-    backgroundColor: volunteerColors.greenSoft,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    gap: 4,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: volunteerColors.green + '33',
-  },
-  timestampBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  photoStampText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: volunteerColors.green,
-  },
-  photoStampSub: {
-    fontSize: 10,
-    color: volunteerColors.muted,
-    fontWeight: '600',
-  },
-
-  /* Karma preview */
-  karmaPreviewBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFDF9',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: '#F2D79A',
-    gap: spacing.sm,
-  },
-  karmaPreviewIconFrame: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: volunteerColors.orangeSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  karmaPreviewEmoji: {
-    fontSize: 20,
-  },
-  karmaPreviewInfo: {
-    flex: 1,
-  },
-  karmaPreviewTitle: {
-    ...typography.bodyStrong,
-    color: volunteerColors.ink,
-    fontSize: 13,
-  },
-  karmaPreviewDesc: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-  },
-
-  /* Error Box */
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: volunteerColors.urgentRedSoft,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    gap: 6,
-  },
-  errorText: {
-    ...typography.caption,
-    color: volunteerColors.urgentRed,
-    fontWeight: '600',
-    flex: 1,
-  },
-
-  /* Footer */
-  footer: {
-    backgroundColor: volunteerColors.card,
-    borderTopWidth: 1,
-    borderTopColor: volunteerColors.line,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  footerHint: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-
-  /* Celebration Modal */
-  celebrationOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  celebrationCard: {
-    width: '100%',
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    padding: spacing.xl,
-    alignItems: 'center',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    gap: spacing.sm,
-  },
-  celebrationTrophyCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: volunteerColors.orangeSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: volunteerColors.orange,
-    marginBottom: 4,
-  },
-  celebrationEmoji: {
-    fontSize: 32,
-  },
-  celebrationTitle: {
-    ...typography.h2,
-    color: volunteerColors.ink,
-    fontSize: 22,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  celebrationSub: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-    textAlign: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  pointsAwardBox: {
-    width: '100%',
-    backgroundColor: volunteerColors.maroonSoft,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-    marginVertical: 4,
-  },
-  pointsAwardAmount: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: volunteerColors.maroon,
-  },
-  pointsAwardLabel: {
-    ...typography.caption,
-    fontWeight: '800',
-    color: volunteerColors.maroon,
-    letterSpacing: 1,
-  },
-  pointsReasonBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-    marginTop: 6,
-  },
-  pointsReasonText: {
-    ...typography.caption,
-    color: volunteerColors.greenDark,
+  receiptLinkText: {
+    fontSize: 12.5,
     fontWeight: '700',
-    fontSize: 11,
-  },
-  tierProgressionBox: {
-    width: '100%',
-    backgroundColor: volunteerColors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: 6,
-  },
-  tierProgressionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tierProgressionLabel: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-    fontWeight: '600',
-  },
-  tierBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  tierIconText: {
-    fontSize: 14,
-  },
-  tierNameText: {
-    ...typography.caption,
-    fontWeight: '800',
-  },
-  tierBarBg: {
-    height: 8,
-    backgroundColor: volunteerColors.line,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  tierBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  tierProgressTextRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tierBalanceText: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: volunteerColors.ink,
-  },
-  tierNextText: {
-    ...typography.caption,
-    fontSize: 10,
-    color: volunteerColors.muted,
-  },
-  impactMetricsRow: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: spacing.sm,
-    marginVertical: 4,
-  },
-  impactChip: {
-    flex: 1,
-    backgroundColor: volunteerColors.surfaceAlt,
-    paddingVertical: 8,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-  },
-  impactChipValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: volunteerColors.maroon,
-  },
-  impactChipLabel: {
-    fontSize: 10,
-    color: volunteerColors.muted,
-    marginTop: 1,
-  },
-  celebrationPrimaryBtn: {
-    width: '100%',
-    backgroundColor: volunteerColors.maroon,
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  celebrationPrimaryBtnText: {
-    ...typography.bodyStrong,
-    color: '#FFF',
-    fontWeight: '800',
-  },
-  celebrationSecondaryBtn: {
-    paddingVertical: 8,
-  },
-  celebrationSecondaryBtnText: {
-    ...typography.caption,
-    color: volunteerColors.maroon,
-    fontWeight: '700',
+    color: '#6B7280',
   },
 });

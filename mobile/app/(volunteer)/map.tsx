@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -15,6 +16,7 @@ import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
 import { Badge } from '@/components/ui';
 import { URGENT_THRESHOLD_MINUTES } from '@/constants';
 import { MOCK_DROP_OFFS } from '@/constants/mockVolunteerData';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { useLocation } from '@/hooks/useLocation';
 import { radius, typography } from '@/theme';
@@ -39,6 +41,21 @@ export default function VolunteerMap() {
     : items[0]
       ? toLatLng(items[0].donation.pickupAddress.location)
       : { latitude: 9.6615, longitude: 80.0255 };
+
+  const mapboxFullMapUrl = getMapboxStaticMapUrl({
+    center,
+    zoom: 13.0,
+    width: 600,
+    height: 700,
+    retina: true,
+    markers: items.map((t, idx) => ({
+      latitude: t.donation.pickupAddress.location.coordinates[1],
+      longitude: t.donation.pickupAddress.location.coordinates[0],
+      label: String(idx + 1),
+      color: t.minutesLeft <= URGENT_THRESHOLD_MINUTES ? 'D97706' : '0F766E',
+      size: 's',
+    })),
+  });
 
   return (
     <View style={styles.root}>
@@ -87,9 +104,12 @@ export default function VolunteerMap() {
           })}
         </MapView>
       ) : (
-        <View style={styles.mapFallback}>
-          <Ionicons name="map-outline" size={64} color={volunteerColors.muted} />
-          <Text style={styles.fallbackText}>Map available on mobile app</Text>
+        <View style={styles.mapboxMapContainer}>
+          <Image
+            source={{ uri: mapboxFullMapUrl }}
+            style={styles.mapboxFullMapImage}
+            resizeMode="cover"
+          />
         </View>
       )}
 
@@ -203,13 +223,14 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: volunteerColors.background },
   map: { flex: 1 },
 
-  mapFallback: {
+  mapboxMapContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+    backgroundColor: '#E4EFF5',
   },
-  fallbackText: { ...typography.body, color: volunteerColors.muted },
+  mapboxFullMapImage: {
+    width: '100%',
+    height: '100%',
+  },
 
   /* Floating header */
   floatingHeader: {

@@ -54,8 +54,8 @@ async function bootstrap() {
   }
 
   const port = config.getOrThrow<number>('port');
-  await app.listen(port);
-  logger.log(`API ready on http://localhost:${port}/api/v1`);
+  await app.listen(port, '0.0.0.0');
+  logger.log(`API ready on http://0.0.0.0:${port}/api/v1`);
 }
 
 void bootstrap();

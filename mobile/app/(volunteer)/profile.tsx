@@ -18,7 +18,7 @@ import { pointsApi } from '@/api/points.api';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui';
 import { TRAVEL_RADIUS_OPTIONS_KM, VEHICLE_TYPES } from '@/constants';
-import { MOCK_VOLUNTEER_ACHIEVEMENTS } from '@/constants/mockVolunteerData';
+import { MOCK_VOLUNTEER_ACHIEVEMENTS, type VolunteerAchievementItem } from '@/constants/mockVolunteerData';
 import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { radius, typography } from '@/theme';
@@ -222,7 +222,7 @@ export default function VolunteerProfile() {
         </View>
 
         <View style={styles.achievementsGrid}>
-          {MOCK_VOLUNTEER_ACHIEVEMENTS.map((ach) => (
+          {MOCK_VOLUNTEER_ACHIEVEMENTS.map((ach: VolunteerAchievementItem) => (
             <View
               key={ach.id}
               style={[styles.achievementCard, !ach.earned && styles.achievementCardLocked]}

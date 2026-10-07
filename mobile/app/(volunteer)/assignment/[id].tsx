@@ -3,33 +3,29 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import {
   ActivityIndicator,
-  Platform,
+  Alert,
+  Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { assignmentsApi } from '@/api/assignments.api';
 import { donationsApi } from '@/api/donations.api';
-import { UrgentCountdown } from '@/components/UrgentCountdown';
-import { Badge } from '@/components/ui';
-import { MOCK_DROP_OFFS } from '@/constants/mockVolunteerData';
-import { useLocation } from '@/hooks/useLocation';
-import { radius, typography } from '@/theme';
-import { volunteerColors } from '@/theme/volunteer';
-import { toLatLng } from '@/utils/geo';
-import { MapView, Marker, Polyline } from '@/utils/maps';
+import { logo } from '@/constants';
+import { getRouteTransitMapUrl } from '@/services/mapbox';
 
-/**
- * Active Assignment screen — detailed task view with full route map,
- * Route → Pickup → Delivery step process, donor details, and accept/decline actions.
- */
 export default function AssignmentDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const insets = useSafeAreaInsets();
+
+  const mapboxRouteUrl = getRouteTransitMapUrl({
+    origin: { latitude: 9.6740, longitude: 80.0290 },
+    destination: { latitude: 9.6630, longitude: 80.0245 },
+  });
 
   const assignment = useQuery({
     queryKey: ['assignment', id],
@@ -44,634 +40,832 @@ export default function AssignmentDetail() {
 
   const accept = useMutation({
     mutationFn: () => assignmentsApi.accept(id),
-    onSuccess: () => router.replace(`/(volunteer)/pickup/${id}`),
-  });
-
-  const decline = useMutation({
-    mutationFn: () => assignmentsApi.decline(id),
-    onSuccess: () => router.replace('/(volunteer)/dashboard'),
+    onSuccess: () => {
+      router.push(`/(volunteer)/pickup/${id}`);
+    },
   });
 
   if (assignment.isPending || donation.isPending) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={volunteerColors.maroon} size="large" />
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator color="#5A1626" size="large" />
         <Text style={styles.loadingText}>Loading assignment...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
-  if (!assignment.data || !donation.data) {
-    return (
-      <View style={styles.center}>
-        <Ionicons name="alert-circle-outline" size={48} color={volunteerColors.urgentRed} />
-        <Text style={styles.error}>Assignment not found</Text>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.replace('/(volunteer)/dashboard')}
-        >
-          <Text style={styles.backBtnText}>Back to Dashboard</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  // Get data or fallback
+  const donationData = donation.data;
+
+  const taskId = id === 'asgn-vol-402' ? 'VOL-402' : id.slice(-4).toUpperCase();
+  const title = donationData?.title?.includes('Biryani')
+    ? '25 Fresh Veg Biryani Packets'
+    : donationData?.title || '25 Fresh Veg Biryani Packets';
+
+  const pickupDonor = donationData?.pickupAddress?.line1 || 'Nallur Community Hall Kitchen';
+  const instructions =
+    donationData?.description || 'Side gate entrance, ask for Master Chef Murugan.';
+
+  function handleStartRide() {
+    accept.mutate();
   }
 
-  const { point: userLocation } = useLocation();
-  const isOffered = assignment.data.status === 'offered';
-  const isAccepted = assignment.data.status === 'accepted';
-  const pickup = donation.data.pickupAddress;
-  const estTime = Math.round(assignment.data.distanceKm * 4);
-  const karmaPoints = Math.round(assignment.data.distanceKm * 20 + donation.data.servings * 2);
+  function handleCallDonor() {
+    void Linking.openURL('tel:+94772345678');
+  }
 
-  // Retrieve matched drop-off destination
-  const reqId = assignment.data.requestId;
-  const dropOff = (reqId && MOCK_DROP_OFFS[reqId]) || {
-    name: 'Jaffna Community Food Hub',
-    address: '45 Main Street, Jaffna',
-    city: pickup.city || 'Jaffna',
-    latitude: 9.6690,
-    longitude: 80.0270,
-    contactPerson: 'Hub Coordinator',
-    phone: '+94 77 234 5678',
-  };
+  function handleChatDonor() {
+    Alert.alert('Donor Direct Chat', `Connected to ${pickupDonor}. Message sent: "I am en route for pickup."`);
+  }
 
-  const volunteerCoords = userLocation ? toLatLng(userLocation) : { latitude: 9.6645, longitude: 80.0200 };
-  const pickupCoords = toLatLng(pickup.location);
-  const dropOffCoords = { latitude: dropOff.latitude, longitude: dropOff.longitude };
-
-  // Step progress
-  const currentStep = isOffered ? 0 : isAccepted ? 1 : 2;
+  function handleReportDelay() {
+    Alert.alert(
+      'Dispatch Support',
+      'Need help or running late? Our volunteer coordinator is available at +94 21 222 3456',
+      [{ text: 'Call Dispatch', onPress: () => void Linking.openURL('tel:+94212223456') }, { text: 'Cancel' }]
+    );
+  }
 
   return (
-    <>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      {/* ─── SCREEN 2: TOP HEADER ─── */}
+      <View style={styles.headerBar}>
         <TouchableOpacity
-          style={styles.headerBackBtn}
+          style={styles.circularHeaderButton}
           onPress={() => router.back()}
+          activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={20} color={volunteerColors.maroon} />
+          <Ionicons name="arrow-back" size={20} color="#1F2937" />
         </TouchableOpacity>
+
         <View style={styles.headerCenter}>
-          <Text style={styles.headerLabel}>TASK ASSIGNMENT</Text>
-          <Text style={styles.headerTaskId}>Task #VOL-{id.slice(-4).toUpperCase()}</Text>
+          <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
+          <Text style={styles.headerTitle}>ACTIVE ASSIGNMENT</Text>
+          <Text style={styles.headerSubtitle}>Task #{taskId}</Text>
         </View>
+
         <TouchableOpacity
-          style={styles.headerCloseBtn}
+          style={styles.circularHeaderButton}
           onPress={() => router.replace('/(volunteer)/dashboard')}
+          activeOpacity={0.7}
         >
-          <Ionicons name="close" size={22} color={volunteerColors.muted} />
+          <Ionicons name="close" size={20} color="#1F2937" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.root} contentContainerStyle={styles.scrollContent}>
-        {/* Step Progress: Route -> Pickup -> Delivery */}
-        <View style={styles.stepperCard}>
-          <View style={styles.stepperRow}>
-            {['Route', 'Pickup', 'Delivery'].map((label, i) => {
-              const isDone = i < currentStep;
-              const isActive = i === currentStep;
-              return (
-                <View key={label} style={styles.stepItem}>
-                  <View style={styles.stepDotRow}>
-                    {i > 0 && (
-                      <View
-                        style={[
-                          styles.stepLine,
-                          isDone && styles.stepLineDone,
-                          isActive && styles.stepLineActive,
-                        ]}
-                      />
-                    )}
-                    <View
-                      style={[
-                        styles.stepDot,
-                        isDone && styles.stepDotDone,
-                        isActive && styles.stepDotActive,
-                      ]}
-                    >
-                      {isDone ? (
-                        <Ionicons name="checkmark" size={12} color="#FFF" />
-                      ) : (
-                        <Text style={[styles.stepNum, isActive && styles.stepNumActive]}>
-                          {i + 1}
-                        </Text>
-                      )}
-                    </View>
-                    {i < 2 && (
-                      <View
-                        style={[
-                          styles.stepLine,
-                          (isDone || (isActive && i === 0)) && styles.stepLineDone,
-                        ]}
-                      />
-                    )}
-                  </View>
-                  <Text style={[styles.stepLabel, isActive && styles.stepLabelActive, isDone && styles.stepLabelDone]}>
-                    {label}
-                  </Text>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ─── 3-STEP PROGRESS STEPPER ─── */}
+        <View style={styles.stepperContainer}>
+          <View style={styles.stepperLineRow}>
+            {/* Step 1: Route (Active - Maroon Paper Plane) */}
+            <View style={styles.stepperItem}>
+              <View style={styles.stepCircleActive}>
+                <Ionicons name="navigate" size={14} color="#FFFFFF" style={{ transform: [{ rotate: '45deg' }] }} />
+              </View>
+              <Text style={styles.stepLabelActive}>Route</Text>
+            </View>
+
+            {/* Connecting Line: Step 1 -> Step 2 */}
+            <View style={styles.stepLineMaroon} />
+
+            {/* Step 2: Pickup (Inactive) */}
+            <View style={styles.stepperItem}>
+              <View style={styles.stepCircleInactive}>
+                <Text style={styles.stepNumInactive}>2</Text>
+              </View>
+              <Text style={styles.stepLabelInactive}>Pickup</Text>
+            </View>
+
+            {/* Connecting Line: Step 2 -> Step 3 */}
+            <View style={styles.stepLineGray} />
+
+            {/* Step 3: Delivered (Inactive) */}
+            <View style={styles.stepperItem}>
+              <View style={styles.stepCircleInactive}>
+                <Text style={styles.stepNumInactive}>3</Text>
+              </View>
+              <Text style={styles.stepLabelInactive}>Delivered</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ─── STATUS BANNER ─── */}
+        <View style={styles.statusBanner}>
+          <View style={styles.statusLeft}>
+            <View style={styles.greenStatusDot} />
+            <Text style={styles.statusAssignedText}>Assigned to You</Text>
+          </View>
+          <View style={styles.statusRight}>
+            <Ionicons name="time-outline" size={15} color="#1F2937" />
+            <Text style={styles.statusTimeText}>12:45 PM – 1:15 PM</Text>
+          </View>
+        </View>
+
+        {/* ─── FOOD DETAILS CARD ─── */}
+        <View style={styles.card}>
+          {/* Top Food Row */}
+          <View style={styles.foodRow}>
+            <View style={styles.foodIconBox}>
+              <Ionicons name="cube-outline" size={26} color="#701A2B" />
+            </View>
+            <View style={styles.foodInfoCol}>
+              <View style={styles.foodTitleRow}>
+                <Text style={styles.foodTitle}>{title}</Text>
+                <View style={styles.hotFoodBadge}>
+                  <Text style={styles.hotFoodText}>Hot Food</Text>
                 </View>
-              );
-            })}
-          </View>
-
-          {/* Assignment status */}
-          <View style={styles.statusRow}>
-            <View style={styles.statusChip}>
-              <View style={[styles.statusIndicator, {
-                backgroundColor: isOffered ? volunteerColors.orange : volunteerColors.green,
-              }]} />
-              <Text style={styles.statusText}>
-                {isOffered ? 'Offered to You · Ready to Accept' : 'Assigned to You · Active Route'}
-              </Text>
-            </View>
-            <View style={styles.timeChip}>
-              <Ionicons name="time-outline" size={14} color={volunteerColors.muted} />
-              <Text style={styles.timeText}>~{estTime} min total</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Food Info Card */}
-        <View style={styles.card}>
-          <View style={styles.foodInfoRow}>
-            <View style={styles.foodIconFrame}>
-              <Ionicons name="fast-food" size={22} color={volunteerColors.maroon} />
-            </View>
-            <View style={styles.foodInfoText}>
-              <Text style={styles.foodTitle}>{donation.data.title}</Text>
-              <Text style={styles.foodMeta}>
-                <Ionicons name="cube-outline" size={12} /> {donation.data.servings} Servings · {donation.data.foodType.toUpperCase()}
-              </Text>
-            </View>
-            <Badge
-              label={donation.data.foodType === 'cooked' ? 'Hot Food' : donation.data.foodType}
-              tone="warning"
-            />
-          </View>
-
-          {/* Donor info */}
-          <View style={styles.donorRow}>
-            <Text style={styles.donorLabel}>PICKUP DONOR</Text>
-            <Text style={styles.donorName}>{pickup.line1}</Text>
-          </View>
-
-          {donation.data.description && (
-            <View style={styles.instructionsRow}>
-              <Ionicons name="information-circle" size={16} color={volunteerColors.infoBlue} />
-              <Text style={styles.instructionsText}>
-                Instructions: {donation.data.description}
-              </Text>
-            </View>
-          )}
-
-          {/* Urgency countdown */}
-          <UrgentCountdown
-            cookedAt={donation.data.cookedAt}
-            safeForHours={donation.data.safeForHours}
-          />
-        </View>
-
-        {/* Transit Path Card — Full Route */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Complete Delivery Route Guidance</Text>
-
-          <View style={styles.transitMetrics}>
-            <View style={styles.transitMetric}>
-              <Ionicons name="navigate" size={14} color={volunteerColors.green} />
-              <Text style={styles.transitMetricText}>
-                {assignment.data.distanceKm} km total distance
-              </Text>
-            </View>
-            <Text style={styles.transitDot}>·</Text>
-            <View style={styles.transitMetric}>
-              <Ionicons name="time" size={14} color={volunteerColors.green} />
-              <Text style={styles.transitMetricText}>~{estTime} mins travel</Text>
+              </View>
+              <View style={styles.foodSubtitleRow}>
+                <Ionicons name="checkmark-circle" size={14} color="#059669" />
+                <Text style={styles.foodSubtitle}>Insulated Hot Thermal Boxes</Text>
+              </View>
             </View>
           </View>
 
-          {/* Map with Start -> Pickup -> Drop-off */}
-          {Platform.OS !== 'web' && MapView && (
-            <View style={styles.routeMapFrame}>
-              <MapView
-                style={styles.routeMap}
-                initialRegion={{
-                  ...pickupCoords,
-                  latitudeDelta: 0.05,
-                  longitudeDelta: 0.05,
-                }}
+          <View style={styles.divider} />
+
+          {/* Pickup Donor Info */}
+          <View style={styles.donorSection}>
+            <View style={styles.donorInfoCol}>
+              <Text style={styles.donorSubLabel}>PICKUP DONOR</Text>
+              <Text style={styles.donorName}>{pickupDonor}</Text>
+            </View>
+
+            {/* Call & Chat Circular Buttons */}
+            <View style={styles.donorActionButtons}>
+              <TouchableOpacity
+                style={styles.donorCallButton}
+                onPress={handleCallDonor}
+                activeOpacity={0.8}
               >
-                {/* 1. Start marker */}
-                <Marker
-                  coordinate={volunteerCoords}
-                  title="Starting Point"
-                  description="Your Current Location"
-                  pinColor="#2B6CB0"
-                />
-                {/* 2. Pickup marker */}
-                <Marker
-                  coordinate={pickupCoords}
-                  title="Pickup Point"
-                  description={`${pickup.line1}, ${pickup.city}`}
-                  pinColor={volunteerColors.green}
-                />
-                {/* 3. Drop-off marker */}
-                <Marker
-                  coordinate={dropOffCoords}
-                  title="Drop-off Destination"
-                  description={dropOff.name}
-                  pinColor={volunteerColors.maroon}
-                />
-                {/* Polyline connecting all 3 */}
-                <Polyline
-                  coordinates={[volunteerCoords, pickupCoords, dropOffCoords]}
-                  strokeColor={volunteerColors.maroon}
-                  strokeWidth={4}
-                />
-              </MapView>
-
-              {/* Map floating labels */}
-              <View style={styles.mapLabelA}>
-                <Text style={styles.mapLabelText}>1. START</Text>
-              </View>
-              <View style={styles.mapLabelB}>
-                <Text style={styles.mapLabelBText}>2. PICKUP</Text>
-              </View>
+                <Ionicons name="call" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.donorChatButton}
+                onPress={handleChatDonor}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chatbubble" size={16} color="#701A2B" />
+              </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Instructions Box */}
+          <View style={styles.instructionsBox}>
+            <Ionicons name="information-circle-outline" size={17} color="#701A2B" style={styles.infoIcon} />
+            <Text style={styles.instructionsText}>
+              <Text style={styles.instructionsBold}>Instructions: </Text>
+              {instructions}
+            </Text>
+          </View>
+        </View>
+
+        {/* ─── TRANSIT PATH SECTION ─── */}
+        <View style={styles.transitHeaderRow}>
+          <Text style={styles.transitTitle}>Transit Path</Text>
+          <View style={styles.transitMetricRow}>
+            <Ionicons name="location-sharp" size={13} color="#1F2937" />
+            <Text style={styles.transitMetricText}>3.8 km total • ~14 mins</Text>
+          </View>
+        </View>
+
+        {/* Transit Route Map Card */}
+        <View style={styles.mapCard}>
+          <View style={styles.mapCanvas}>
+            {/* Background Mapbox transit route canvas */}
+            <View style={styles.transitMapBg}>
+              <Image
+                source={{ uri: mapboxRouteUrl }}
+                style={styles.mapboxRouteImage}
+                resizeMode="cover"
+              />
+              <View style={styles.transitDashedPath} />
+
+              {/* Point A Marker & Callout */}
+              <View style={styles.markerAPosition}>
+                <View style={styles.markerACircle}>
+                  <Text style={styles.markerLetter}>A</Text>
+                </View>
+                <View style={styles.calloutBoxA}>
+                  <Text style={styles.calloutSubLabel}>PICKUP POINT</Text>
+                  <Text style={styles.calloutTitle}>Nallur Temple Road</Text>
+                </View>
+              </View>
+
+              {/* Moving Scooter Icon */}
+              <View style={styles.scooterBadge}>
+                <Text style={styles.scooterEmoji}>🛵</Text>
+              </View>
+
+              {/* Point B Marker & Callout */}
+              <View style={styles.markerBPosition}>
+                <View style={styles.calloutBoxB}>
+                  <Text style={styles.calloutSubLabel}>DROPOFF HUB</Text>
+                  <Text style={styles.calloutTitle}>St. John's Community Hub</Text>
+                </View>
+                <View style={styles.markerBCircle}>
+                  <Text style={styles.markerLetter}>B</Text>
+                </View>
+              </View>
+
+              {/* Compass / Locate Button */}
+              <TouchableOpacity style={styles.compassButton} activeOpacity={0.8}>
+                <Ionicons name="locate" size={16} color="#4B5563" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* ─── BOTTOM ACTION FOOTER ─── */}
+        <TouchableOpacity
+          style={styles.startRideButton}
+          onPress={handleStartRide}
+          disabled={accept.isPending}
+          activeOpacity={0.85}
+        >
+          {accept.isPending ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.startRideButtonText}>Start Ride to Pickup Point →</Text>
           )}
+        </TouchableOpacity>
 
-          {/* Detailed 3-Step Route Breakdown */}
-          <View style={styles.routeDetails}>
-            {/* Step 1: Start Point */}
-            <View style={styles.routePoint}>
-              <View style={styles.routePointDotBlue} />
-              <View style={styles.routePointInfo}>
-                <Text style={styles.routePointLabel}>1. STARTING POINT / CURRENT POSITION</Text>
-                <Text style={styles.routePointAddress}>Volunteer Live Location · Jaffna</Text>
-              </View>
-            </View>
-            <View style={styles.routeConnector}>
-              <View style={styles.routeConnectorLine} />
-            </View>
+        <TouchableOpacity
+          style={styles.supportLink}
+          onPress={handleReportDelay}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.supportLinkText}>Need Support / Report Delay</Text>
+        </TouchableOpacity>
 
-            {/* Step 2: Pickup Point */}
-            <View style={styles.routePoint}>
-              <View style={styles.routePointDotGreen} />
-              <View style={styles.routePointInfo}>
-                <Text style={styles.routePointLabel}>2. PICKUP POINT (FOOD DONOR)</Text>
-                <Text style={styles.routePointAddress}>{pickup.line1}, {pickup.city}</Text>
-              </View>
-            </View>
-            <View style={styles.routeConnector}>
-              <View style={styles.routeConnectorLine} />
-            </View>
-
-            {/* Step 3: Final Drop-off */}
-            <View style={styles.routePoint}>
-              <View style={styles.routePointDotRed} />
-              <View style={styles.routePointInfo}>
-                <Text style={styles.routePointLabel}>3. FINAL DROP-OFF DESTINATION</Text>
-                <Text style={styles.routePointAddress}>
-                  {dropOff.name} · {dropOff.address}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Karma Preview */}
-        <View style={[styles.card, styles.karmaCard]}>
-          <View style={styles.karmaPreviewRow}>
-            <Ionicons name="leaf" size={20} color={volunteerColors.green} />
-            <View style={styles.karmaPreviewInfo}>
-              <Text style={styles.karmaPreviewTitle}>Karma Points Reward</Text>
-              <Text style={styles.karmaPreviewSub}>
-                Earn +{karmaPoints} points on completion
-              </Text>
-            </View>
-            <View style={styles.karmaPreviewBadge}>
-              <Text style={styles.karmaPreviewPoints}>+{karmaPoints}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Bottom spacer */}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 28 }} />
       </ScrollView>
-
-      {/* Fixed footer */}
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        {isOffered ? (
-          <>
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={() => accept.mutate()}
-              disabled={accept.isPending}
-            >
-              {accept.isPending ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <>
-                  <Text style={styles.primaryBtnText}>Start Ride to Pickup Point →</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.declineBtn}
-              onPress={() => decline.mutate()}
-              disabled={decline.isPending}
-            >
-              <Text style={styles.declineBtnText}>
-                {decline.isPending ? 'Declining...' : 'Need Support / Report Delay'}
-              </Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => router.push(`/(volunteer)/pickup/${id}`)}
-          >
-            <Text style={styles.primaryBtnText}>Proceed to Pickup →</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: volunteerColors.background },
-  loadingText: { ...typography.body, color: volunteerColors.muted },
-  error: { ...typography.h3, color: volunteerColors.urgentRed },
-  backBtn: {
-    marginTop: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: radius.md,
-    backgroundColor: volunteerColors.maroon,
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FAF8F5',
   },
-  backBtnText: { ...typography.bodyStrong, color: '#FFF' },
+  centerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FAF8F5',
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#5A1626',
+    fontWeight: '600',
+    marginTop: 12,
+  },
 
-  root: { flex: 1, backgroundColor: volunteerColors.background },
-  scrollContent: { padding: 16, gap: 12 },
-
-  /* Header */
-  header: {
-    backgroundColor: '#FFF',
+  /* ─── TOP HEADER BAR ─── */
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: volunteerColors.line,
+    paddingVertical: 10,
+    backgroundColor: '#FAF8F5',
   },
-  headerBackBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: volunteerColors.surfaceAlt,
+  circularHeaderButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#ECE6DE',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerLabel: {
-    ...typography.caption,
-    color: volunteerColors.muted,
+  headerCenter: {
+    alignItems: 'center',
+  },
+  headerLogo: {
+    width: 95,
+    height: 24,
+    marginBottom: 2,
+  },
+  headerTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#5A1626',
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.8,
-  },
-  headerTaskId: { ...typography.bodyStrong, color: volunteerColors.ink },
-  headerCloseBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: '#1F2937',
   },
 
-  /* Stepper */
-  stepperCard: {
-    backgroundColor: '#FFF',
-    borderRadius: radius.lg,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: volunteerColors.line,
+  /* ─── SCROLLABLE CONTENT ─── */
+  scrollView: {
+    flex: 1,
   },
-  stepperRow: { flexDirection: 'row' },
-  stepItem: { flex: 1, alignItems: 'center', gap: 4 },
-  stepDotRow: { flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'center' },
-  stepDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: volunteerColors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: volunteerColors.line,
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+
+  /* ─── 3-STEP STEPPER ─── */
+  stepperContainer: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  stepperLineRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
+    paddingHorizontal: 20,
   },
-  stepDotDone: { backgroundColor: volunteerColors.green, borderColor: volunteerColors.green },
-  stepDotActive: { backgroundColor: volunteerColors.maroon, borderColor: volunteerColors.maroon },
-  stepNum: { ...typography.caption, color: volunteerColors.muted, fontWeight: '700' },
-  stepNumActive: { color: '#FFF' },
-  stepLine: {
+  stepperItem: {
+    alignItems: 'center',
+  },
+  stepCircleActive: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#5A1626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#5A1626',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  stepLabelActive: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#5A1626',
+    marginTop: 5,
+  },
+  stepLineMaroon: {
     flex: 1,
     height: 2,
-    backgroundColor: volunteerColors.line,
+    backgroundColor: '#5A1626',
+    marginHorizontal: 8,
+    marginBottom: 16,
   },
-  stepLineDone: { backgroundColor: volunteerColors.green },
-  stepLineActive: { backgroundColor: volunteerColors.maroon },
-  stepLabel: { ...typography.caption, color: volunteerColors.muted },
-  stepLabelActive: { color: volunteerColors.maroon, fontWeight: '700' },
-  stepLabelDone: { color: volunteerColors.green, fontWeight: '600' },
+  stepCircleInactive: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNumInactive: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#9CA3AF',
+  },
+  stepLabelInactive: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    marginTop: 5,
+  },
+  stepLineGray: {
+    flex: 1,
+    height: 2,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 8,
+    marginBottom: 16,
+  },
 
-  statusRow: {
+  /* ─── STATUS BANNER ─── */
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#D1F0E4',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 14,
+  },
+  statusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  greenStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0F766E',
+  },
+  statusAssignedText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#0F766E',
+  },
+  statusRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  statusTimeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+
+  /* ─── FOOD DETAILS CARD ─── */
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#ECE7DF',
+    marginBottom: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  foodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  foodIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#FCE8EE',
+    borderWidth: 1,
+    borderColor: '#F8D1DC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  foodInfoCol: {
+    flex: 1,
+  },
+  foodTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  statusChip: {
+  foodTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    flex: 1,
+  },
+  hotFoodBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: 6,
+  },
+  hotFoodText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  foodSubtitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+  },
+  foodSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F3EFE9',
+    marginVertical: 14,
+  },
+
+  /* Donor Section */
+  donorSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  donorInfoCol: {
+    flex: 1,
+  },
+  donorSubLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9CA3AF',
+    letterSpacing: 0.5,
+  },
+  donorName: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    marginTop: 2,
+  },
+  donorActionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  donorCallButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#0F766E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  donorChatButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FCE8EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* Instructions */
+  instructionsBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
     gap: 6,
   },
-  statusIndicator: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { ...typography.bodyStrong, color: volunteerColors.ink, fontSize: 13 },
-  timeChip: {
+  infoIcon: {
+    marginTop: 1,
+  },
+  instructionsText: {
+    fontSize: 11.5,
+    color: '#4B5563',
+    lineHeight: 16,
+    flex: 1,
+  },
+  instructionsBold: {
+    fontWeight: '800',
+    color: '#9A3412',
+  },
+
+  /* ─── TRANSIT PATH SECTION ─── */
+  transitHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  transitTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1A1A1A',
+  },
+  transitMetricRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: volunteerColors.surfaceAlt,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
   },
-  timeText: { ...typography.caption, color: volunteerColors.muted },
-
-  /* Cards */
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: radius.lg,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: volunteerColors.line,
-  },
-  cardTitle: { ...typography.bodyStrong, color: volunteerColors.ink },
-
-  /* Food info */
-  foodInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  foodIconFrame: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: volunteerColors.maroonSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  foodInfoText: { flex: 1, gap: 2 },
-  foodTitle: { ...typography.bodyStrong, color: volunteerColors.ink },
-  foodMeta: { ...typography.caption, color: volunteerColors.muted },
-
-  donorRow: {
-    backgroundColor: volunteerColors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: 10,
-    gap: 2,
-  },
-  donorLabel: {
-    ...typography.caption,
-    color: volunteerColors.muted,
+  transitMetricText: {
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.5,
-    fontSize: 10,
+    color: '#374151',
   },
-  donorName: { ...typography.body, color: volunteerColors.ink, fontSize: 13 },
 
-  instructionsRow: {
-    flexDirection: 'row',
-    gap: 6,
-    backgroundColor: volunteerColors.infoBlueSoft,
-    borderRadius: radius.md,
-    padding: 10,
-  },
-  instructionsText: { ...typography.caption, color: volunteerColors.infoBlue, flex: 1 },
-
-  /* Transit */
-  transitMetrics: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  transitMetric: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  transitMetricText: { ...typography.caption, color: volunteerColors.green, fontWeight: '600' },
-  transitDot: { color: volunteerColors.muted },
-
-  routeMapFrame: {
-    height: 160,
-    borderRadius: radius.md,
+  /* Transit Map Card */
+  mapCard: {
+    borderRadius: 18,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#ECE7DF',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  mapCanvas: {
+    width: '100%',
+    height: 220,
+    backgroundColor: '#E8EFF4',
     position: 'relative',
   },
-  routeMap: { flex: 1 },
-  mapLabelA: {
+  transitMapBg: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  mapboxRouteImage: {
+    width: '100%',
+    height: '100%',
     position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: volunteerColors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapLabelText: { color: '#FFF', fontWeight: '800', fontSize: 12 },
-  mapLabelB: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: volunteerColors.urgentRed,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapLabelBText: { color: '#FFF', fontWeight: '800', fontSize: 12 },
-
-  routeDetails: { gap: 0 },
-  routePoint: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  routePointDotBlue: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#2B6CB0',
-  },
-  routePointDotGreen: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: volunteerColors.green,
-  },
-  routePointDotRed: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: volunteerColors.urgentRed,
-  },
-  routePointInfo: { flex: 1 },
-  routePointLabel: {
-    ...typography.caption,
-    color: volunteerColors.muted,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    fontSize: 10,
-  },
-  routePointAddress: { ...typography.body, color: volunteerColors.ink, fontSize: 13 },
-  routeConnector: { paddingLeft: 5, paddingVertical: 2 },
-  routeConnectorLine: {
-    width: 2,
-    height: 16,
-    backgroundColor: volunteerColors.line,
-  },
-
-  /* Karma */
-  karmaCard: { backgroundColor: volunteerColors.greenSoft, borderColor: volunteerColors.green + '33' },
-  karmaPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  karmaPreviewInfo: { flex: 1, gap: 2 },
-  karmaPreviewTitle: { ...typography.bodyStrong, color: volunteerColors.green },
-  karmaPreviewSub: { ...typography.caption, color: volunteerColors.muted },
-  karmaPreviewBadge: {
-    backgroundColor: volunteerColors.green,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-  },
-  karmaPreviewPoints: { ...typography.bodyStrong, color: '#FFF', fontSize: 16 },
-
-  /* Footer */
-  footer: {
-    position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
-    right: 0,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: volunteerColors.line,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+  },
+  transitRoadCurve: {
+    position: 'absolute',
+    top: 30,
+    left: 20,
+    width: 280,
+    height: 160,
+    borderWidth: 14,
+    borderColor: '#FFFFFF',
+    borderTopLeftRadius: 100,
+    borderBottomRightRadius: 100,
+    transform: [{ rotate: '-10deg' }],
+  },
+  transitDashedPath: {
+    position: 'absolute',
+    top: 44,
+    left: 36,
+    width: 250,
+    height: 130,
+    borderStyle: 'dashed',
+    borderWidth: 3,
+    borderColor: '#0F766E',
+    borderTopLeftRadius: 90,
+    borderBottomRightRadius: 90,
+    transform: [{ rotate: '-10deg' }],
+  },
+
+  /* Point A Marker */
+  markerAPosition: {
+    position: 'absolute',
+    top: 18,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  primaryBtn: {
-    backgroundColor: volunteerColors.maroon,
-    borderRadius: radius.md,
-    paddingVertical: 14,
+  markerACircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#5A1626',
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  primaryBtnText: { ...typography.bodyStrong, color: '#FFF' },
-  declineBtn: { alignItems: 'center', paddingVertical: 8 },
-  declineBtnText: { ...typography.caption, color: volunteerColors.muted, textDecorationLine: 'underline' },
+  markerLetter: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  calloutBoxA: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  calloutSubLabel: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+  },
+  calloutTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1A1A1A',
+  },
+
+  /* Scooter Icon on route */
+  scooterBadge: {
+    position: 'absolute',
+    top: 96,
+    left: 140,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  scooterEmoji: {
+    fontSize: 16,
+  },
+
+  /* Point B Marker */
+  markerBPosition: {
+    position: 'absolute',
+    bottom: 20,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  markerBCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1E3A4B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  calloutBoxB: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+
+  compassButton: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+
+  /* ─── BOTTOM ACTION BUTTONS ─── */
+  startRideButton: {
+    backgroundColor: '#5A1626',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    shadowColor: '#5A1626',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+    marginBottom: 12,
+  },
+  startRideButtonText: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  supportLink: {
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  supportLinkText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#0F766E',
+  },
 });

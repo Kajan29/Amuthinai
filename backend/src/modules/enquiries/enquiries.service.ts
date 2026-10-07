@@ -15,6 +15,7 @@ export class EnquiriesService {
     return this.model.create({
       raisedBy: new Types.ObjectId(raisedBy),
       donationId: dto.donationId ? new Types.ObjectId(dto.donationId) : undefined,
+      assignmentId: dto.assignmentId ? new Types.ObjectId(dto.assignmentId) : undefined,
       subject: dto.subject,
       body: dto.body,
     });

@@ -190,6 +190,98 @@ export const MOCK_VOLUNTEER_TASKS: NearbyTask[] = [
     distanceKm: 4.8,
     minutesLeft: 240,
   },
+
+  // 4. TASK 4 (PAST / COMPLETED): 50 Warm Vegetable Pulao & Dhal
+  {
+    assignment: {
+      id: 'asgn-past-301',
+      donationId: 'don-pulao-301',
+      requestId: 'req-shelter-1',
+      volunteerId: 'user-vol-1',
+      status: 'completed',
+      deliveryPin: '6149',
+      distanceKm: 2.1,
+      offeredAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+      acceptedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+      completedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    },
+    donation: {
+      id: 'don-pulao-301',
+      donorId: 'donor-kantharmadam',
+      title: '50 Warm Vegetable Pulao & Dhal',
+      foodType: 'cooked',
+      servings: 50,
+      quantityUnit: 'portions',
+      dietaryTags: ['pure_vegetarian'],
+      foodSafetyVerified: true,
+      description: 'Hot vegetarian pulao distributed to Karaiyur shelter.',
+      photoUrls: [
+        'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&auto=format&fit=crop&q=60',
+      ],
+      pickupAddress: {
+        line1: 'Kantharmadam Community Kitchen',
+        city: 'Palali Road, Kantharmadam, Jaffna',
+        location: {
+          type: 'Point',
+          coordinates: [80.0210, 9.6800],
+        },
+      },
+      cookedAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+      safeForHours: 4,
+      expiresAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      status: 'delivered',
+      createdAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    },
+    distanceKm: 2.1,
+    minutesLeft: 0,
+  },
+
+  // 5. TASK 5 (PAST / COMPLETED): 35 Milk Rice & Banana Bundles
+  {
+    assignment: {
+      id: 'asgn-past-208',
+      donationId: 'don-milkrice-208',
+      requestId: 'req-elderly-grace',
+      volunteerId: 'user-vol-1',
+      status: 'completed',
+      deliveryPin: '8832',
+      distanceKm: 1.5,
+      offeredAt: new Date(Date.now() - 28 * 60 * 60 * 1000).toISOString(),
+      acceptedAt: new Date(Date.now() - 27 * 60 * 60 * 1000).toISOString(),
+      completedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    },
+    donation: {
+      id: 'don-milkrice-208',
+      donorId: 'donor-temple-society',
+      title: '35 Traditional Milk Rice Bundles',
+      foodType: 'cooked',
+      servings: 35,
+      quantityUnit: 'portions',
+      dietaryTags: ['pure_vegetarian'],
+      foodSafetyVerified: true,
+      description: 'Morning religious offering milk rice delivered to Grace Elderly Care.',
+      photoUrls: [
+        'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800&auto=format&fit=crop&q=60',
+      ],
+      pickupAddress: {
+        line1: 'Nallur Devotee Kitchen',
+        city: 'Temple Road, Nallur, Jaffna',
+        location: {
+          type: 'Point',
+          coordinates: [80.0280, 9.6730],
+        },
+      },
+      cookedAt: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(),
+      safeForHours: 6,
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      status: 'delivered',
+      createdAt: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    },
+    distanceKm: 1.5,
+    minutesLeft: 0,
+  },
 ];
 
 export interface VolunteerAchievementItem {

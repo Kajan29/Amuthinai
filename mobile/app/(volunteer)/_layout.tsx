@@ -109,6 +109,10 @@ export default function VolunteerLayout() {
           name="delivery/[id]"
           options={{ href: null, tabBarStyle: { display: 'none' } }}
         />
+        <Tabs.Screen
+          name="raise-concern"
+          options={{ href: null, tabBarStyle: { display: 'none' } }}
+        />
       </Tabs>
     </RoleGuard>
   );

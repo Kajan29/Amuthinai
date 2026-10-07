@@ -27,6 +27,10 @@ export class Enquiry {
   @Prop({ type: Types.ObjectId, ref: 'Donation' })
   donationId?: Types.ObjectId;
 
+  @ApiPropertyOptional()
+  @Prop({ type: Types.ObjectId, ref: 'Assignment' })
+  assignmentId?: Types.ObjectId;
+
   @ApiProperty()
   @Prop({ required: true, trim: true })
   subject!: string;

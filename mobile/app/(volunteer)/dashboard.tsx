@@ -167,15 +167,11 @@ export default function VolunteerDashboard() {
               style={styles.sidebarItem}
               onPress={() => {
                 setSidebarVisible(false);
-                Alert.alert(
-                  'Support & Dispatch',
-                  'Emergency dispatch line: +94 21 222 3456\nOur volunteer support desk is active 24/7.',
-                  [{ text: 'Close' }]
-                );
+                router.push('/(volunteer)/raise-concern');
               }}
             >
-              <Ionicons name="alert-circle-outline" size={22} color="#374151" />
-              <Text style={styles.sidebarItemText}>Need Support / Report</Text>
+              <Ionicons name="alert-circle-outline" size={22} color={volunteerColors.maroon} />
+              <Text style={styles.sidebarItemText}>Raise Concern / Report Issue</Text>
             </TouchableOpacity>
 
             <View style={styles.sidebarDivider} />
@@ -318,24 +314,61 @@ export default function VolunteerDashboard() {
 
           {/* ─── ACTIVE ASSIGNMENT BANNER (If Active Task in Progress) ─── */}
           {activeTask && (
-            <TouchableOpacity
-              style={styles.activeRouteBanner}
-              onPress={() => router.push(`/(volunteer)/assignment/${activeTask.assignment.id}`)}
-              activeOpacity={0.85}
-            >
-              <View style={styles.activeRouteLeft}>
-                <View style={styles.activeRouteIconBox}>
-                  <Ionicons name="bicycle" size={20} color="#FFFFFF" />
+            <View style={styles.activeBannerWrapper}>
+              <TouchableOpacity
+                style={styles.activeRouteBanner}
+                onPress={() => router.push(`/(volunteer)/assignment/${activeTask.assignment.id}`)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.activeRouteLeft}>
+                  <View style={styles.activeRouteIconBox}>
+                    <Ionicons name="bicycle" size={20} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.activeRouteInfo}>
+                    <Text style={styles.activeRouteTitle}>ACTIVE TASK IN PROGRESS</Text>
+                    <Text style={styles.activeRouteFood}>{activeTask.donation.title}</Text>
+                    <Text style={styles.activeRouteSubtitle}>Tap to resume route navigation →</Text>
+                  </View>
                 </View>
-                <View style={styles.activeRouteInfo}>
-                  <Text style={styles.activeRouteTitle}>ACTIVE TASK IN PROGRESS</Text>
-                  <Text style={styles.activeRouteFood}>{activeTask.donation.title}</Text>
-                  <Text style={styles.activeRouteSubtitle}>Tap to resume route navigation →</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#5A1626" />
-            </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={20} color="#5A1626" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.activeRouteConcernBtn}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(volunteer)/raise-concern',
+                    params: { assignmentId: activeTask.assignment.id },
+                  })
+                }
+                activeOpacity={0.8}
+              >
+                <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
+                <Text style={styles.activeRouteConcernText}>
+                  Road Obstacle or Delay? Raise Concern for this Order
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
+
+          {/* Quick Support & Concern Desk Strip */}
+          <TouchableOpacity
+            style={styles.dispatchQuickStrip}
+            onPress={() => router.push('/(volunteer)/raise-concern')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.dispatchQuickLeft}>
+              <View style={styles.dispatchQuickIcon}>
+                <Ionicons name="headset-outline" size={18} color={volunteerColors.maroon} />
+              </View>
+              <View>
+                <Text style={styles.dispatchQuickTitle}>Volunteer Dispatch & Concern Desk</Text>
+                <Text style={styles.dispatchQuickSubtitle}>
+                  Report road obstacles, current or past delivery issues
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#8A8178" />
+          </TouchableOpacity>
 
           {/* ─── SECTION TITLE HEADER ─── */}
           <View style={styles.sectionHeaderRow}>
@@ -1039,6 +1072,62 @@ const styles = StyleSheet.create({
     color: '#701A2B',
     marginTop: 2,
     fontWeight: '600',
+  },
+  activeBannerWrapper: {
+    marginBottom: 16,
+  },
+  activeRouteConcernBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#FDF2F4',
+    borderRadius: 10,
+    marginTop: -8,
+    borderWidth: 1,
+    borderColor: '#F8B4C0',
+  },
+  activeRouteConcernText: {
+    fontSize: 12,
+    color: '#DC2626',
+    fontWeight: '700',
+  },
+  dispatchQuickStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#EFEAE4',
+  },
+  dispatchQuickLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  dispatchQuickIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: volunteerColors.maroonSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dispatchQuickTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1C1614',
+  },
+  dispatchQuickSubtitle: {
+    fontSize: 11,
+    color: '#8A8178',
+    marginTop: 1,
   },
 
   /* ─── SECTION HEADER ─── */

@@ -161,10 +161,12 @@ export interface Enquiry {
   id: string;
   raisedBy: string;
   donationId?: string;
+  assignmentId?: string;
   subject: string;
   body: string;
   status: 'open' | 'in_review' | 'resolved';
   resolution?: string;
+  resolvedAt?: string;
   createdAt: string;
 }
 

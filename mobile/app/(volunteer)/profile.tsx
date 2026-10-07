@@ -346,6 +346,17 @@ export default function VolunteerProfile() {
           <Ionicons name="chevron-forward" size={18} color={volunteerColors.muted} />
         </TouchableOpacity>
         <View style={styles.menuDivider} />
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push('/(volunteer)/raise-concern')}
+        >
+          <Ionicons name="alert-circle-outline" size={20} color={volunteerColors.urgentRed} />
+          <Text style={[styles.menuLabel, { color: volunteerColors.urgentRed, fontWeight: '600' }]}>
+            Report an Issue / Raise Concern
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={volunteerColors.muted} />
+        </TouchableOpacity>
+        <View style={styles.menuDivider} />
         <TouchableOpacity style={styles.menuItem}>
           <Ionicons name="shield-checkmark-outline" size={20} color={volunteerColors.ink} />
           <Text style={styles.menuLabel}>Food Safety Guidelines</Text>

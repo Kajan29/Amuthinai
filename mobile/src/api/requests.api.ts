@@ -14,6 +14,7 @@ export interface CreateEnquiryPayload {
   subject: string;
   body: string;
   donationId?: string;
+  assignmentId?: string;
 }
 
 export interface RecipientStats {

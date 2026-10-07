@@ -308,6 +308,20 @@ export default function ConfirmPickup() {
           )}
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.pickupConcernButton}
+          onPress={() =>
+            router.push({
+              pathname: '/(volunteer)/raise-concern',
+              params: { assignmentId: id },
+            })
+          }
+          activeOpacity={0.7}
+        >
+          <Ionicons name="alert-circle-outline" size={16} color="#DC2626" />
+          <Text style={styles.pickupConcernText}>Issue at Pickup Point? Raise Concern / Delay</Text>
+        </TouchableOpacity>
+
         <View style={{ height: 28 }} />
       </ScrollView>
     </SafeAreaView>
@@ -825,5 +839,22 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  pickupConcernButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    marginTop: 10,
+    backgroundColor: '#FDF2F4',
+    borderWidth: 1,
+    borderColor: '#F8B4C0',
+    borderRadius: 14,
+  },
+  pickupConcernText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
   },
 });

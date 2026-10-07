@@ -273,6 +273,20 @@ export default function ConfirmDelivery() {
           <Text style={styles.receiptLinkText}>View Route Receipt / Share Impact</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.deliveryConcernButton}
+          onPress={() =>
+            router.push({
+              pathname: '/(volunteer)/raise-concern',
+              params: { assignmentId: id },
+            })
+          }
+          activeOpacity={0.7}
+        >
+          <Ionicons name="alert-circle-outline" size={16} color="#DC2626" />
+          <Text style={styles.deliveryConcernText}>Issue at Drop-off Location? Raise Concern</Text>
+        </TouchableOpacity>
+
         <View style={{ height: 28 }} />
       </ScrollView>
     </SafeAreaView>
@@ -704,5 +718,22 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '700',
     color: '#6B7280',
+  },
+  deliveryConcernButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    marginTop: 10,
+    backgroundColor: '#FDF2F4',
+    borderWidth: 1,
+    borderColor: '#F8B4C0',
+    borderRadius: 14,
+  },
+  deliveryConcernText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
   },
 });

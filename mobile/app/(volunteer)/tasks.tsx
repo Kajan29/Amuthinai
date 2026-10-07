@@ -77,6 +77,13 @@ export default function VolunteerTasks() {
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>Delivery Tasks</Text>
         <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.concernHeaderBtn}
+            onPress={() => router.push('/(volunteer)/raise-concern')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="alert-circle-outline" size={20} color={volunteerColors.maroon} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.filterBtn}>
             <Ionicons name="filter" size={18} color={volunteerColors.maroon} />
           </TouchableOpacity>
@@ -259,25 +266,47 @@ function DetailedTaskCard({ task, isUrgent }: { task: NearbyTask; isUrgent: bool
         safeForHours={task.donation.safeForHours}
       />
 
-      {/* CTA */}
-      {task.assignment.status === 'offered' && (
+      {/* CTA & Actions */}
+      <View style={styles.cardActionsRow}>
+        {task.assignment.status === 'offered' && (
+          <TouchableOpacity
+            style={styles.acceptBtn}
+            onPress={() => router.push(`/(volunteer)/assignment/${task.assignment.id}`)}
+          >
+            <Text style={styles.acceptBtnText}>Accept Task</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFF" />
+          </TouchableOpacity>
+        )}
+        {isActive && (
+          <TouchableOpacity
+            style={[styles.acceptBtn, styles.continueBtn]}
+            onPress={() => router.push(`/(volunteer)/pickup/${task.assignment.id}`)}
+          >
+            <Text style={styles.acceptBtnText}>Continue Delivery</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFF" />
+          </TouchableOpacity>
+        )}
+        {task.assignment.status === 'completed' && (
+          <View style={styles.completedSuccessRow}>
+            <Ionicons name="checkmark-done-circle" size={16} color="#0F7B4F" />
+            <Text style={styles.completedSuccessText}>Delivered & Verified</Text>
+          </View>
+        )}
+
         <TouchableOpacity
-          style={styles.acceptBtn}
-          onPress={() => router.push(`/(volunteer)/assignment/${task.assignment.id}`)}
+          style={styles.taskConcernBtn}
+          onPress={() =>
+            router.push({
+              pathname: '/(volunteer)/raise-concern',
+              params: { assignmentId: task.assignment.id },
+            })
+          }
+          activeOpacity={0.8}
         >
-          <Text style={styles.acceptBtnText}>Accept Task</Text>
-          <Ionicons name="arrow-forward" size={16} color="#FFF" />
+          <Ionicons name="alert-circle-outline" size={14} color="#DC2626" />
+          <Text style={styles.taskConcernText}>Raise Concern / Report Delay</Text>
         </TouchableOpacity>
-      )}
-      {isActive && (
-        <TouchableOpacity
-          style={[styles.acceptBtn, styles.continueBtn]}
-          onPress={() => router.push(`/(volunteer)/pickup/${task.assignment.id}`)}
-        >
-          <Text style={styles.acceptBtnText}>Continue Delivery</Text>
-          <Ionicons name="arrow-forward" size={16} color="#FFF" />
-        </TouchableOpacity>
-      )}
+      </View>
     </Pressable>
   );
 }
@@ -489,4 +518,50 @@ const styles = StyleSheet.create({
   },
   continueBtn: { backgroundColor: volunteerColors.green },
   acceptBtnText: { ...typography.bodyStrong, color: '#FFF', fontSize: 14 },
+  concernHeaderBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: volunteerColors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardActionsRow: {
+    gap: 8,
+    marginTop: 4,
+  },
+  completedSuccessRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#E3F3EB',
+    paddingVertical: 9,
+    borderRadius: radius.md,
+  },
+  completedSuccessText: {
+    ...typography.caption,
+    color: '#0F7B4F',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  taskConcernBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#FDF2F4',
+    borderWidth: 1,
+    borderColor: '#F8B4C0',
+    borderRadius: radius.md,
+    paddingVertical: 8,
+  },
+  taskConcernText: {
+    ...typography.caption,
+    color: '#DC2626',
+    fontWeight: '700',
+    fontSize: 12,
+  },
 });

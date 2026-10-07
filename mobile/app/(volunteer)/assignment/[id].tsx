@@ -80,9 +80,23 @@ export default function AssignmentDetail() {
 
   function handleReportDelay() {
     Alert.alert(
-      'Dispatch Support',
-      'Need help or running late? Our volunteer coordinator is available at +94 21 222 3456',
-      [{ text: 'Call Dispatch', onPress: () => void Linking.openURL('tel:+94212223456') }, { text: 'Cancel' }]
+      'Dispatch Support & Concern',
+      'Report a delay or roadblock to Amuthinai dispatch, or call directly:',
+      [
+        {
+          text: 'Raise Concern for This Order',
+          onPress: () =>
+            router.push({
+              pathname: '/(volunteer)/raise-concern',
+              params: { assignmentId: id },
+            }),
+        },
+        {
+          text: 'Call Dispatch Hotline',
+          onPress: () => void Linking.openURL('tel:+94212223456'),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
     );
   }
 

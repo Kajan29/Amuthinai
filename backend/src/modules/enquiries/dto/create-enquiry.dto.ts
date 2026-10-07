@@ -19,6 +19,11 @@ export class CreateEnquiryDto {
   @IsOptional()
   @IsMongoId()
   donationId?: string;
+
+  @ApiPropertyOptional({ description: 'The assignment/order this concern is about, if any' })
+  @IsOptional()
+  @IsMongoId()
+  assignmentId?: string;
 }
 
 export class ResolveEnquiryDto {

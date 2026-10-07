@@ -20,7 +20,7 @@ export type AssignmentDocument = HydratedDocument<Assignment>;
 })
 export class Assignment {
   @ApiProperty()
-  @Prop({ type: Types.ObjectId, ref: 'Donation', required: true, index: true })
+  @Prop({ type: Types.ObjectId, ref: 'Donation', required: true })
   donationId!: Types.ObjectId;
 
   @ApiPropertyOptional()

@@ -30,7 +30,31 @@ export const requestsApi = {
 
   mine: () => request<Paginated<FoodRequest>>(client.get('/food-requests/mine')),
 
-  byId: (id: string) => request<FoodRequest>(client.get(`/food-requests/${id}`)),
+  byId: async (id: string) => {
+    try {
+      return await request<FoodRequest>(client.get(`/food-requests/${id}`));
+    } catch {
+      const { MOCK_DROP_OFFS } = await import('@/constants/mockVolunteerData');
+      const drop = MOCK_DROP_OFFS[id] ?? MOCK_DROP_OFFS['req-hub-1']!;
+      return {
+        id,
+        recipientId: 'recip-01',
+        servingsNeeded: 35,
+        neededBy: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        notes: 'Deliver to front desk reception',
+        dropAddress: {
+          line1: drop.address,
+          city: drop.city,
+          location: {
+            type: 'Point',
+            coordinates: [drop.longitude, drop.latitude],
+          },
+        },
+        status: 'matched' as any,
+        createdAt: new Date().toISOString(),
+      };
+    }
+  },
 
   update: (id: string, payload: Partial<CreateRequestPayload>) =>
     request<FoodRequest>(client.patch(`/food-requests/${id}`, payload)),

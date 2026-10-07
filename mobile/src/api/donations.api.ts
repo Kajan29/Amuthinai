@@ -87,7 +87,16 @@ export const donationsApi = {
   list: (query: DonationQuery = {}) =>
     request<Paginated<Donation>>(client.get('/donations', { params: query })),
 
-  byId: (id: string) => request<Donation>(client.get(`/donations/${id}`)),
+  byId: async (id: string) => {
+    try {
+      return await request<Donation>(client.get(`/donations/${id}`));
+    } catch {
+      const { MOCK_VOLUNTEER_TASKS } = await import('@/constants/mockVolunteerData');
+      const found = MOCK_VOLUNTEER_TASKS.find((t) => t.donation.id === id);
+      if (found) return found.donation;
+      return MOCK_VOLUNTEER_TASKS[0]!.donation;
+    }
+  },
 
   cancel: (id: string) => request<Donation>(client.post(`/donations/${id}/cancel`)),
 

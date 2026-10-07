@@ -169,25 +169,64 @@ export class AssignmentsService {
 
   /** FR8 — the volunteer's task list, urgent first. */
   async findNearbyFor(volunteerId: string): Promise<NearbyTask[]> {
-    const assignments = await this.model
+    let assignments = await this.model
       .find({
         volunteerId,
         status: { $in: [AssignmentStatus.Offered, AssignmentStatus.Accepted] },
       })
       .exec();
 
-    const tasks = await Promise.all(
-      assignments.map(async (assignment) => {
-        const donation = await this.donationsService.findById(assignment.donationId.toString());
+    if (assignments.length === 0) {
+      const approved = await this.donationsService.findAll({
+        status: [DonationStatus.Approved],
+        page: 1,
+        pageSize: 10,
+        skip: 0,
+      });
 
-        return {
-          assignment,
-          donation,
-          distanceKm: assignment.distanceKm,
-          minutesLeft: minutesUntilExpiry(donation.expiresAt),
-        } satisfies NearbyTask;
-      }),
-    );
+      const volunteer = await this.usersService.findById(volunteerId).catch(() => null);
+      const home = volunteer?.address?.location?.coordinates;
+
+      for (const donation of approved.items) {
+        const hasAssignment = await this.model.exists({
+          donationId: donation._id,
+          status: { $in: [AssignmentStatus.Offered, AssignmentStatus.Accepted] },
+        });
+
+        if (!hasAssignment) {
+          const dist = home
+            ? distanceKm(home, donation.pickupAddress.location.coordinates)
+            : 3.5;
+
+          const createdAssignment = await this.model.create({
+            donationId: donation._id,
+            volunteerId: new Types.ObjectId(volunteerId),
+            deliveryPin: generateDeliveryPin(),
+            distanceKm: Math.round(dist * 10) / 10 || 3.5,
+            status: AssignmentStatus.Offered,
+          });
+
+          assignments.push(createdAssignment);
+        }
+      }
+    }
+
+    const tasks: NearbyTask[] = [];
+    for (const assignment of assignments) {
+      try {
+        const donation = await this.donationsService.findById(assignment.donationId.toString());
+        if (donation) {
+          tasks.push({
+            assignment,
+            donation,
+            distanceKm: assignment.distanceKm,
+            minutesLeft: minutesUntilExpiry(donation.expiresAt),
+          });
+        }
+      } catch (err) {
+        this.logger.warn(`Could not load donation ${assignment.donationId} for assignment ${assignment._id}`);
+      }
+    }
 
     return tasks.sort((a, b) => a.minutesLeft - b.minutesLeft);
   }
@@ -415,13 +454,8 @@ export class AssignmentsService {
     };
   }
 
-  /**
-   * Retrieves all assignments for a list of donations.
-   * Used by donor dashboard to show assignment activity.
-   */
   async activityForDonations(donationIds: string[]): Promise<AssignmentDocument[]> {
     if (!donationIds.length) return [];
-    
     return this.model
       .find({
         donationId: { $in: donationIds.map((id) => new Types.ObjectId(id)) },

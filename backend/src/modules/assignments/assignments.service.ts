@@ -415,6 +415,20 @@ export class AssignmentsService {
     };
   }
 
+  /**
+   * Retrieves all assignments for a list of donations.
+   * Used by donor dashboard to show assignment activity.
+   */
+  async activityForDonations(donationIds: string[]): Promise<AssignmentDocument[]> {
+    if (!donationIds.length) return [];
+    
+    return this.model
+      .find({
+        donationId: { $in: donationIds.map((id) => new Types.ObjectId(id)) },
+      })
+      .exec();
+  }
+
   private async findOwned(id: string, volunteerId: string): Promise<AssignmentDocument> {
     const assignment = await this.findById(id);
     if (assignment.volunteerId.toString() !== volunteerId) {

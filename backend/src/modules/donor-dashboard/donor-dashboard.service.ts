@@ -5,6 +5,7 @@ import { DonationStatus, TERMINAL_DONATION_STATUSES } from 'src/common/enums/don
 import { QuantityUnit } from 'src/common/enums/donation-details.enum';
 import { FoodType } from 'src/common/enums/food-type.enum';
 import { AssignmentsService } from 'src/modules/assignments/assignments.service';
+import type { AssignmentDocument } from 'src/modules/assignments/schemas/assignment.schema';
 import { DonationsService } from 'src/modules/donations/donations.service';
 import type { DonationDocument } from 'src/modules/donations/schemas/donation.schema';
 import { FoodRequestsService } from 'src/modules/food-requests/food-requests.service';
@@ -102,7 +103,7 @@ export class DonorDashboardService {
     ]);
 
     const extraRequestIds = assignments
-      .map((assignment) => assignment.requestId?.toString())
+      .map((assignment: AssignmentDocument) => assignment.requestId?.toString())
       .filter((id): id is string => Boolean(id));
     const linkedRequests = await this.foodRequestsService.findByIds(extraRequestIds);
 
@@ -116,8 +117,8 @@ export class DonorDashboardService {
     }
 
     const volunteerIds = assignments
-      .filter((assignment) => assignment.status === AssignmentStatus.Accepted)
-      .map((assignment) => assignment.volunteerId.toString());
+      .filter((assignment: AssignmentDocument) => assignment.status === AssignmentStatus.Accepted)
+      .map((assignment: AssignmentDocument) => assignment.volunteerId.toString());
     const volunteers = await this.usersService.findManyByIds([...new Set(volunteerIds)]);
     const volunteerName = new Map(
       volunteers.map((volunteer) => [volunteer.id as string, volunteer.name]),
@@ -126,7 +127,7 @@ export class DonorDashboardService {
     const cards = donations.map((donation) =>
       this.toCard(donation, {
         assignments: assignments.filter(
-          (assignment) => assignment.donationId.toString() === (donation.id as string),
+          (assignment: AssignmentDocument) => assignment.donationId.toString() === (donation.id as string),
         ),
         requestByDonation,
         requestById,
@@ -174,7 +175,7 @@ export class DonorDashboardService {
   private toCard(
     donation: DonationDocument,
     context: {
-      assignments: Awaited<ReturnType<AssignmentsService['activityForDonations']>>;
+      assignments: AssignmentDocument[];
       requestByDonation: Map<string, FoodRequestDocument>;
       requestById: Map<string, FoodRequestDocument>;
       volunteerName: Map<string, string>;
@@ -183,10 +184,10 @@ export class DonorDashboardService {
   ): DonorDashboardDonation {
     const id = donation.id as string;
     const accepted = context.assignments.find(
-      (assignment) => assignment.status === AssignmentStatus.Accepted,
+      (assignment: AssignmentDocument) => assignment.status === AssignmentStatus.Accepted,
     );
     const ridersPinged = context.assignments.filter(
-      (assignment) => assignment.status === AssignmentStatus.Offered,
+      (assignment: AssignmentDocument) => assignment.status === AssignmentStatus.Offered,
     ).length;
 
     const moving = IN_MOTION.includes(donation.status);
@@ -205,12 +206,12 @@ export class DonorDashboardService {
       context.requestByDonation.get(id) ??
       (accepted?.requestId ? context.requestById.get(accepted.requestId.toString()) : undefined) ??
       context.assignments
-        .map((assignment) =>
+        .map((assignment: AssignmentDocument) =>
           assignment.requestId
             ? context.requestById.get(assignment.requestId.toString())
             : undefined,
         )
-        .find((item) => item !== undefined);
+        .find((item: FoodRequestDocument | undefined) => item !== undefined);
 
     const delivered = donation.status === DonationStatus.Delivered;
     const minutesLeft = Math.ceil((donation.expiresAt.getTime() - Date.now()) / 60_000);

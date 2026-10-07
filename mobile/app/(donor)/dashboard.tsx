@@ -167,23 +167,58 @@ export default function DonorDashboard() {
             </View>
 
             <View style={styles.needs}>
-              <Text style={styles.needsTitle}>{t('donor.needsTitle')}</Text>
-              <Text style={styles.needsLead}>{t('donor.needsLead')}</Text>
+              <View style={styles.needsHead}>
+                <View style={styles.needsCopy}>
+                  <Text style={styles.needsTitle}>{t('donor.needsTitle')}</Text>
+                  <Text style={styles.needsLead}>{t('donor.needsLead')}</Text>
+                </View>
+                {openRequests.length > 0 ? (
+                  <View style={styles.needsBadge}>
+                    <Text style={styles.needsBadgeText}>{openRequests.length}</Text>
+                  </View>
+                ) : null}
+              </View>
               {openRequests.length === 0 ? (
-                <Text style={styles.needsEmpty}>{t('donor.needsEmpty')}</Text>
+                <View style={styles.needsEmptyCard}>
+                  <View style={styles.needsEmptyIcon}>
+                    <Ionicons name="heart-outline" size={20} color={donorColors.plum} />
+                  </View>
+                  <View style={styles.needsEmptyCopy}>
+                    <Text style={styles.needsEmptyTitle}>{t('donor.needsEmpty')}</Text>
+                    <Text style={styles.needsEmptyHint}>{t('donor.needsEmptyHint')}</Text>
+                  </View>
+                </View>
               ) : (
                 openRequests.map((request) => (
                   <View key={request.id} style={styles.needCard}>
-                    <Text style={styles.needName}>{request.recipientName}</Text>
-                    <Text style={styles.needMeals}>
-                      {t('donor.needsMeals', { count: request.servingsNeeded })}
-                    </Text>
-                    <Text style={styles.needMeta}>{request.locationLabel}</Text>
-                    <Text style={styles.needMeta}>
-                      {t('donor.needsBy', { time: neededByLabel(request.neededBy) })}
-                    </Text>
+                    <View style={styles.needTop}>
+                      <View style={styles.needAvatar}>
+                        <Text style={styles.needAvatarText}>{initialsOf(request.recipientName)}</Text>
+                      </View>
+                      <View style={styles.needCopy}>
+                        <Text style={styles.needName}>{request.recipientName}</Text>
+                        <View style={styles.needRow}>
+                          <Ionicons name="location-outline" size={13} color={donorColors.muted} />
+                          <Text style={styles.needMeta} numberOfLines={1}>
+                            {request.locationLabel}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.mealPill}>
+                        <Text style={styles.mealPillText}>
+                          {t('donor.needsMeals', { count: request.servingsNeeded })}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.needRow}>
+                      <Ionicons name="time-outline" size={13} color={donorColors.orange} />
+                      <Text style={styles.needTime}>
+                        {t('donor.needsBy', { time: neededByLabel(request.neededBy) })}
+                      </Text>
+                    </View>
                     {request.notes ? <Text style={styles.needNotes}>{request.notes}</Text> : null}
                     <Pressable onPress={() => fulfill(request)} style={styles.fulfill}>
+                      <Ionicons name="restaurant-outline" size={15} color="#FFFFFF" />
                       <Text style={styles.fulfillLabel}>{t('donor.fulfillRequest')}</Text>
                     </Pressable>
                   </View>
@@ -322,28 +357,80 @@ const styles = StyleSheet.create({
   list: { paddingBottom: 12, paddingHorizontal: 16 },
   separator: { height: 12 },
   headerBlock: { gap: 16, paddingBottom: 16 },
-  needs: { gap: 8 },
+  needs: { gap: 10 },
+  needsHead: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  needsCopy: { flex: 1, gap: 2 },
   needsTitle: { color: donorColors.ink, fontSize: 16, fontWeight: '800' },
-  needsLead: { color: donorColors.muted, fontSize: 12, marginTop: -4 },
-  needsEmpty: { color: donorColors.muted, fontSize: 13, lineHeight: 18 },
-  needCard: {
+  needsLead: { color: donorColors.muted, fontSize: 12 },
+  needsBadge: {
+    alignItems: 'center',
+    backgroundColor: donorColors.plum,
+    borderRadius: 12,
+    minWidth: 24,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  needsBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  needsEmptyCard: {
+    alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#EFEAE4',
+    borderColor: donorColors.line,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 4,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+  },
+  needsEmptyIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F8E8EE',
+    borderRadius: 18,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  needsEmptyCopy: { flex: 1, gap: 2 },
+  needsEmptyTitle: { color: donorColors.ink, fontSize: 14, fontWeight: '800' },
+  needsEmptyHint: { color: donorColors.muted, fontSize: 12, lineHeight: 17 },
+  needCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: donorColors.line,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
     padding: 12,
   },
+  needTop: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  needAvatar: {
+    alignItems: 'center',
+    backgroundColor: '#F8E8EE',
+    borderRadius: 16,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  needAvatarText: { color: donorColors.plum, fontSize: 12, fontWeight: '800' },
+  needCopy: { flex: 1, gap: 2 },
   needName: { color: donorColors.ink, fontSize: 15, fontWeight: '800' },
-  needMeals: { color: donorColors.plum, fontSize: 13, fontWeight: '700' },
-  needMeta: { color: donorColors.muted, fontSize: 12 },
-  needNotes: { color: donorColors.ink, fontSize: 13, lineHeight: 18 },
+  needRow: { alignItems: 'center', flexDirection: 'row', gap: 4 },
+  mealPill: {
+    backgroundColor: donorColors.orangeSoft,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  mealPillText: { color: '#C47A12', fontSize: 11, fontWeight: '800' },
+  needMeta: { color: donorColors.muted, flex: 1, fontSize: 12 },
+  needTime: { color: donorColors.ink, fontSize: 12, fontWeight: '600' },
+  needNotes: { color: donorColors.muted, fontSize: 12, lineHeight: 17 },
   fulfill: {
     alignItems: 'center',
     backgroundColor: donorColors.plum,
     borderRadius: 12,
-    marginTop: 6,
-    paddingVertical: 10,
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    minHeight: 40,
   },
   fulfillLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   topBar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 },

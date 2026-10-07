@@ -168,10 +168,7 @@ export default function DonorDashboard() {
 
             <View style={styles.needs}>
               <View style={styles.needsHead}>
-                <View style={styles.needsCopy}>
-                  <Text style={styles.needsTitle}>{t('donor.needsTitle')}</Text>
-                  <Text style={styles.needsLead}>{t('donor.needsLead')}</Text>
-                </View>
+                <Text style={styles.needsTitle}>{t('donor.needsTitle')}</Text>
                 {openRequests.length > 0 ? (
                   <View style={styles.needsBadge}>
                     <Text style={styles.needsBadgeText}>{openRequests.length}</Text>
@@ -181,7 +178,7 @@ export default function DonorDashboard() {
               {openRequests.length === 0 ? (
                 <View style={styles.needsEmptyCard}>
                   <View style={styles.needsEmptyIcon}>
-                    <Ionicons name="heart-outline" size={20} color={donorColors.plum} />
+                    <Ionicons name="heart-outline" size={18} color={donorColors.plum} />
                   </View>
                   <View style={styles.needsEmptyCopy}>
                     <Text style={styles.needsEmptyTitle}>{t('donor.needsEmpty')}</Text>
@@ -190,38 +187,32 @@ export default function DonorDashboard() {
                 </View>
               ) : (
                 openRequests.map((request) => (
-                  <View key={request.id} style={styles.needCard}>
-                    <View style={styles.needTop}>
-                      <View style={styles.needAvatar}>
-                        <Text style={styles.needAvatarText}>{initialsOf(request.recipientName)}</Text>
-                      </View>
-                      <View style={styles.needCopy}>
-                        <Text style={styles.needName}>{request.recipientName}</Text>
-                        <View style={styles.needRow}>
-                          <Ionicons name="location-outline" size={13} color={donorColors.muted} />
-                          <Text style={styles.needMeta} numberOfLines={1}>
-                            {request.locationLabel}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.mealPill}>
-                        <Text style={styles.mealPillText}>
-                          {t('donor.needsMeals', { count: request.servingsNeeded })}
-                        </Text>
-                      </View>
+                  <Pressable
+                    key={request.id}
+                    accessibilityRole="button"
+                    onPress={() => fulfill(request)}
+                    style={({ pressed }) => [styles.needCard, pressed && styles.pressed]}
+                  >
+                    <View style={styles.needQty}>
+                      <Text style={styles.needQtyValue}>{request.servingsNeeded}</Text>
+                      <Text style={styles.needQtyLabel}>{t('donor.mealsShort')}</Text>
                     </View>
-                    <View style={styles.needRow}>
-                      <Ionicons name="time-outline" size={13} color={donorColors.orange} />
-                      <Text style={styles.needTime}>
+                    <View style={styles.needCopy}>
+                      <Text style={styles.needName} numberOfLines={1}>
+                        {request.recipientName}
+                      </Text>
+                      <Text style={styles.needMeta} numberOfLines={1}>
+                        {request.locationLabel}
+                      </Text>
+                      <Text style={styles.needTime} numberOfLines={1}>
                         {t('donor.needsBy', { time: neededByLabel(request.neededBy) })}
                       </Text>
                     </View>
-                    {request.notes ? <Text style={styles.needNotes}>{request.notes}</Text> : null}
-                    <Pressable onPress={() => fulfill(request)} style={styles.fulfill}>
-                      <Ionicons name="restaurant-outline" size={15} color="#FFFFFF" />
-                      <Text style={styles.fulfillLabel}>{t('donor.fulfillRequest')}</Text>
-                    </Pressable>
-                  </View>
+                    <View style={styles.helpChip}>
+                      <Text style={styles.helpChipText}>{t('donor.helpNow')}</Text>
+                      <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+                    </View>
+                  </Pressable>
                 ))
               )}
             </View>
@@ -357,11 +348,9 @@ const styles = StyleSheet.create({
   list: { paddingBottom: 12, paddingHorizontal: 16 },
   separator: { height: 12 },
   headerBlock: { gap: 16, paddingBottom: 16 },
-  needs: { gap: 10 },
+  needs: { gap: 8 },
   needsHead: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  needsCopy: { flex: 1, gap: 2 },
   needsTitle: { color: donorColors.ink, fontSize: 16, fontWeight: '800' },
-  needsLead: { color: donorColors.muted, fontSize: 12 },
   needsBadge: {
     alignItems: 'center',
     backgroundColor: donorColors.plum,
@@ -374,34 +363,13 @@ const styles = StyleSheet.create({
   needsEmptyCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: donorColors.line,
     borderRadius: 16,
-    borderWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   needsEmptyIcon: {
-    alignItems: 'center',
-    backgroundColor: '#F8E8EE',
-    borderRadius: 18,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  needsEmptyCopy: { flex: 1, gap: 2 },
-  needsEmptyTitle: { color: donorColors.ink, fontSize: 14, fontWeight: '800' },
-  needsEmptyHint: { color: donorColors.muted, fontSize: 12, lineHeight: 17 },
-  needCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: donorColors.line,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 8,
-    padding: 12,
-  },
-  needTop: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  needAvatar: {
     alignItems: 'center',
     backgroundColor: '#F8E8EE',
     borderRadius: 16,
@@ -409,30 +377,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 36,
   },
-  needAvatarText: { color: donorColors.plum, fontSize: 12, fontWeight: '800' },
-  needCopy: { flex: 1, gap: 2 },
-  needName: { color: donorColors.ink, fontSize: 15, fontWeight: '800' },
-  needRow: { alignItems: 'center', flexDirection: 'row', gap: 4 },
-  mealPill: {
-    backgroundColor: donorColors.orangeSoft,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  needsEmptyCopy: { flex: 1, gap: 2 },
+  needsEmptyTitle: { color: donorColors.ink, fontSize: 14, fontWeight: '800' },
+  needsEmptyHint: { color: donorColors.muted, fontSize: 12, lineHeight: 16 },
+  needCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 10,
   },
-  mealPillText: { color: '#C47A12', fontSize: 11, fontWeight: '800' },
-  needMeta: { color: donorColors.muted, flex: 1, fontSize: 12 },
-  needTime: { color: donorColors.ink, fontSize: 12, fontWeight: '600' },
-  needNotes: { color: donorColors.muted, fontSize: 12, lineHeight: 17 },
-  fulfill: {
+  needQty: {
     alignItems: 'center',
     backgroundColor: donorColors.plum,
-    borderRadius: 12,
-    flexDirection: 'row',
-    gap: 6,
+    borderRadius: 14,
+    height: 64,
     justifyContent: 'center',
-    minHeight: 40,
+    width: 64,
   },
-  fulfillLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  needQtyValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
+  needQtyLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 10, fontWeight: '700' },
+  needCopy: { flex: 1, gap: 2 },
+  needName: { color: donorColors.ink, fontSize: 15, fontWeight: '800' },
+  needMeta: { color: donorColors.muted, fontSize: 12 },
+  needTime: { color: donorColors.orange, fontSize: 12, fontWeight: '700' },
+  helpChip: {
+    alignItems: 'center',
+    backgroundColor: donorColors.plum,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  helpChipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   topBar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 },
   iconButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
   brand: {

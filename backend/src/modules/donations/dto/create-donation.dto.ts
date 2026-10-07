@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsMongoId,
   IsOptional,
   IsString,
   IsUrl,
@@ -117,4 +118,9 @@ export class CreateDonationDto {
   @ValidateNested()
   @Type(() => AddressDto)
   pickupAddress!: AddressDto;
+
+  @ApiPropertyOptional({ description: 'Open recipient request this donation fulfills' })
+  @IsOptional()
+  @IsMongoId()
+  foodRequestId?: string;
 }

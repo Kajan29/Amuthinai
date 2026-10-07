@@ -13,14 +13,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { DonorOpenRequest } from '@/api/donations.api';
 import { DonorDonationCard } from '@/components/donor/DonorDonationCard';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { EmptyState } from '@/components/ui';
 import { IN_TRANSIT_STATUSES, TERMINAL_STATUSES } from '@/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { useDonorDashboard } from '@/hooks/useDonorDashboard';
-import { donorColors } from '@/theme/donor';
+import { useDonationDraft } from '@/store/donationDraft.store';
 import { spacing } from '@/theme';
+import { donorColors } from '@/theme/donor';
 
 type Tab = 'all' | 'inTransit' | 'history';
 
@@ -35,6 +37,7 @@ export default function DonorDashboard() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const dashboard = useDonorDashboard();
+  const updateDraft = useDonationDraft((state) => state.update);
   const [tab, setTab] = useState<Tab>('all');
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -56,11 +59,22 @@ export default function DonorDashboard() {
 
   const donor = dashboard.data?.donor;
   const stats = dashboard.data?.stats;
+  const openRequests = dashboard.data?.openRequests ?? [];
   const firstName = donor?.firstName ?? user?.name.split(' ')[0] ?? '';
   const initials = initialsOf(user?.name ?? firstName);
 
   function openDonation(id: string) {
     router.push(`/(donor)/donation/${id}`);
+  }
+
+  function postWithoutRequest() {
+    updateDraft({ foodRequestId: undefined });
+    router.push('/(donor)/post-donation/step1-food');
+  }
+
+  function fulfill(request: DonorOpenRequest) {
+    updateDraft({ foodRequestId: request.id, servings: request.servingsNeeded });
+    router.push('/(donor)/post-donation/step1-food');
   }
 
   if (dashboard.isPending && !dashboard.data) {
@@ -152,6 +166,31 @@ export default function DonorDashboard() {
               />
             </View>
 
+            <View style={styles.needs}>
+              <Text style={styles.needsTitle}>{t('donor.needsTitle')}</Text>
+              <Text style={styles.needsLead}>{t('donor.needsLead')}</Text>
+              {openRequests.length === 0 ? (
+                <Text style={styles.needsEmpty}>{t('donor.needsEmpty')}</Text>
+              ) : (
+                openRequests.map((request) => (
+                  <View key={request.id} style={styles.needCard}>
+                    <Text style={styles.needName}>{request.recipientName}</Text>
+                    <Text style={styles.needMeals}>
+                      {t('donor.needsMeals', { count: request.servingsNeeded })}
+                    </Text>
+                    <Text style={styles.needMeta}>{request.locationLabel}</Text>
+                    <Text style={styles.needMeta}>
+                      {t('donor.needsBy', { time: neededByLabel(request.neededBy) })}
+                    </Text>
+                    {request.notes ? <Text style={styles.needNotes}>{request.notes}</Text> : null}
+                    <Pressable onPress={() => fulfill(request)} style={styles.fulfill}>
+                      <Text style={styles.fulfillLabel}>{t('donor.fulfillRequest')}</Text>
+                    </Pressable>
+                  </View>
+                ))
+              )}
+            </View>
+
             <View style={styles.tabs}>
               {TABS.map(({ key, labelKey }) => {
                 const active = tab === key;
@@ -180,7 +219,7 @@ export default function DonorDashboard() {
             title={t('common.empty')}
             description={t('donor.emptyDonations')}
             actionLabel={t('donor.postSurplus')}
-            onAction={() => router.push('/(donor)/post-donation/step1-food')}
+            onAction={postWithoutRequest}
           />
         }
         renderItem={({ item }) => (
@@ -191,7 +230,7 @@ export default function DonorDashboard() {
       <View style={styles.ctaWrap}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.push('/(donor)/post-donation/step1-food')}
+          onPress={postWithoutRequest}
           style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
         >
           <View style={styles.plus}>
@@ -255,6 +294,17 @@ function Stat({
   );
 }
 
+function neededByLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   const letters = parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase());
@@ -272,6 +322,30 @@ const styles = StyleSheet.create({
   list: { paddingBottom: 12, paddingHorizontal: 16 },
   separator: { height: 12 },
   headerBlock: { gap: 16, paddingBottom: 16 },
+  needs: { gap: 8 },
+  needsTitle: { color: donorColors.ink, fontSize: 16, fontWeight: '800' },
+  needsLead: { color: donorColors.muted, fontSize: 12, marginTop: -4 },
+  needsEmpty: { color: donorColors.muted, fontSize: 13, lineHeight: 18 },
+  needCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EFEAE4',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 4,
+    padding: 12,
+  },
+  needName: { color: donorColors.ink, fontSize: 15, fontWeight: '800' },
+  needMeals: { color: donorColors.plum, fontSize: 13, fontWeight: '700' },
+  needMeta: { color: donorColors.muted, fontSize: 12 },
+  needNotes: { color: donorColors.ink, fontSize: 13, lineHeight: 18 },
+  fulfill: {
+    alignItems: 'center',
+    backgroundColor: donorColors.plum,
+    borderRadius: 12,
+    marginTop: 6,
+    paddingVertical: 10,
+  },
+  fulfillLabel: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   topBar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 },
   iconButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
   brand: {

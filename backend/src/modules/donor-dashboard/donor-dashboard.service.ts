@@ -62,6 +62,15 @@ export interface DonorDashboardDonation {
   karmaEarned: number | null;
 }
 
+export interface DonorOpenRequest {
+  id: string;
+  recipientName: string;
+  servingsNeeded: number;
+  neededBy: string;
+  notes: string | null;
+  locationLabel: string;
+}
+
 export interface DonorDashboard {
   donor: {
     firstName: string;
@@ -76,6 +85,7 @@ export interface DonorDashboard {
     karmaPoints: number;
   };
   donations: DonorDashboardDonation[];
+  openRequests: DonorOpenRequest[];
 }
 
 @Injectable()
@@ -89,10 +99,11 @@ export class DonorDashboardService {
   ) {}
 
   async forDonor(donorId: string): Promise<DonorDashboard> {
-    const [user, donations, karmaPoints] = await Promise.all([
+    const [user, donations, karmaPoints, openRequests] = await Promise.all([
       this.usersService.findById(donorId),
       this.donationsService.listForDonor(donorId),
       this.pointsService.balanceOf(donorId),
+      this.foodRequestsService.listOpenForDonors(),
     ]);
 
     const donationIds = donations.map((donation) => donation.id as string);
@@ -119,15 +130,23 @@ export class DonorDashboardService {
     const volunteerIds = assignments
       .filter((assignment: AssignmentDocument) => assignment.status === AssignmentStatus.Accepted)
       .map((assignment: AssignmentDocument) => assignment.volunteerId.toString());
-    const volunteers = await this.usersService.findManyByIds([...new Set(volunteerIds)]);
+    const recipientIds = openRequests.map((request) => request.recipientId.toString());
+    const [volunteers, recipients] = await Promise.all([
+      this.usersService.findManyByIds([...new Set(volunteerIds)]),
+      this.usersService.findManyByIds([...new Set(recipientIds)]),
+    ]);
     const volunteerName = new Map(
       volunteers.map((volunteer) => [volunteer.id as string, volunteer.name]),
+    );
+    const recipientName = new Map(
+      recipients.map((recipient) => [recipient.id as string, recipient.name]),
     );
 
     const cards = donations.map((donation) =>
       this.toCard(donation, {
         assignments: assignments.filter(
-          (assignment: AssignmentDocument) => assignment.donationId.toString() === (donation.id as string),
+          (assignment: AssignmentDocument) =>
+            assignment.donationId.toString() === (donation.id as string),
         ),
         requestByDonation,
         requestById,
@@ -169,6 +188,19 @@ export class DonorDashboardService {
         karmaPoints,
       },
       donations: cards,
+      openRequests: openRequests.map((request) => {
+        const name = recipientName.get(request.recipientId.toString());
+        return {
+          id: request.id as string,
+          recipientName: name ? firstNameOf(name) : 'Recipient',
+          servingsNeeded: request.servingsNeeded,
+          neededBy: request.neededBy.toISOString(),
+          notes: request.notes ?? null,
+          locationLabel: [request.dropAddress?.line1, request.dropAddress?.city]
+            .filter(Boolean)
+            .join(', '),
+        };
+      }),
     };
   }
 

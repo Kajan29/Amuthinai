@@ -107,6 +107,11 @@ export class Donation {
   @Prop({ type: AddressSchema, required: true })
   pickupAddress!: Address;
 
+  /** Set when this donation answers a recipient's open request. */
+  @ApiPropertyOptional()
+  @Prop({ type: Types.ObjectId, ref: 'FoodRequest' })
+  foodRequestId?: Types.ObjectId;
+
   @ApiProperty({ enum: DonationStatus })
   @Prop({
     type: String,

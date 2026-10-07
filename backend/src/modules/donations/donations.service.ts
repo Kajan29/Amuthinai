@@ -13,9 +13,11 @@ import {
   TERMINAL_DONATION_STATUSES,
   canTransition,
 } from 'src/common/enums/donation-status.enum';
+import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { clampSafeHours, expiresAt } from 'src/common/utils/freshness.util';
 import { nearSphere } from 'src/common/utils/geo.util';
+import { FoodRequest } from 'src/modules/food-requests/schemas/food-request.schema';
 import { StatusHistoryService } from 'src/modules/status-history/status-history.service';
 
 import { CreateDonationDto } from './dto/create-donation.dto';
@@ -32,6 +34,7 @@ export interface DonorStats {
 export class DonationsService {
   constructor(
     @InjectModel(Donation.name) private readonly donationModel: Model<Donation>,
+    @InjectModel(FoodRequest.name) private readonly requestModel: Model<FoodRequest>,
     private readonly statusHistory: StatusHistoryService,
   ) {}
 
@@ -56,8 +59,18 @@ export class DonationsService {
       safeForHours,
       expiresAt: expiry,
       photoUrls: dto.photoUrls ?? [],
+      foodRequestId: dto.foodRequestId ? new Types.ObjectId(dto.foodRequestId) : undefined,
       status: DonationStatus.PendingApproval,
     });
+
+    if (dto.foodRequestId) {
+      try {
+        await this.claimRequest(dto.foodRequestId, donation.id as string);
+      } catch (error) {
+        await this.donationModel.deleteOne({ _id: donation._id }).exec();
+        throw error;
+      }
+    }
 
     await this.statusHistory.append({
       donationId: donation.id as string,
@@ -167,7 +180,56 @@ export class DonationsService {
       note: actor.note,
     });
 
+    if (donation.foodRequestId && next === DonationStatus.Delivered) {
+      await this.requestModel
+        .updateOne({ _id: donation.foodRequestId }, { status: RequestStatus.Fulfilled })
+        .exec();
+    }
+
+    if (
+      donation.foodRequestId &&
+      (next === DonationStatus.Cancelled ||
+        next === DonationStatus.Rejected ||
+        next === DonationStatus.Expired)
+    ) {
+      await this.releaseRequest(donation.id as string);
+    }
+
     return donation;
+  }
+
+  /** Take an open recipient request so a second donor cannot answer the same need. */
+  private async claimRequest(requestId: string, donationId: string): Promise<void> {
+    const claimed = await this.requestModel
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(requestId),
+          status: RequestStatus.Open,
+          neededBy: { $gt: new Date() },
+        },
+        {
+          status: RequestStatus.Matched,
+          matchedDonationId: new Types.ObjectId(donationId),
+        },
+      )
+      .exec();
+
+    if (!claimed) {
+      throw new BadRequestException('This request is no longer open');
+    }
+  }
+
+  /** Put a request back in the donor list when its donation does not go through. */
+  private async releaseRequest(donationId: string): Promise<void> {
+    await this.requestModel
+      .updateOne(
+        {
+          matchedDonationId: new Types.ObjectId(donationId),
+          status: RequestStatus.Matched,
+        },
+        { $set: { status: RequestStatus.Open }, $unset: { matchedDonationId: 1 } },
+      )
+      .exec();
   }
 
   timeline(donationId: string) {

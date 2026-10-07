@@ -142,6 +142,15 @@ export default function Step1Food() {
           <Step n={3} label={t('donor.stepReview')} />
         </View>
 
+        {draft.foodRequestId ? (
+          <View style={styles.requestBanner}>
+            <Ionicons name="people" size={16} color={donorColors.plum} />
+            <Text style={styles.requestBannerText}>
+              {t('donor.fulfillingRequest', { count: servings })}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>{t('donor.selectCategory')}</Text>
           <Text style={styles.sectionHint}>{t('donor.pickBestFit')}</Text>
@@ -389,6 +398,15 @@ const styles = StyleSheet.create({
   stepLabel: { color: donorColors.muted, fontSize: 11, textAlign: 'center' },
   stepLabelActive: { color: donorColors.ink, fontWeight: '700' },
   stepLine: { backgroundColor: '#E4DDD6', height: 1, marginTop: 14, width: 28 },
+  requestBanner: {
+    alignItems: 'center',
+    backgroundColor: '#F8E8EE',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 8,
+    padding: 12,
+  },
+  requestBannerText: { color: donorColors.plum, flex: 1, fontSize: 13, fontWeight: '700' },
   sectionHead: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   sectionTitle: {
     color: donorColors.ink,

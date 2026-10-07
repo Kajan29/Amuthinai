@@ -63,7 +63,12 @@ export default function PostDonationSuccess() {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: Math.max(insets.top + 8, 16), paddingBottom: Math.max(insets.bottom + 24, 36) },
+        ]}
+      >
         <View style={styles.topBar}>
           <Pressable accessibilityRole="button" onPress={goHome} style={styles.iconBtn}>
             <Ionicons name="close" size={22} color={donorColors.ink} />
@@ -277,7 +282,7 @@ const styles = StyleSheet.create({
   brand: { color: donorColors.ink, fontSize: 16, fontWeight: '800' },
   brandAccent: { color: donorColors.orange },
   steps: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'center' },
-  step: { alignItems: 'center', gap: 6, width: 78 },
+  step: { alignItems: 'center', flex: 1, gap: 6, maxWidth: 90 },
   stepCircle: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -293,7 +298,7 @@ const styles = StyleSheet.create({
   stepNumActive: { color: '#FFFFFF' },
   stepLabel: { color: donorColors.muted, fontSize: 11 },
   stepLabelActive: { color: donorColors.ink, fontWeight: '700' },
-  stepLine: { backgroundColor: '#E4DDD6', height: 2, marginTop: 13, width: 24 },
+  stepLine: { backgroundColor: '#E4DDD6', flex: 1, height: 2, marginTop: 13, maxWidth: 36, minWidth: 12 },
   stepLineDone: { backgroundColor: donorColors.plum },
   sealWrap: { alignItems: 'center', marginTop: 8 },
   seal: {

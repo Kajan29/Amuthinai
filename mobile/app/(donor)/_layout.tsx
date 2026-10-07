@@ -20,8 +20,8 @@ export default function DonorLayout() {
           tabBarStyle: {
             backgroundColor: '#FFFFFF',
             borderTopColor: donorColors.line,
-            height: 56 + insets.bottom,
-            paddingBottom: Math.max(insets.bottom, 6),
+            height: 56 + Math.max(insets.bottom, 8),
+            paddingBottom: Math.max(insets.bottom, 8),
             paddingTop: 6,
           },
           tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
@@ -82,7 +82,12 @@ export default function DonorLayout() {
         />
         <Tabs.Screen
           name="donation/[id]"
-          options={{ href: null, headerShown: true, title: t('donor.navDonations') }}
+          options={{
+            href: null,
+            headerShown: true,
+            title: t('donor.navDonations'),
+            tabBarStyle: { display: 'none' },
+          }}
         />
       </Tabs>
     </RoleGuard>

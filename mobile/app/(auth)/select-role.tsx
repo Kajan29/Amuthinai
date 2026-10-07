@@ -44,7 +44,7 @@ export default function SelectRole() {
   }
 
   return (
-    <Screen>
+    <Screen safeTop>
       <Text style={styles.title}>{t('auth.selectRole')}</Text>
 
       {SELECTABLE_ROLES.map(({ role, labelKey, description }) => (

@@ -25,7 +25,7 @@ export const cloudinaryService = {
   async uploadImage(
     imageUri: string,
     folder: string = 'amuthinai',
-    onProgress?: (progress: CloudinaryUploadProgress) => void
+    _onProgress?: (progress: CloudinaryUploadProgress) => void
   ): Promise<CloudinaryUploadResult> {
     try {
       if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
@@ -170,19 +170,19 @@ export const cloudinaryService = {
    */
   extractPublicId(url: string): string | null {
     const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
-    return match ? match[1] : null;
+    return match && match[1] ? match[1] : null;
   },
 
   /**
    * Validate image before upload
    */
-  validateImage(imageUri: string, maxSizeMB: number = 8): boolean {
+  validateImage(imageUri: string, _maxSizeMB: number = 8): boolean {
     // Basic validation - actual size check would need FileSystem API
     const validExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
-    const hasValidExtension = validExtensions.some(ext => 
-      imageUri.toLowerCase().endsWith(ext)
+    const hasValidExtension = validExtensions.some((ext) =>
+      imageUri.toLowerCase().endsWith(ext),
     );
-    
+
     return hasValidExtension;
   },
 };
@@ -190,7 +190,7 @@ export const cloudinaryService = {
 /**
  * Helper function to compress image before upload (if needed)
  */
-export async function compressImage(uri: string, quality: number = 0.8): Promise<string> {
+export async function compressImage(uri: string, _quality: number = 0.8): Promise<string> {
   // You can use expo-image-manipulator for compression if needed
   // For now, return the original URI
   return uri;

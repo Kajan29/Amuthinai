@@ -41,7 +41,13 @@ export default function VolunteerKarma() {
   const deliveryCount = Math.floor(balance / 25); // estimate
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.scrollContent}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={[
+        styles.scrollContent,
+        { paddingBottom: Math.max(insets.bottom + 80, 100) },
+      ]}
+    >
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>My Impact</Text>
@@ -407,7 +413,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   achievementCard: {
-    width: '30%',
+    flexBasis: '29%',
+    flexGrow: 1,
     backgroundColor: volunteerColors.orangeSoft,
     borderRadius: radius.md,
     padding: 10,

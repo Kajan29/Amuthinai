@@ -1,6 +1,5 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { 
   ImageBackground, 
   Pressable, 
@@ -19,10 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Button } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
 import { HOME_ROUTE } from '@/store/auth.store';
-import { colors, spacing, typography, radius } from '@/theme';
 import { logo } from '@/constants';
 
 // Direct import of login background
@@ -31,14 +28,12 @@ const loginBackground = require('../../assets/images/login.png');
 // Get screen dimensions
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Responsive sizing helper
+// Responsive sizing helper for styles
 const isSmallScreen = SCREEN_HEIGHT < 700;
 const isMediumScreen = SCREEN_HEIGHT >= 700 && SCREEN_HEIGHT < 800;
-const isLargeScreen = SCREEN_HEIGHT >= 800;
 
 /** FR1 — email and password login with Google sign-in option. */
 export default function Login() {
-  const { t } = useTranslation();
   const { login, googleAuth } = useAuth();
   const { height: windowHeight } = useWindowDimensions();
 

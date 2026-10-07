@@ -18,7 +18,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, spacing } from '@/theme';
 import { logo } from '@/constants';
 import { useAuth } from '@/hooks/useAuth';
 

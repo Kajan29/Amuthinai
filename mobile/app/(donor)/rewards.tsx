@@ -16,7 +16,7 @@ export default function Rewards() {
   const entries = summary.data?.entries ?? [];
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={60}>
       <LanguageSwitcher />
 
       <Card>

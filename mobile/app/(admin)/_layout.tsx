@@ -1,12 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RoleGuard } from '@/components/RoleGuard';
 import { colors } from '@/theme';
 
 export default function AdminLayout() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
 
   return (
     <RoleGuard role="admin">
@@ -14,6 +16,14 @@ export default function AdminLayout() {
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
+          tabBarStyle: {
+            backgroundColor: colors.background,
+            borderTopColor: colors.border,
+            height: 56 + Math.max(insets.bottom, 8),
+            paddingTop: 6,
+            paddingBottom: Math.max(insets.bottom, 8),
+          },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         }}
       >
         <Tabs.Screen
@@ -50,7 +60,10 @@ export default function AdminLayout() {
           }}
         />
 
-        <Tabs.Screen name="assign/[donationId]" options={{ href: null }} />
+        <Tabs.Screen
+          name="assign/[donationId]"
+          options={{ href: null, tabBarStyle: { display: 'none' } }}
+        />
       </Tabs>
     </RoleGuard>
   );

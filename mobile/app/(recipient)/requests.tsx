@@ -18,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { queryClient } from '@/api/queryClient';
 import { requestsApi } from '@/api/requests.api';
@@ -40,6 +40,7 @@ const CONCERN_REASONS = [
 ];
 
 export default function RecipientRequestsScreen() {
+  const insets = useSafeAreaInsets();
   // 1. Separate into Current Requests and Past Requests
   const [activeTab, setActiveTab] = useState<RequestTab>('current');
 
@@ -327,7 +328,7 @@ export default function RecipientRequestsScreen() {
 
       {/* Floating Action Button */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: Math.max(insets.bottom + 20, 24) }]}
         onPress={() => router.push('/(recipient)/request/step1-location')}
         activeOpacity={0.85}
       >
@@ -338,7 +339,7 @@ export default function RecipientRequestsScreen() {
       {/* POPUP 1: Full Request Details Modal */}
       <Modal visible={selectedRequest !== null} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.requestDetailsCard}>
+          <View style={[styles.requestDetailsCard, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <View>
@@ -836,7 +837,7 @@ export default function RecipientRequestsScreen() {
       {/* Edit Request Modal */}
       <Modal visible={editingRequest !== null} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.editModalContent}>
+          <View style={[styles.editModalContent, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Food Request</Text>
               <TouchableOpacity onPress={() => setEditingRequest(null)}>

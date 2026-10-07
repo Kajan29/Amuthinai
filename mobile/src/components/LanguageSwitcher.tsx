@@ -30,7 +30,7 @@ export function LanguageSwitcher() {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: spacing.xs },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
     borderColor: colors.border,
     borderRadius: radius.pill,

@@ -11,6 +11,7 @@ export default function RequestSuccess() {
 
   return (
     <Screen
+      safeTop
       footer={
         <Button
           label={t('recipient.dashboard')}

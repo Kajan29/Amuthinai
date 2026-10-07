@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
-    paddingBottom: 60,
+    paddingBottom: 100,
   },
   userCard: {
     backgroundColor: '#FFFFFF',

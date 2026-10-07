@@ -23,7 +23,7 @@ export default function AdminDashboard() {
   const peak = Math.max(...cells.map((cell) => cell.servingsNeeded), 1);
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={60}>
       <View style={styles.headerRow}>
         <Text style={styles.heading}>{t('admin.dashboard')}</Text>
         <View style={styles.headerRight}>
@@ -105,7 +105,13 @@ const KPI_COLORS = {
 } as const;
 
 const styles = StyleSheet.create({
-  headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  headerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    justifyContent: 'space-between',
+  },
   headerRight: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   logoutButton: { padding: spacing.xs },
   heading: { ...typography.h3, color: colors.text },

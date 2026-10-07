@@ -23,7 +23,7 @@ export default function VerifyVolunteers() {
   const items = volunteers.data?.items ?? [];
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={60}>
       {items.length === 0 ? (
         <EmptyState title="No volunteers waiting" description="Every volunteer is verified." />
       ) : (

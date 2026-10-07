@@ -26,7 +26,13 @@ export default function DonorDonations() {
   return (
     <FlatList
       style={styles.root}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: Math.max(insets.top + 16, 24),
+          paddingBottom: Math.max(insets.bottom + 80, 96),
+        },
+      ]}
       data={items}
       keyExtractor={(donation) => donation.id}
       refreshing={dashboard.isFetching}

@@ -87,7 +87,7 @@ export default function AssignmentDetail() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* ─── SCREEN 2: TOP HEADER ─── */}

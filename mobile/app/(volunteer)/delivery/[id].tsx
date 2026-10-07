@@ -75,7 +75,7 @@ export default function ConfirmDelivery() {
   const shelterAddress = 'Chundikuli, Jaffna (Shelter Dropoff Bay B)';
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* ─── SCREEN 4: TOP HEADER BAR ─── */}

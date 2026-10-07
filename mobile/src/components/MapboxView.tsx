@@ -1,3 +1,4 @@
+// @ts-ignore - optional native mapbox module
 import Mapbox from '@rnmapbox/maps';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View, Platform, Text } from 'react-native';
@@ -132,7 +133,7 @@ const styles = StyleSheet.create({
   fallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
   },
   fallbackText: {
     fontSize: 16,

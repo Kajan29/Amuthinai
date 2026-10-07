@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -12,7 +12,17 @@ export default function DonorProfile() {
   const { user, logout } = useAuth();
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 16 }]}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: Math.max(insets.top + 16, 24),
+          paddingBottom: Math.max(insets.bottom + 80, 96),
+        },
+      ]}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.title}>{t('donor.navProfile')}</Text>
 
       <View style={styles.card}>
@@ -33,7 +43,7 @@ export default function DonorProfile() {
       <Pressable accessibilityRole="button" onPress={() => void logout()} style={styles.signOut}>
         <Text style={styles.signOutText}>{t('common.signOut')}</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -47,7 +57,8 @@ function initialsOf(name: string): string {
 }
 
 const styles = StyleSheet.create({
-  root: { backgroundColor: donorColors.background, flex: 1, gap: 16, paddingHorizontal: 16 },
+  root: { backgroundColor: donorColors.background, flex: 1 },
+  content: { gap: 16, paddingHorizontal: 16 },
   title: { color: donorColors.ink, fontSize: 26, fontWeight: '800' },
   card: {
     alignItems: 'center',

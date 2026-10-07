@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
-    paddingBottom: 60,
+    paddingBottom: 90,
   },
   heroCard: {
     backgroundColor: '#3B121E',
@@ -147,7 +147,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   metricCard: {
-    width: '48%',
+    flexBasis: '47%',
+    flexGrow: 1,
     padding: spacing.md,
     borderRadius: radius.lg,
     backgroundColor: '#FFFFFF',

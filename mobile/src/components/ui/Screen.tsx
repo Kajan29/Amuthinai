@@ -9,18 +9,51 @@ interface ScreenProps {
   /** Set false for screens that own their own scrolling, such as lists and maps. */
   scroll?: boolean;
   footer?: ReactNode;
+  /** Add top inset padding for screens without native headers */
+  safeTop?: boolean;
+  /** Additional bottom padding (e.g. For tab bar clearance) */
+  extraBottomPadding?: number;
 }
 
 /** Shared page frame: safe-area padding, background and an optional pinned footer. */
-export function Screen({ children, scroll = true, footer }: ScreenProps) {
+export function Screen({
+  children,
+  scroll = true,
+  footer,
+  safeTop = false,
+  extraBottomPadding = 0,
+}: ScreenProps) {
   const insets = useSafeAreaInsets();
   const Container = scroll ? ScrollView : View;
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, safeTop && { paddingTop: insets.top }]}>
       <Container
-        style={styles.content}
-        contentContainerStyle={scroll ? styles.scrollContent : undefined}
+        style={[
+          styles.content,
+          !scroll && [
+            styles.nonScrollContent,
+            !footer && {
+              paddingBottom: Math.max(
+                insets.bottom + spacing.lg + extraBottomPadding,
+                spacing.xl + extraBottomPadding,
+              ),
+            },
+          ],
+        ]}
+        contentContainerStyle={
+          scroll
+            ? [
+                styles.scrollContent,
+                !footer && {
+                  paddingBottom: Math.max(
+                    insets.bottom + spacing.lg + extraBottomPadding,
+                    spacing.xl + extraBottomPadding,
+                  ),
+                },
+              ]
+            : undefined
+        }
       >
         {children}
       </Container>
@@ -36,6 +69,7 @@ export function Screen({ children, scroll = true, footer }: ScreenProps) {
 const styles = StyleSheet.create({
   root: { backgroundColor: colors.surface, flex: 1 },
   content: { flex: 1 },
+  nonScrollContent: { gap: spacing.lg, padding: spacing.lg },
   scrollContent: { gap: spacing.lg, padding: spacing.lg },
   footer: {
     backgroundColor: colors.background,

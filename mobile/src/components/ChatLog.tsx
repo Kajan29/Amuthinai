@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -35,7 +35,11 @@ export function ChatLog({ messages, currentUserId, onSend }: ChatLogProps) {
   }
 
   return (
-    <View style={styles.wrapper}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={styles.wrapper}
+    >
       <FlatList
         data={messages}
         keyExtractor={(message) => message.id}
@@ -65,7 +69,7 @@ export function ChatLog({ messages, currentUserId, onSend }: ChatLogProps) {
         />
         <Button label={t('common.submit')} onPress={handleSend} loading={isSending} />
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

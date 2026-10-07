@@ -7,6 +7,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -152,7 +153,11 @@ export default function DonorDashboard() {
               />
             </View>
 
-            <View style={styles.tabs}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabs}
+            >
               {TABS.map(({ key, labelKey }) => {
                 const active = tab === key;
                 return (
@@ -172,7 +177,7 @@ export default function DonorDashboard() {
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
         }
         ListEmptyComponent={
@@ -306,7 +311,7 @@ const styles = StyleSheet.create({
     width: 32,
   },
   avatarText: { color: donorColors.plum, fontSize: 12, fontWeight: '800' },
-  greetingRow: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
+  greetingRow: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' },
   greetingCopy: { flex: 1, gap: 4 },
   greeting: { color: donorColors.ink, fontSize: 26, fontWeight: '800' },
   subline: { color: donorColors.muted, fontSize: 13 },

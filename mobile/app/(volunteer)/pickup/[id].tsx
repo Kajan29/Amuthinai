@@ -78,7 +78,7 @@ export default function ConfirmPickup() {
   const pickupAddressLine = donation.data?.pickupAddress?.city || 'Block 4B, South Gate Entrance, Jaffna';
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* ─── SCREEN 3: TOP HEADER BAR ─── */}

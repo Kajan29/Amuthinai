@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import {
-  Dimensions,
   ImageBackground,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -10,18 +9,17 @@ import {
   Text,
   View,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { ImageSourcePropType } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, radius, spacing } from '@/theme';
+import { spacing } from '@/theme';
 import { useOnboardingStore } from '@/store/onboarding.store';
 import { onboardingImages, logo } from '@/constants';
-
-const { width, height } = Dimensions.get('window');
 
 interface Slide {
   icon: string;
@@ -62,9 +60,14 @@ const SLIDES: Slide[] = [
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
   const markOnboardingSeen = useOnboardingStore((state) => state.markOnboardingSeen);
+
+  const isSmallScreen = height < 700;
+  const currentSlide = SLIDES[index] ?? SLIDES[0]!;
 
   const goToLogin = async () => {
     await markOnboardingSeen();
@@ -114,7 +117,7 @@ export default function OnboardingScreen() {
               locations={[0, 0.5, 1]}
               style={styles.overlay}
             />
-            
+
             {/* Decorative leaf elements */}
             <View style={styles.decorativeLeaves}>
               <Text style={styles.leafTopLeft}>🍃</Text>
@@ -131,7 +134,7 @@ export default function OnboardingScreen() {
           <Pressable
             onPress={goToLogin}
             accessibilityRole="button"
-            style={styles.skipBtnTop}
+            style={[styles.skipBtnTop, { top: Math.max(insets.top + 8, 20) }]}
           >
             <Text style={styles.skipTextTop}>Skip</Text>
             <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.9)" />
@@ -139,38 +142,87 @@ export default function OnboardingScreen() {
         )}
 
         {/* Logo at the top center */}
-        <View style={styles.logoContainer}>
-          <Image 
-            source={logo} 
-            style={styles.logo} 
+        <View
+          style={[
+            styles.logoContainer,
+            {
+              paddingTop: isSmallScreen ? Math.max(insets.top + 16, 36) : Math.max(insets.top + 32, 60),
+              paddingBottom: isSmallScreen ? 10 : 20,
+            },
+          ]}
+        >
+          <Image
+            source={logo}
+            style={[
+              styles.logo,
+              isSmallScreen && { width: 220, height: 75 },
+            ]}
             resizeMode="contain"
           />
         </View>
 
         {/* Main content area */}
-        <View style={styles.center} pointerEvents="none">
+        <View
+          style={[
+            styles.center,
+            isSmallScreen && { paddingBottom: 20 },
+          ]}
+          pointerEvents="none"
+        >
           <View style={styles.contentContainer}>
             {/* Icon */}
             <View style={styles.iconContainer}>
-              <Text style={styles.icon}>{SLIDES[index].icon}</Text>
+              <Text style={[styles.icon, isSmallScreen && { fontSize: 32 }]}>
+                {currentSlide.icon}
+              </Text>
             </View>
-            
+
             {/* Title with two lines */}
             <View style={styles.titleContainer}>
-              <Text style={styles.titleLine1}>{SLIDES[index].titleLine1}</Text>
-              <Text style={styles.titleLine2}>{SLIDES[index].titleLine2}</Text>
-              
+              <Text
+                style={[
+                  styles.titleLine1,
+                  isSmallScreen && { fontSize: 28, lineHeight: 34 },
+                ]}
+              >
+                {currentSlide.titleLine1}
+              </Text>
+              <Text
+                style={[
+                  styles.titleLine2,
+                  isSmallScreen && { fontSize: 28, lineHeight: 34 },
+                ]}
+              >
+                {currentSlide.titleLine2}
+              </Text>
+
               {/* Decorative underline */}
               <View style={styles.underline} />
             </View>
-            
+
             {/* Subtitle */}
-            <Text style={styles.subtitle}>{SLIDES[index].subtitle}</Text>
+            <Text
+              style={[
+                styles.subtitle,
+                isSmallScreen && { fontSize: 15, lineHeight: 22, marginTop: spacing.xs },
+              ]}
+            >
+              {currentSlide.subtitle}
+            </Text>
           </View>
         </View>
 
         {/* Bottom section with dots and button */}
-        <View style={styles.bottom} pointerEvents="box-none">
+        <View
+          style={[
+            styles.bottom,
+            {
+              paddingBottom: Math.max(insets.bottom + 16, isSmallScreen ? 20 : 40),
+              gap: isSmallScreen ? spacing.md : spacing.xl,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
           {/* Dots indicator */}
           <View style={styles.dots}>
             {SLIDES.map((_, i) => (
@@ -193,22 +245,22 @@ export default function OnboardingScreen() {
               pressed && styles.pressed,
             ]}
           >
-            <View style={styles.nextBtn}>
+            <View style={[styles.nextBtn, isSmallScreen && { height: 52, borderRadius: 26 }]}>
               {/* Decorative leaf icons on button */}
               <Text style={styles.leafLeft}>🍂</Text>
-              
+
               <View style={styles.nextBtnContent}>
-                <Text style={styles.nextText}>
+                <Text style={[styles.nextText, isSmallScreen && { fontSize: 17 }]}>
                   {isLast ? 'Get Started' : 'Next'}
                 </Text>
                 <Ionicons
                   name="arrow-forward"
-                  size={22}
+                  size={isSmallScreen ? 18 : 22}
                   color="#FFF"
                   style={styles.arrowIcon}
                 />
               </View>
-              
+
               <Text style={styles.leafRight}>🍂</Text>
             </View>
           </Pressable>

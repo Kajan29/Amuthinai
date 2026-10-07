@@ -79,7 +79,7 @@ export default function RaiseConcernScreen() {
   const canSubmit = selectedReason.length > 0 && details.trim().length >= 5;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>

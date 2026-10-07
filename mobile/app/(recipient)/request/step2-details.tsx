@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequestDraft } from '@/store/requestDraft.store';
 
@@ -36,6 +36,7 @@ const DELIVERY_METHODS = [
 ];
 
 export default function Step2DetailsScreen() {
+  const insets = useSafeAreaInsets();
   const { draft, update } = useRequestDraft();
 
   const [mealCategory, setMealCategory] = useState(
@@ -77,7 +78,7 @@ export default function Step2DetailsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -250,7 +251,7 @@ export default function Step2DetailsScreen() {
           activeOpacity={1}
           onPress={() => setActiveModal(null)}
         >
-          <View style={styles.modalSheet}>
+          <View style={[styles.modalSheet, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}>
             <View style={styles.modalBar} />
             <Text style={styles.modalTitle}>
               {activeModal === 'category'

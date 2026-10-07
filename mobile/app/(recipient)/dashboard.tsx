@@ -416,7 +416,11 @@ export default function RecipientDashboard() {
         <View style={styles.headerSeparator} />
 
         {/* Scrollable Dashboard Body */}
-        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scrollContent}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+        >
           {/* 3 Stats in a clean container */}
           <View style={styles.statsCardContainer}>
             {/* Stat 1: Active Needs */}

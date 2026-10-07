@@ -316,7 +316,7 @@ export default function Step1Food() {
 
       <Modal visible={unitOpen} transparent animationType="fade" onRequestClose={() => setUnitOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setUnitOpen(false)}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
             {UNITS.map((unit) => (
               <Pressable
                 key={unit.value}
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
   liveDot: { backgroundColor: donorColors.green, borderRadius: 4, height: 7, width: 7 },
   subtitle: { color: donorColors.muted, fontSize: 12 },
   steps: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'center', marginTop: 8 },
-  step: { alignItems: 'center', gap: 6, width: 84 },
+  step: { alignItems: 'center', flex: 1, gap: 6, maxWidth: 90 },
   stepCircle: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   stepNumActive: { color: '#FFFFFF' },
   stepLabel: { color: donorColors.muted, fontSize: 11, textAlign: 'center' },
   stepLabelActive: { color: donorColors.ink, fontWeight: '700' },
-  stepLine: { backgroundColor: '#E4DDD6', height: 1, marginTop: 14, width: 28 },
+  stepLine: { backgroundColor: '#E4DDD6', flex: 1, height: 1, marginTop: 14, maxWidth: 36, minWidth: 12 },
   sectionHead: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   sectionTitle: {
     color: donorColors.ink,
@@ -403,10 +403,11 @@ const styles = StyleSheet.create({
     borderColor: '#EFEAE4',
     borderRadius: 16,
     borderWidth: 1,
+    flexBasis: '30%',
+    flexGrow: 1,
     gap: 4,
     minHeight: 108,
     padding: 12,
-    width: '31%',
   },
   categorySelected: { borderColor: donorColors.plum, borderWidth: 1.5 },
   selectedBadge: {

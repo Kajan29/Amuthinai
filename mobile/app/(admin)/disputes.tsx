@@ -26,7 +26,7 @@ export default function Disputes() {
   const items = disputes.data?.items ?? [];
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={60}>
       {items.length === 0 ? (
         <EmptyState title="No open disputes" />
       ) : (

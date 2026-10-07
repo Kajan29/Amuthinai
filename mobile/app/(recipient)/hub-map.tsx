@@ -1042,6 +1042,7 @@ const styles = StyleSheet.create({
   },
   carouselCard: {
     width: 300,
+    maxWidth: '88%',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 16,
@@ -1222,7 +1223,7 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 16,
     gap: 12,
-    paddingBottom: 40,
+    paddingBottom: 90,
   },
   listSectionTitle: {
     fontSize: 14,

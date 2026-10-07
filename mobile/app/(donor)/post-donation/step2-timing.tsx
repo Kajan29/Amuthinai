@@ -324,7 +324,7 @@ export default function Step2Timing() {
         </Text>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 14) }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backLabel}>{t('donor.backStep')}</Text>
         </Pressable>
@@ -340,7 +340,7 @@ export default function Step2Timing() {
       {picking ? (
         <View style={styles.sheetWrap}>
           <Pressable style={styles.backdrop} onPress={() => setPicking(null)} />
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
             <Text style={styles.sheetTitle}>
               {picking === 'ready' ? t('donor.readyFrom') : t('donor.consumeBefore')}
             </Text>
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   brandAccent: { color: donorColors.orange },
   kicker: { color: donorColors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
   steps: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'center', marginTop: 6 },
-  step: { alignItems: 'center', gap: 6, width: 78 },
+  step: { alignItems: 'center', flex: 1, gap: 6, maxWidth: 90 },
   stepCircle: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
   stepNumActive: { color: '#FFFFFF' },
   stepLabel: { color: donorColors.muted, fontSize: 11 },
   stepLabelActive: { color: donorColors.ink, fontWeight: '700' },
-  stepLine: { backgroundColor: '#E4DDD6', height: 2, marginTop: 13, width: 24 },
+  stepLine: { backgroundColor: '#E4DDD6', flex: 1, height: 2, marginTop: 13, maxWidth: 36, minWidth: 12 },
   stepLineDone: { backgroundColor: donorColors.plum },
   title: { color: donorColors.ink, fontSize: 22, fontWeight: '800', marginTop: 8 },
   lead: { color: donorColors.muted, fontSize: 13, lineHeight: 18, marginTop: -6 },
@@ -604,11 +604,12 @@ const styles = StyleSheet.create({
     borderColor: '#EFEAE4',
     borderRadius: 14,
     borderWidth: 1,
+    flexBasis: '47%',
     flexDirection: 'row',
+    flexGrow: 1,
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 12,
-    width: '48%',
   },
   handleOn: { borderColor: donorColors.plum },
   handleText: { color: donorColors.ink, flex: 1, fontSize: 12, fontWeight: '600' },

@@ -5,7 +5,6 @@ import { colors, radius, spacing, typography } from '@/theme';
 import type { GeoPoint } from '@/types';
 import { toGeoPoint, toLatLng } from '@/utils/geo';
 import { MapView, Marker } from '@/utils/maps';
-import type { MapPressEvent, Region } from '@/utils/maps';
 
 /** Colombo — used until the device reports a position. */
 const FALLBACK_REGION: any = {
@@ -76,7 +75,7 @@ const styles = StyleSheet.create({
   hint: { ...typography.caption, color: colors.textMuted },
   webPlaceholder: {
     alignItems: 'center',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     gap: spacing.sm,
   },

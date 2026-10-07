@@ -285,7 +285,7 @@ export default function Step3Review() {
         </Pressable>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 14) }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backLabel}>{t('donor.backStep')}</Text>
         </Pressable>
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   brand: { color: donorColors.ink, fontSize: 16, fontWeight: '800' },
   brandAccent: { color: donorColors.orange },
   steps: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'center', marginTop: 4 },
-  step: { alignItems: 'center', gap: 6, width: 78 },
+  step: { alignItems: 'center', flex: 1, gap: 6, maxWidth: 90 },
   stepCircle: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   stepNumActive: { color: '#FFFFFF' },
   stepLabel: { color: donorColors.muted, fontSize: 11 },
   stepLabelActive: { color: donorColors.ink, fontWeight: '700' },
-  stepLine: { backgroundColor: '#E4DDD6', height: 2, marginTop: 13, width: 24 },
+  stepLine: { backgroundColor: '#E4DDD6', flex: 1, height: 2, marginTop: 13, maxWidth: 36, minWidth: 12 },
   stepLineDone: { backgroundColor: donorColors.plum },
   title: { color: donorColors.ink, fontSize: 22, fontWeight: '800', marginTop: 8 },
   lead: { color: donorColors.muted, fontSize: 13, lineHeight: 18, marginTop: -6 },

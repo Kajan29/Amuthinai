@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RoleGuard } from '@/components/RoleGuard';
 
@@ -24,6 +25,8 @@ function TabLabelWithDot({ focused, label }: { focused: boolean; label: string }
 }
 
 export default function RecipientLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <RoleGuard role="recipient">
       <Tabs
@@ -31,7 +34,13 @@ export default function RecipientLayout() {
           headerShown: false,
           tabBarActiveTintColor: ACTIVE_COLOR,
           tabBarInactiveTintColor: INACTIVE_COLOR,
-          tabBarStyle: styles.tabBar,
+          tabBarStyle: [
+            styles.tabBar,
+            {
+              height: 56 + Math.max(insets.bottom, 8),
+              paddingBottom: Math.max(insets.bottom, 8),
+            },
+          ],
         }}
       >
         <Tabs.Screen
@@ -102,9 +111,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#F0ECE4',
-    height: 64,
     paddingTop: 8,
-    paddingBottom: 6,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },

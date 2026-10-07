@@ -86,5 +86,9 @@ export async function signOutFromGoogle(): Promise<void> {
  * Check if user is currently signed in with Google
  */
 export async function isSignedInWithGoogle(): Promise<boolean> {
-  return await GoogleSignin.isSignedIn();
+  try {
+    return GoogleSignin.hasPreviousSignIn ? GoogleSignin.hasPreviousSignIn() : false;
+  } catch {
+    return false;
+  }
 }

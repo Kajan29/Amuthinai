@@ -142,7 +142,7 @@ export default function VolunteerMap() {
 
       {/* Selected task card */}
       {selectedTask && (
-        <View style={styles.taskPopup}>
+        <View style={[styles.taskPopup, { bottom: Math.max(insets.bottom + 68, 76) }]}>
           <Pressable style={styles.popupDismiss} onPress={() => setSelectedTask(null)}>
             <Ionicons name="close" size={18} color={volunteerColors.muted} />
           </Pressable>
@@ -212,7 +212,16 @@ export default function VolunteerMap() {
       )}
 
       {/* Re-center FAB */}
-      <TouchableOpacity style={[styles.recenterFab, { bottom: 24 }]}>
+      <TouchableOpacity
+        style={[
+          styles.recenterFab,
+          {
+            bottom: selectedTask
+              ? Math.max(insets.bottom + 270, 280)
+              : Math.max(insets.bottom + 74, 84),
+          },
+        ]}
+      >
         <Ionicons name="locate" size={22} color={volunteerColors.maroon} />
       </TouchableOpacity>
     </View>
@@ -274,7 +283,9 @@ const styles = StyleSheet.create({
   legendRow: {
     position: 'absolute',
     left: 16,
+    right: 16,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
   },
   legendChip: {
@@ -297,7 +308,6 @@ const styles = StyleSheet.create({
   /* Task popup */
   taskPopup: {
     position: 'absolute',
-    bottom: 80,
     left: 16,
     right: 16,
     backgroundColor: '#FFF',

@@ -1,6 +1,5 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { 
   ImageBackground, 
   Pressable, 
@@ -19,11 +18,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Button } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
 import { HOME_ROUTE } from '@/store/auth.store';
 import { useLanguageStore } from '@/store/language.store';
-import { colors, spacing, typography, radius } from '@/theme';
 import { logo } from '@/constants';
 import type { Role } from '@/types';
 
@@ -36,11 +33,9 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // Responsive sizing helper
 const isSmallScreen = SCREEN_HEIGHT < 700;
 const isMediumScreen = SCREEN_HEIGHT >= 700 && SCREEN_HEIGHT < 800;
-const isLargeScreen = SCREEN_HEIGHT >= 800;
 
 /** FR1 — account creation with role selection */
 export default function Register() {
-  const { t } = useTranslation();
   const { register, googleAuth } = useAuth();
   const language = useLanguageStore((state) => state.language);
   const { height: windowHeight } = useWindowDimensions();

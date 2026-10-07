@@ -17,7 +17,7 @@ export default function Analytics() {
   const peak = Math.max(...cells.map((cell) => cell.servingsNeeded), 1);
 
   return (
-    <Screen>
+    <Screen extraBottomPadding={60}>
       <Card>
         <Text style={styles.cardTitle}>Impact</Text>
         <Row label="Servings delivered today" value={kpis.data?.servingsToday ?? 0} />
@@ -59,9 +59,9 @@ function Row({ label, value }: { label: string; value: number }) {
 const styles = StyleSheet.create({
   cardTitle: { ...typography.bodyStrong, color: colors.text },
   heading: { ...typography.h3, color: colors.text },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  rowLabel: { ...typography.body, color: colors.textMuted },
-  rowValue: { ...typography.bodyStrong, color: colors.text },
+  row: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
+  rowLabel: { ...typography.body, color: colors.textMuted, flex: 1 },
+  rowValue: { ...typography.bodyStrong, color: colors.text, textAlign: 'right' },
   barHeader: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
   district: { ...typography.bodyStrong, color: colors.text },
   value: { ...typography.caption, color: colors.textMuted },

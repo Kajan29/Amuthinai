@@ -18,7 +18,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, spacing } from '@/theme';
 import { logo } from '@/constants';
 
 // Direct import of login background
@@ -290,7 +289,9 @@ export default function VerifyOTP() {
                 {otp.map((digit, index) => (
                   <TextInput
                     key={index}
-                    ref={(ref) => (inputRefs.current[index] = ref)}
+                    ref={(ref) => {
+                      inputRefs.current[index] = ref;
+                    }}
                     style={[
                       styles.otpInput,
                       {
@@ -314,12 +315,24 @@ export default function VerifyOTP() {
               <View style={[styles.resendContainer, {
                 marginBottom: isScreenSmall ? 16 : 20
               }]}>
-                <Text style={[styles.resendText, {
-                  fontSize: isScreenSmall ? 13 : 14
-                }]}>
-                  Resend OTP in{' '}
-                  <Text style={styles.timerText}>{formatTime(resendTimer)}</Text>
-                </Text>
+                {canResend ? (
+                  <Pressable onPress={handleResend}>
+                    <Text style={[styles.resendText, {
+                      fontSize: isScreenSmall ? 13 : 14,
+                      color: '#F59E0B',
+                      fontWeight: '700',
+                    }]}>
+                      Resend OTP
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Text style={[styles.resendText, {
+                    fontSize: isScreenSmall ? 13 : 14
+                  }]}>
+                    Resend OTP in{' '}
+                    <Text style={styles.timerText}>{formatTime(resendTimer)}</Text>
+                  </Text>
+                )}
               </View>
 
               {/* Error Message */}

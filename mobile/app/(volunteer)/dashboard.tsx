@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
 import { pointsApi } from '@/api/points.api';
@@ -30,6 +30,7 @@ import { toLatLng } from '@/utils/geo';
 const JAFFNA_DEFAULT = { latitude: 9.6645, longitude: 80.0200 };
 
 export default function VolunteerDashboard() {
+  const insets = useSafeAreaInsets();
   const { user, confirmLogout } = useAuth();
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [isReady, setIsReady] = useState(true);
@@ -233,7 +234,10 @@ export default function VolunteerDashboard() {
         {/* ─── SCROLLABLE DASHBOARD BODY ─── */}
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom + 28, 36) },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           {/* ─── SEARCH BAR ─── */}
@@ -1093,6 +1097,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 12,
   },
   urgentPill: {
@@ -1266,6 +1272,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F5F0E8',

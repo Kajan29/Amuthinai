@@ -16,7 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { requestsApi } from '@/api/requests.api';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants';
@@ -74,6 +74,7 @@ function checkIsWithinJaffnaDistrict(lat: number, lng: number): boolean {
 }
 
 export default function Step1LocationScreen() {
+  const insets = useSafeAreaInsets();
   const { draft, update } = useRequestDraft();
   const mapRef = useRef<any>(null);
 
@@ -793,7 +794,7 @@ export default function Step1LocationScreen() {
       </ScrollView>
 
       {/* Bottom Actions Bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={styles.backBtn}

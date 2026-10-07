@@ -1,18 +1,9 @@
-import { ImageSourcePropType } from 'react-native';
 
 /**
  * App images and assets.
  * Centralized image management for the Amuthinai app.
  */
 
-// Helper function to safely load images with fallback
-const safeRequire = (path: string, fallback: any): ImageSourcePropType => {
-  try {
-    return path as any;
-  } catch {
-    return fallback;
-  }
-};
 
 // Logo
 export const logo = require('../../assets/images/logo.png');

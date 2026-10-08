@@ -18,6 +18,7 @@ import { assignmentsApi } from '@/api/assignments.api';
 import { donationsApi } from '@/api/donations.api';
 import { logo } from '@/constants';
 import { useLocation } from '@/hooks/useLocation';
+import { cloudinaryService } from '@/services/cloudinary';
 
 export default function ConfirmPickup() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,6 +29,13 @@ export default function ConfirmPickup() {
     packetCount: true,
     sealed: true,
   });
+
+  const [pickupPhotoUrl, setPickupPhotoUrl] = useState<string>(
+    'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&auto=format&fit=crop&q=60'
+  );
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [photoCapturedAt, setPhotoCapturedAt] = useState<string>('09:38 AM');
+  const [isCloudinaryStored, setIsCloudinaryStored] = useState<boolean>(false);
 
   const pinDigits = ['4', '9', '1', '2'];
 
@@ -49,7 +57,7 @@ export default function ConfirmPickup() {
         coordinates: [80.0290, 9.6740] as [number, number],
       };
       return assignmentsApi.confirmPickup(id, {
-        photoUrl: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&auto=format&fit=crop&q=60',
+        photoUrl: pickupPhotoUrl,
         location,
       });
     },
@@ -65,8 +73,27 @@ export default function ConfirmPickup() {
     setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  function handleRetakePhoto() {
-    Alert.alert('Camera Attached', 'Photo proof timestamped and validated with location tag.');
+  async function handleCapturePhoto(source: 'camera' | 'gallery') {
+    try {
+      const uri = await cloudinaryService.pickOrCapture(source);
+      if (!uri) return;
+
+      setIsUploadingPhoto(true);
+      const result = await cloudinaryService.uploadImage(uri, 'amuthinai/pickup-proof');
+      setPickupPhotoUrl(result.url);
+      setIsCloudinaryStored(true);
+      setPhotoCapturedAt(
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      );
+      Alert.alert(
+        'Photo Uploaded to Cloudinary! ☁️',
+        'Pickup verification photo has been stored securely in Cloudinary.'
+      );
+    } catch (err: any) {
+      Alert.alert('Upload Error', err?.message || 'Could not upload image to Cloudinary.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   }
 
   function handleScanQR() {
@@ -232,29 +259,67 @@ export default function ConfirmPickup() {
           </View>
         </View>
 
-        {/* ─── CONTAINER PHOTO PROOF CARD ─── */}
+        {/* ─── CONTAINER PHOTO PROOF CARD (CLOUDINARY STORAGE) ─── */}
         <View style={styles.proofCard}>
           <View style={styles.proofHeaderRow}>
-            <Text style={styles.proofTitle}>CONTAINER PHOTO PROOF</Text>
-            <View style={styles.attachedPill}>
-              <Text style={styles.attachedText}>Attached</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="camera" size={16} color="#701A2B" />
+              <Text style={styles.proofTitle}>CONTAINER PHOTO PROOF</Text>
+            </View>
+            <View style={[styles.attachedPill, isCloudinaryStored && styles.cloudinaryPill]}>
+              <Text style={[styles.attachedText, isCloudinaryStored && styles.cloudinaryPillText]}>
+                {isCloudinaryStored ? '☁️ Cloudinary Verified' : 'Photo Attached'}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.proofPhotoBox}>
-            <View style={styles.proofBoxIconFrame}>
-              <Ionicons name="cube-outline" size={32} color="#78350F" />
+          {/* Actual Photo Frame with Overlay Badges */}
+          <View style={styles.proofPhotoWrapper}>
+            <Image
+              source={{ uri: pickupPhotoUrl }}
+              style={styles.proofActualImage}
+              resizeMode="cover"
+            />
+            {isUploadingPhoto && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator color="#FFFFFF" size="large" />
+                <Text style={styles.uploadingOverlayText}>Storing in Cloudinary...</Text>
+              </View>
+            )}
+            <View style={styles.photoInfoOverlay}>
+              <View style={styles.photoMetaRow}>
+                <Ionicons name="time-outline" size={13} color="#FFFFFF" />
+                <Text style={styles.photoMetaText}>Captured: {photoCapturedAt}</Text>
+              </View>
+              {isCloudinaryStored && (
+                <View style={styles.cloudBadgeSmall}>
+                  <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
+                  <Text style={styles.cloudBadgeText}>Cloudinary Stored</Text>
+                </View>
+              )}
             </View>
-            <Text style={styles.proofBoxTitle}>25x Stacked Meal Containers</Text>
-            <Text style={styles.proofBoxSubtitle}>Captured at 09:38 AM • Hall Counter 2</Text>
+          </View>
 
+          {/* Photo Action Buttons */}
+          <View style={styles.photoActionsRow}>
             <TouchableOpacity
-              style={styles.retakePhotoButton}
-              onPress={handleRetakePhoto}
+              style={styles.photoActionBtnPrimary}
+              onPress={() => void handleCapturePhoto('camera')}
+              disabled={isUploadingPhoto}
               activeOpacity={0.8}
             >
-              <Ionicons name="camera-outline" size={14} color="#1F2937" />
-              <Text style={styles.retakePhotoText}>Retake Photo</Text>
+              <Ionicons name="camera" size={16} color="#FFFFFF" />
+              <Text style={styles.photoActionBtnPrimaryText}>Take Live Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.photoActionBtnSecondary}
+              onPress={() => void handleCapturePhoto('gallery')}
+              disabled={isUploadingPhoto}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="images-outline" size={16} color="#701A2B" />
+              <Text style={styles.photoActionBtnSecondaryText}>From Gallery</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -683,53 +748,110 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F766E',
   },
-  proofPhotoBox: {
-    backgroundColor: '#FEF8EE',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    position: 'relative',
+  cloudinaryPill: {
+    backgroundColor: '#0F7B4F',
   },
-  proofBoxIconFrame: {
-    width: 50,
-    height: 50,
+  cloudinaryPillText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  proofPhotoWrapper: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+  proofActualImage: {
+    width: '100%',
+    height: '100%',
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    gap: 8,
   },
-  proofBoxTitle: {
-    fontSize: 13.5,
-    fontWeight: '800',
-    color: '#78350F',
+  uploadingOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
-  proofBoxSubtitle: {
-    fontSize: 11,
-    color: '#92400E',
-    marginTop: 2,
-    marginBottom: 10,
+  photoInfoOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    right: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  retakePhotoButton: {
+  photoMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  retakePhotoText: {
-    fontSize: 11.5,
+  photoMetaText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  cloudBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0F7B4F',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  cloudBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  photoActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  photoActionBtnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#5A1626',
+    borderRadius: 12,
+    paddingVertical: 11,
+  },
+  photoActionBtnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
     fontWeight: '700',
-    color: '#1F2937',
+  },
+  photoActionBtnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FAF5EE',
+    borderWidth: 1.5,
+    borderColor: '#5A1626',
+    borderRadius: 12,
+    paddingVertical: 11,
+  },
+  photoActionBtnSecondaryText: {
+    color: '#5A1626',
+    fontSize: 12.5,
+    fontWeight: '700',
   },
 
   /* ─── SECURE DONOR HANDOVER PIN CARD ─── */

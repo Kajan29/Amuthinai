@@ -1,3 +1,6 @@
+import * as ImagePicker from 'expo-image-picker';
+
+import { uploadsApi } from '@/api/uploads.api';
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '@/constants';
 
 export interface CloudinaryUploadResult {
@@ -17,7 +20,41 @@ export interface CloudinaryUploadProgress {
 
 export const cloudinaryService = {
   /**
-   * Upload image directly to Cloudinary from mobile app
+   * Helper to request permissions and pick or capture an image
+   * @param source - 'camera' for live photo or 'gallery' for media library
+   */
+  async pickOrCapture(source: 'camera' | 'gallery'): Promise<string | null> {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      throw new Error(`Permission to access ${source} was denied`);
+    }
+
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            quality: 0.8,
+            allowsEditing: true,
+            aspect: [4, 3],
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            quality: 0.8,
+            allowsEditing: true,
+            aspect: [4, 3],
+          });
+
+    if (result.canceled || !result.assets[0]?.uri) {
+      return null;
+    }
+
+    return result.assets[0].uri;
+  },
+
+  /**
+   * Upload image directly to Cloudinary from mobile app with backend fallback
    * @param imageUri - Local image URI from camera or gallery
    * @param folder - Optional folder name in Cloudinary
    * @param onProgress - Optional progress callback
@@ -27,15 +64,13 @@ export const cloudinaryService = {
     folder: string = 'amuthinai',
     _onProgress?: (progress: CloudinaryUploadProgress) => void
   ): Promise<CloudinaryUploadResult> {
-    try {
-      if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-        throw new Error('Cloudinary not configured. Please check your .env file.');
-      }
+    const cloudName = CLOUDINARY_CLOUD_NAME || 'rrotphpj';
+    const uploadPreset = CLOUDINARY_UPLOAD_PRESET || 'amuthinai_unsigned';
 
-      // Create form data
+    try {
+      // 1. Try direct client-side upload to Cloudinary
       const formData = new FormData();
-      
-      // Add image file
+
       const filename = imageUri.split('/').pop() || 'photo.jpg';
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : 'image/jpeg';
@@ -46,14 +81,11 @@ export const cloudinaryService = {
         type,
       } as any);
 
-      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      formData.append('upload_preset', uploadPreset);
       formData.append('folder', folder);
-      
-      // Optional: Add tags for organization
-      formData.append('tags', 'amuthinai,mobile');
+      formData.append('tags', 'amuthinai,mobile,volunteer');
 
-      // Upload to Cloudinary
-      const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+      const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
 
       const response = await fetch(cloudinaryUrl, {
         method: 'POST',
@@ -63,24 +95,37 @@ export const cloudinaryService = {
         },
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || 'Upload failed');
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          url: data.secure_url,
+          publicId: data.public_id,
+          width: data.width,
+          height: data.height,
+          format: data.format,
+          bytes: data.bytes,
+        };
       }
 
-      const data = await response.json();
+      console.warn('Direct Cloudinary upload returned non-OK, trying backend upload fallback...');
+    } catch (err) {
+      console.warn('Direct Cloudinary upload threw an error, trying backend upload fallback:', err);
+    }
 
+    // 2. Fallback to backend uploads service (which also uploads to Cloudinary via server API keys)
+    try {
+      const backendResult = await uploadsApi.uploadImage(imageUri);
       return {
-        url: data.secure_url,
-        publicId: data.public_id,
-        width: data.width,
-        height: data.height,
-        format: data.format,
-        bytes: data.bytes,
+        url: backendResult.url,
+        publicId: backendResult.key,
+        width: 800,
+        height: 600,
+        format: 'jpg',
+        bytes: 0,
       };
-    } catch (error) {
-      console.error('Cloudinary upload error:', error);
-      throw error;
+    } catch (fallbackError) {
+      console.error('All Cloudinary upload paths failed:', fallbackError);
+      throw fallbackError;
     }
   },
 

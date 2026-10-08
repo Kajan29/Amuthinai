@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { assignmentsApi } from '@/api/assignments.api';
 import { donationsApi } from '@/api/donations.api';
 import { logo } from '@/constants';
+import { cloudinaryService } from '@/services/cloudinary';
 import { getRouteTransitMapUrl } from '@/services/mapbox';
 
 export default function AssignmentDetail() {
@@ -65,6 +67,28 @@ export default function AssignmentDetail() {
   const pickupDonor = donationData?.pickupAddress?.line1 || 'Nallur Community Hall Kitchen';
   const instructions =
     donationData?.description || 'Side gate entrance, ask for Master Chef Murugan.';
+
+  const [readinessPhotoUrl, setReadinessPhotoUrl] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  async function handleCaptureReadinessPhoto(source: 'camera' | 'gallery') {
+    try {
+      const uri = await cloudinaryService.pickOrCapture(source);
+      if (!uri) return;
+
+      setIsUploadingPhoto(true);
+      const result = await cloudinaryService.uploadImage(uri, 'amuthinai/assignment-readiness');
+      setReadinessPhotoUrl(result.url);
+      Alert.alert(
+        'Inspection Photo Stored in Cloudinary! ☁️',
+        'Pre-ride thermal bag and vehicle check photo saved securely to Cloudinary.'
+      );
+    } catch (err: any) {
+      Alert.alert('Upload Error', err?.message || 'Could not upload photo to Cloudinary.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  }
 
   function handleStartRide() {
     accept.mutate();
@@ -294,6 +318,80 @@ export default function AssignmentDetail() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+
+        {/* ─── PRE-RIDE READINESS & GEAR PHOTO (CLOUDINARY) ─── */}
+        <View style={styles.readinessCard}>
+          <View style={styles.readinessHeaderRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="shield-checkmark" size={17} color="#5A1626" />
+              <Text style={styles.readinessTitle}>PRE-RIDE GEAR & BAG INSPECTION</Text>
+            </View>
+            <View style={[styles.readinessPill, readinessPhotoUrl && styles.readinessPillActive]}>
+              <Text
+                style={[
+                  styles.readinessPillText,
+                  readinessPhotoUrl && styles.readinessPillTextActive,
+                ]}
+              >
+                {readinessPhotoUrl ? '☁️ Cloudinary Verified' : 'Optional Check'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.readinessDesc}>
+            Verify your thermal food transport bag and vehicle readiness before departing.
+          </Text>
+
+          {readinessPhotoUrl ? (
+            <View style={styles.readinessPreviewBox}>
+              <Image
+                source={{ uri: readinessPhotoUrl }}
+                style={styles.readinessImage}
+                resizeMode="cover"
+              />
+              <View style={styles.readinessOverlay}>
+                <View style={styles.readinessCloudBadge}>
+                  <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
+                  <Text style={styles.readinessCloudText}>Stored in Cloudinary</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.retakeBtnSmall}
+                  onPress={() => void handleCaptureReadinessPhoto('camera')}
+                >
+                  <Ionicons name="camera-reverse" size={13} color="#FFFFFF" />
+                  <Text style={styles.retakeBtnSmallText}>Retake</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.readinessActionsRow}>
+              <TouchableOpacity
+                style={styles.readinessBtnPrimary}
+                onPress={() => void handleCaptureReadinessPhoto('camera')}
+                disabled={isUploadingPhoto}
+                activeOpacity={0.8}
+              >
+                {isUploadingPhoto ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="camera" size={16} color="#FFFFFF" />
+                    <Text style={styles.readinessBtnPrimaryText}>Take Photo with Camera</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.readinessBtnSecondary}
+                onPress={() => void handleCaptureReadinessPhoto('gallery')}
+                disabled={isUploadingPhoto}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="images-outline" size={16} color="#5A1626" />
+                <Text style={styles.readinessBtnSecondaryText}>From Gallery</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* ─── BOTTOM ACTION FOOTER ─── */}
@@ -881,5 +979,140 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '700',
     color: '#0F766E',
+  },
+  readinessCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#ECE7DF',
+    marginTop: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  readinessHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  readinessTitle: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    letterSpacing: 0.4,
+  },
+  readinessPill: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  readinessPillActive: {
+    backgroundColor: '#E3F3EB',
+  },
+  readinessPillText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  readinessPillTextActive: {
+    color: '#0F7B4F',
+    fontWeight: '800',
+  },
+  readinessDesc: {
+    fontSize: 11.5,
+    color: '#6B7280',
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  readinessPreviewBox: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#E5E7EB',
+  },
+  readinessImage: {
+    width: '100%',
+    height: '100%',
+  },
+  readinessOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    right: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  readinessCloudBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0F7B4F',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  readinessCloudText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  retakeBtnSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  retakeBtnSmallText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  readinessActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  readinessBtnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#5A1626',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  readinessBtnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  readinessBtnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FAF5EE',
+    borderWidth: 1.5,
+    borderColor: '#5A1626',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  readinessBtnSecondaryText: {
+    color: '#5A1626',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

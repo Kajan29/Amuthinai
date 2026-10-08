@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Linking,
   RefreshControl,
   ScrollView,
@@ -21,6 +22,7 @@ import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
 import { enquiriesApi, type CreateEnquiryPayload } from '@/api/enquiries.api';
 import { MOCK_DROP_OFFS, MOCK_VOLUNTEER_TASKS } from '@/constants/mockVolunteerData';
 import { useAuth } from '@/hooks/useAuth';
+import { cloudinaryService } from '@/services/cloudinary';
 import { volunteerColors } from '@/theme/volunteer';
 import type { Enquiry } from '@/types';
 
@@ -116,6 +118,8 @@ export default function VolunteerRaiseConcernScreen() {
   );
   const [urgency, setUrgency] = useState<UrgencyLevel>('moderate');
   const [details, setDetails] = useState('');
+  const [attachmentPhotoUrl, setAttachmentPhotoUrl] = useState<string | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
   // 1. Fetch Volunteer Tasks (both nearby & mine)
   const nearbyQuery = useQuery({
@@ -242,7 +246,8 @@ export default function VolunteerRaiseConcernScreen() {
         `Pickup Point: ${currentSelectedTask?.pickupLine || 'N/A'}\n` +
         `Dropoff Point: ${currentSelectedTask?.dropoffLine || 'N/A'}\n` +
         `Issue Category: ${reasonLabel}\n` +
-        `Urgency Level: ${urgency.toUpperCase()}\n\n` +
+        `Urgency Level: ${urgency.toUpperCase()}\n` +
+        (attachmentPhotoUrl ? `Attached Proof (Cloudinary): ${attachmentPhotoUrl}\n\n` : '\n') +
         `--- DETAILED REPORT ---\n` +
         `${details.trim()}`;
 
@@ -258,6 +263,7 @@ export default function VolunteerRaiseConcernScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['volunteer', 'concerns', 'mine'] });
       setDetails('');
+      setAttachmentPhotoUrl(null);
       Alert.alert(
         'Concern Dispatched ✅',
         'Your concern has been submitted to Amuthinai central dispatch. An admin coordinator will review this immediately.',
@@ -290,6 +296,25 @@ export default function VolunteerRaiseConcernScreen() {
   function handleSelectReason(reason: (typeof VOLUNTEER_CONCERN_REASONS)[0]) {
     setSelectedReasonId(reason.id);
     setUrgency(reason.defaultUrgency);
+  }
+
+  async function handleCaptureAttachment(source: 'camera' | 'gallery') {
+    try {
+      const uri = await cloudinaryService.pickOrCapture(source);
+      if (!uri) return;
+
+      setIsUploadingAttachment(true);
+      const result = await cloudinaryService.uploadImage(uri, 'amuthinai/volunteer-concerns');
+      setAttachmentPhotoUrl(result.url);
+      Alert.alert(
+        'Photo Stored in Cloudinary! ☁️',
+        'Proof photo has been uploaded and stored securely in Cloudinary.'
+      );
+    } catch (err: any) {
+      Alert.alert('Upload Error', err?.message || 'Could not upload photo to Cloudinary.');
+    } finally {
+      setIsUploadingAttachment(false);
+    }
   }
 
   const myConcerns: Enquiry[] = concernsQuery.data?.items ?? [];
@@ -688,6 +713,80 @@ export default function VolunteerRaiseConcernScreen() {
             </View>
           </View>
 
+          {/* ─── STEP 5: OPTIONAL PHOTO PROOF (CLOUDINARY) ─── */}
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.stepNumberBadge}>
+                <Text style={styles.stepNumberText}>5</Text>
+              </View>
+              <Text style={styles.sectionHeading}>Proof / Photo Attachment (Cloudinary)</Text>
+            </View>
+            <Text style={styles.sectionHelper}>
+              Optional: Attach a live camera photo or screenshot of the obstacle, spoiled meals, or road condition.
+            </Text>
+
+            {attachmentPhotoUrl ? (
+              <View style={styles.attachmentPreviewCard}>
+                <Image
+                  source={{ uri: attachmentPhotoUrl }}
+                  style={styles.attachmentImage}
+                  resizeMode="cover"
+                />
+                <View style={styles.attachmentOverlay}>
+                  <View style={styles.cloudinaryBadge}>
+                    <Ionicons name="cloud-done" size={13} color="#FFFFFF" />
+                    <Text style={styles.cloudinaryBadgeText}>Stored in Cloudinary</Text>
+                  </View>
+                  <View style={styles.attachmentBtnsRow}>
+                    <TouchableOpacity
+                      style={styles.retakeAttachmentBtn}
+                      onPress={() => void handleCaptureAttachment('camera')}
+                      disabled={isUploadingAttachment}
+                    >
+                      <Ionicons name="camera-reverse" size={13} color="#FFFFFF" />
+                      <Text style={styles.retakeAttachmentText}>Retake</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.removeAttachmentBtn}
+                      onPress={() => setAttachmentPhotoUrl(null)}
+                    >
+                      <Ionicons name="trash-outline" size={13} color="#FFFFFF" />
+                      <Text style={styles.removeAttachmentText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.attachmentUploadActions}>
+                <TouchableOpacity
+                  style={styles.attachmentPrimaryBtn}
+                  onPress={() => void handleCaptureAttachment('camera')}
+                  disabled={isUploadingAttachment}
+                  activeOpacity={0.8}
+                >
+                  {isUploadingAttachment ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="camera" size={16} color="#FFFFFF" />
+                      <Text style={styles.attachmentPrimaryBtnText}>Take Live Photo</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.attachmentSecondaryBtn}
+                  onPress={() => void handleCaptureAttachment('gallery')}
+                  disabled={isUploadingAttachment}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="images-outline" size={16} color={volunteerColors.maroon} />
+                  <Text style={styles.attachmentSecondaryBtnText}>From Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
           {/* ─── VOLUNTEER CONTACT DISPATCH BADGE ─── */}
           <View style={styles.contactVerificationCard}>
             <Ionicons name="person-circle-outline" size={26} color={volunteerColors.maroon} />
@@ -790,6 +889,20 @@ export default function VolunteerRaiseConcernScreen() {
                 <Text style={styles.historyBody} numberOfLines={4}>
                   {item.body}
                 </Text>
+
+                {(() => {
+                  const match = item.body?.match(/https:\/\/res\.cloudinary\.com[^\s\n]+/i);
+                  if (!match) return null;
+                  return (
+                    <View style={styles.historyPhotoBox}>
+                      <Image source={{ uri: match[0] }} style={styles.historyThumb} resizeMode="cover" />
+                      <View style={styles.historyPhotoBadge}>
+                        <Ionicons name="cloud-done" size={11} color="#FFFFFF" />
+                        <Text style={styles.historyPhotoBadgeText}>Cloudinary Photo Proof</Text>
+                      </View>
+                    </View>
+                  );
+                })()}
 
                 {item.resolution && (
                   <View style={styles.resolutionBox}>
@@ -1388,5 +1501,144 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#1F2937',
     lineHeight: 16,
+  },
+  /* Attachment card and preview styles */
+  attachmentPreviewCard: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: 10,
+    backgroundColor: '#000000',
+    position: 'relative',
+  },
+  attachmentImage: {
+    width: '100%',
+    height: 180,
+  },
+  attachmentOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cloudinaryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15, 123, 79, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  cloudinaryBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  attachmentBtnsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  retakeAttachmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  retakeAttachmentText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  removeAttachmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(220, 38, 38, 0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  removeAttachmentText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  attachmentUploadActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  attachmentPrimaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: volunteerColors.maroon,
+    paddingVertical: 11,
+    borderRadius: 8,
+    gap: 6,
+  },
+  attachmentPrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  attachmentSecondaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: volunteerColors.maroon,
+    paddingVertical: 11,
+    borderRadius: 8,
+    gap: 6,
+  },
+  attachmentSecondaryBtnText: {
+    color: volunteerColors.maroon,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  historyPhotoBox: {
+    position: 'relative',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginTop: 6,
+    marginBottom: 8,
+    height: 120,
+    backgroundColor: '#E5E7EB',
+  },
+  historyThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  historyPhotoBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(15, 123, 79, 0.85)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  historyPhotoBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

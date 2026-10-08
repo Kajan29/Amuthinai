@@ -14,10 +14,10 @@ export const MAPBOX_ACCESS_TOKEN: string =
   process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
 
 export const CLOUDINARY_CLOUD_NAME: string =
-  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ?? '';
+  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || 'rrotphpj';
 
 export const CLOUDINARY_UPLOAD_PRESET: string =
-  process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ?? '';
+  process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'amuthinai_unsigned';
 
 export const ROLES: Role[] = ['donor', 'volunteer', 'recipient', 'admin'];
 

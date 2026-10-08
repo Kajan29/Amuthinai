@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMutation } from '@tanstack/react-query';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,10 +18,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { assignmentsApi } from '@/api/assignments.api';
 import { logo } from '@/constants';
 import { useLocation } from '@/hooks/useLocation';
+import { cloudinaryService } from '@/services/cloudinary';
 
 export default function ConfirmDelivery() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { point } = useLocation();
+
+  const [deliveryPhotoUrl, setDeliveryPhotoUrl] = useState<string>(
+    'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&auto=format&fit=crop&q=80'
+  );
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [photoCapturedAt, setPhotoCapturedAt] = useState<string>('12:42 PM');
+  const [isCloudinaryStored, setIsCloudinaryStored] = useState<boolean>(false);
 
   const completeTask = useMutation({
     mutationFn: async () => {
@@ -29,7 +38,7 @@ export default function ConfirmDelivery() {
         coordinates: [80.0245, 9.6630] as [number, number],
       };
       return assignmentsApi.confirmDelivery(id, {
-        photoUrl: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&auto=format&fit=crop&q=60',
+        photoUrl: deliveryPhotoUrl,
         location,
         pin: '7491',
       });
@@ -47,6 +56,29 @@ export default function ConfirmDelivery() {
       );
     },
   });
+
+  async function handleCapturePhoto(source: 'camera' | 'gallery') {
+    try {
+      const uri = await cloudinaryService.pickOrCapture(source);
+      if (!uri) return;
+
+      setIsUploadingPhoto(true);
+      const result = await cloudinaryService.uploadImage(uri, 'amuthinai/delivery-proof');
+      setDeliveryPhotoUrl(result.url);
+      setIsCloudinaryStored(true);
+      setPhotoCapturedAt(
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      );
+      Alert.alert(
+        'Photo Uploaded to Cloudinary! ☁️',
+        'Delivery handover photo has been stored securely in Cloudinary.'
+      );
+    } catch (err: any) {
+      Alert.alert('Upload Error', err?.message || 'Could not upload handover image to Cloudinary.');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  }
 
   function handleCallCoordinator() {
     void Linking.openURL('tel:+94773456789');
@@ -205,22 +237,56 @@ export default function ConfirmDelivery() {
           {/* Photo Container with Live Overlays */}
           <View style={styles.photoContainer}>
             <Image
-              source={{
-                uri: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&auto=format&fit=crop&q=80',
-              }}
+              source={{ uri: deliveryPhotoUrl }}
               style={styles.handoverPhoto}
               resizeMode="cover"
             />
+            {isUploadingPhoto && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator color="#FFFFFF" size="large" />
+                <Text style={styles.uploadingOverlayText}>Storing in Cloudinary...</Text>
+              </View>
+            )}
             {/* Overlay Badges */}
             <View style={styles.photoOverlayRow}>
               <View style={styles.livePhotoBadge}>
                 <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
-                <Text style={styles.livePhotoText}>Live Photo: 12:42 PM</Text>
+                <Text style={styles.livePhotoText}>Live Photo: {photoCapturedAt}</Text>
               </View>
-              <View style={styles.pinVerifiedBadge}>
-                <Text style={styles.pinVerifiedText}>PIN VERIFIED: 7491</Text>
-              </View>
+              {isCloudinaryStored ? (
+                <View style={styles.cloudBadgeSmall}>
+                  <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
+                  <Text style={styles.cloudBadgeText}>Cloudinary Verified</Text>
+                </View>
+              ) : (
+                <View style={styles.pinVerifiedBadge}>
+                  <Text style={styles.pinVerifiedText}>PIN VERIFIED: 7491</Text>
+                </View>
+              )}
             </View>
+          </View>
+
+          {/* Photo Action Buttons */}
+          <View style={styles.photoActionsRow}>
+            <TouchableOpacity
+              style={styles.photoActionBtnPrimary}
+              onPress={() => void handleCapturePhoto('camera')}
+              disabled={isUploadingPhoto}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="camera" size={16} color="#FFFFFF" />
+              <Text style={styles.photoActionBtnPrimaryText}>Take Live Handover Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.photoActionBtnSecondary}
+              onPress={() => void handleCapturePhoto('gallery')}
+              disabled={isUploadingPhoto}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="images-outline" size={16} color="#5A1626" />
+              <Text style={styles.photoActionBtnSecondaryText}>From Gallery</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Recipient Feedback */}
@@ -613,6 +679,69 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.5,
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  uploadingOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cloudBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0F7B4F',
+    paddingHorizontal: 8,
+    paddingVertical: 4.5,
+    borderRadius: 8,
+  },
+  cloudBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  photoActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  photoActionBtnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#5A1626',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  photoActionBtnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  photoActionBtnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FAF5EE',
+    borderWidth: 1.5,
+    borderColor: '#5A1626',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  photoActionBtnSecondaryText: {
+    color: '#5A1626',
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   /* Recipient Feedback */

@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
-import { FilterQuery, Model } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 
 import { paginate, type PaginatedDto } from 'src/common/dto/pagination.dto';
 import { Role } from 'src/common/enums/role.enum';
@@ -86,6 +86,7 @@ export class UsersService {
     const filter: FilterQuery<User> = {};
     if (query.role) filter.role = query.role;
     if (query.isVerified !== undefined) filter.isVerified = query.isVerified;
+    if (query.isFlagged !== undefined) filter.isFlagged = query.isFlagged;
 
     const [items, total] = await Promise.all([
       this.userModel.find(filter).skip(query.skip).limit(query.pageSize).sort({ createdAt: -1 }),
@@ -124,7 +125,34 @@ export class UsersService {
   async verify(id: string): Promise<UserDocument> {
     const user = await this.findById(id);
     user.isVerified = true;
+    user.isFlagged = false;
     return user.save();
+  }
+
+  async batchVerify(ids: string[]): Promise<{ modifiedCount: number }> {
+    const res = await this.userModel
+      .updateMany(
+        { _id: { $in: ids.map((id) => new Types.ObjectId(id)) } },
+        { $set: { isVerified: true, isFlagged: false } },
+      )
+      .exec();
+    return { modifiedCount: res.modifiedCount };
+  }
+
+  async flag(id: string, reason: string): Promise<UserDocument> {
+    const user = await this.findById(id);
+    user.isFlagged = true;
+    user.flagReason = reason;
+    return user.save();
+  }
+
+  async countVolunteers(): Promise<{ total: number; verified: number; pending: number; flagged: number }> {
+    const [total, verified, flagged] = await Promise.all([
+      this.userModel.countDocuments({ role: Role.Volunteer }),
+      this.userModel.countDocuments({ role: Role.Volunteer, isVerified: true }),
+      this.userModel.countDocuments({ role: Role.Volunteer, isFlagged: true }),
+    ]);
+    return { total, verified, pending: Math.max(0, total - verified), flagged };
   }
 
   /** FR6, FR7 — verified volunteers whose home base is within `radiusKm` of the pickup. */

@@ -92,6 +92,34 @@ export class User {
   @Prop({ select: false })
   otpPurpose?: 'email-verification' | 'password-reset';
 
+  @ApiPropertyOptional()
+  @Prop({ default: false })
+  isFlagged?: boolean;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  flagReason?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  nicNumber?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  drivingLicenseNumber?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  badgeTitle?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  avatarUrl?: string;
+
+  @ApiPropertyOptional({ default: 0 })
+  @Prop({ default: 0 })
+  completedDeliveriesCount?: number;
+
   /** Email verification status */
   @ApiProperty({ default: false })
   @Prop({ default: false })

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 
 import { paginate, PaginationQueryDto, type PaginatedDto } from 'src/common/dto/pagination.dto';
 import { RequestStatus } from 'src/common/enums/request-status.enum';
@@ -57,6 +57,37 @@ export class FoodRequestsService {
     ]);
 
     return paginate(items, total, query);
+  }
+
+  /** Admin lists all food requests across the system */
+  async findAll(
+    query: PaginationQueryDto & { status?: RequestStatus },
+  ): Promise<PaginatedDto<FoodRequestDocument>> {
+    const filter: FilterQuery<FoodRequest> = {};
+    if (query.status) filter.status = query.status;
+
+    const [items, total] = await Promise.all([
+      this.model
+        .find(filter)
+        .populate('recipientId', 'name phone email address')
+        .populate('matchedDonationId', 'title servings foodType pickupAddress status photoUrls')
+        .sort({ createdAt: -1 })
+        .skip(query.skip)
+        .limit(query.pageSize),
+      this.model.countDocuments(filter),
+    ]);
+
+    return paginate(items, total, query);
+  }
+
+  async countRequestsStats(): Promise<{ total: number; open: number; matched: number; fulfilled: number }> {
+    const [total, open, matched, fulfilled] = await Promise.all([
+      this.model.countDocuments(),
+      this.model.countDocuments({ status: RequestStatus.Open }),
+      this.model.countDocuments({ status: RequestStatus.Matched }),
+      this.model.countDocuments({ status: RequestStatus.Fulfilled }),
+    ]);
+    return { total, open, matched, fulfilled };
   }
 
   findByIds(ids: string[]): Promise<FoodRequestDocument[]> {

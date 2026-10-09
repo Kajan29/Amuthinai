@@ -132,6 +132,45 @@ export class DonationsService {
     return donation.save();
   }
 
+  /** Admin flags a donation */
+  async flag(id: string, adminId: string, reason: string): Promise<DonationDocument> {
+    const donation = await this.findById(id);
+    donation.isFlagged = true;
+    donation.flagReason = reason;
+    await donation.save();
+
+    await this.statusHistory.append({
+      donationId: id,
+      status: donation.status,
+      actorId: adminId,
+      actorRole: Role.Admin,
+      note: `Flagged: ${reason}`,
+    });
+
+    return donation;
+  }
+
+  async countDonationsStats(): Promise<{
+    total: number;
+    pending: number;
+    approved: number;
+    delivered: number;
+    urgent: number;
+  }> {
+    const twoHoursFromNow = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const [total, pending, approved, delivered, urgent] = await Promise.all([
+      this.donationModel.countDocuments(),
+      this.donationModel.countDocuments({ status: DonationStatus.PendingApproval }),
+      this.donationModel.countDocuments({ status: DonationStatus.Approved }),
+      this.donationModel.countDocuments({ status: DonationStatus.Delivered }),
+      this.donationModel.countDocuments({
+        status: { $in: [DonationStatus.PendingApproval, DonationStatus.Approved] },
+        expiresAt: { $lte: twoHoursFromNow, $gt: new Date() },
+      }),
+    ]);
+    return { total, pending, approved, delivered, urgent };
+  }
+
   async cancel(id: string, donorId: string): Promise<DonationDocument> {
     await this.findOwned(id, donorId);
     return this.transition(id, DonationStatus.Cancelled, {

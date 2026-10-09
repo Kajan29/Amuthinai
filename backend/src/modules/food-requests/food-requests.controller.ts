@@ -4,12 +4,15 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
+import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { Role } from 'src/common/enums/role.enum';
 
 import { CreateFoodRequestDto } from './dto/create-food-request.dto';
 import { FoodRequestsService } from './food-requests.service';
 import { DonationsService } from '../donations/donations.service';
 import { QueryDonationsDto } from '../donations/dto/query-donations.dto';
+
+import { QueryFoodRequestsDto } from './dto/query-food-requests.dto';
 
 @ApiTags('food-requests')
 @ApiBearerAuth()
@@ -19,6 +22,13 @@ export class FoodRequestsController {
     private readonly foodRequestsService: FoodRequestsService,
     private readonly donationsService: DonationsService,
   ) {}
+
+  @Get()
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin lists all recipient food requests' })
+  findAll(@Query() query: QueryFoodRequestsDto) {
+    return this.foodRequestsService.findAll(query);
+  }
 
   @Post()
   @Roles(Role.Recipient)

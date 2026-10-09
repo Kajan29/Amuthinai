@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 
 import { paginate, PaginationQueryDto, type PaginatedDto } from 'src/common/dto/pagination.dto';
 import { AssignmentStatus } from 'src/common/enums/assignment-status.enum';
@@ -243,6 +243,41 @@ export class AssignmentsService {
     ]);
 
     return paginate(items, total, query);
+  }
+
+  /** Admin lists all assignments / active deliveries across the system */
+  async findAll(
+    query: PaginationQueryDto & { status?: AssignmentStatus },
+  ): Promise<PaginatedDto<AssignmentDocument>> {
+    const filter: FilterQuery<Assignment> = {};
+    if (query.status) filter.status = query.status;
+
+    const [items, total] = await Promise.all([
+      this.model
+        .find(filter)
+        .populate('volunteerId', 'name phone vehicleType travelRadiusKm isVerified karmaPoints avatarUrl')
+        .populate(
+          'donationId',
+          'title foodType servings pickupAddress expiresAt cookedAt status photoUrls description thermalTemp pickupBay contactPersonName contactPersonPhone',
+        )
+        .populate('requestId', 'dropAddress servingsNeeded status recipientId notes neededBy')
+        .sort({ offeredAt: -1 })
+        .skip(query.skip)
+        .limit(query.pageSize),
+      this.model.countDocuments(filter),
+    ]);
+
+    return paginate(items, total, query);
+  }
+
+  async countAssignmentsStats(): Promise<{ total: number; active: number; completed: number; offered: number }> {
+    const [total, active, completed, offered] = await Promise.all([
+      this.model.countDocuments(),
+      this.model.countDocuments({ status: AssignmentStatus.Accepted }),
+      this.model.countDocuments({ status: AssignmentStatus.Completed }),
+      this.model.countDocuments({ status: AssignmentStatus.Offered }),
+    ]);
+    return { total, active, completed, offered };
   }
 
   async findById(id: string): Promise<AssignmentDocument> {

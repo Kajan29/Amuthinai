@@ -24,4 +24,10 @@ export class AnalyticsController {
   demand() {
     return this.analyticsService.demandByDistrict();
   }
+
+  @Get('reports')
+  @ApiOperation({ summary: 'Summary reports and analytics breakdown' })
+  reports() {
+    return this.analyticsService.reports();
+  }
 }

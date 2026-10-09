@@ -72,6 +72,13 @@ export interface User {
   travelRadiusKm?: number;
   address?: Address;
   pushToken?: string;
+  isFlagged?: boolean;
+  flagReason?: string;
+  nicNumber?: string;
+  drivingLicenseNumber?: string;
+  badgeTitle?: string;
+  avatarUrl?: string;
+  completedDeliveriesCount?: number;
   createdAt: string;
 }
 
@@ -99,6 +106,14 @@ export interface Donation {
   pickupAddress: Address;
   status: DonationStatus;
   rejectionReason?: string;
+  isFlagged?: boolean;
+  flagReason?: string;
+  thermalTemp?: number;
+  packagingType?: string;
+  pickupBay?: string;
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+  urgentPrioritySector?: string;
   createdAt: string;
   updatedAt: string;
 }

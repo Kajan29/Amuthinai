@@ -4,6 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
+import { AssignmentStatus } from 'src/common/enums/assignment-status.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { SubmitProofDto } from 'src/modules/delivery-proof/dto/submit-proof.dto';
 
@@ -11,11 +12,20 @@ import { AssignmentsService } from './assignments.service';
 import { CreateAssignmentDto } from './dto/create-assignment.dto';
 import { DeclineAssignmentDto } from './dto/decline-assignment.dto';
 
+import { QueryAssignmentsDto } from './dto/query-assignments.dto';
+
 @ApiTags('assignments')
 @ApiBearerAuth()
 @Controller('assignments')
 export class AssignmentsController {
   constructor(private readonly assignmentsService: AssignmentsService) {}
+
+  @Get()
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin lists all assignments and deliveries' })
+  findAll(@Query() query: QueryAssignmentsDto) {
+    return this.assignmentsService.findAll(query);
+  }
 
   @Get('suggestions/:donationId')
   @Roles(Role.Admin)

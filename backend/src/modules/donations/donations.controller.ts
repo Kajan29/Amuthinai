@@ -84,6 +84,17 @@ export class DonationsController {
     return this.donationsService.reject(id, adminId, dto.reason);
   }
 
+  @Post(':id/flag')
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Flag a donation for quality or safety review' })
+  flag(
+    @CurrentUser('id') adminId: string,
+    @Param('id') id: string,
+    @Body('reason') reason?: string,
+  ) {
+    return this.donationsService.flag(id, adminId, reason ?? 'Flagged for quality check');
+  }
+
   @Get(':id/messages')
   messages(@Param('id') id: string) {
     return this.chatService.findByDonation(id);

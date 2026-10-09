@@ -129,6 +129,38 @@ export class Donation {
   @Prop()
   reviewedAt?: Date;
 
+  @ApiPropertyOptional()
+  @Prop({ default: false })
+  isFlagged?: boolean;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  flagReason?: string;
+
+  @ApiPropertyOptional()
+  @Prop()
+  thermalTemp?: number;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  packagingType?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  pickupBay?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  contactPersonName?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  contactPersonPhone?: string;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  urgentPrioritySector?: string;
+
   // Maintained by `timestamps: true`; declared so they are typed and documented.
   @ApiProperty()
   createdAt!: Date;

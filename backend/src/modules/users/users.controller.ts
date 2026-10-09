@@ -45,6 +45,13 @@ export class UsersController {
     return this.usersService.findAll(query);
   }
 
+  @Post('batch-verify')
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Batch verify multiple volunteers' })
+  batchVerify(@Body('userIds') userIds: string[]) {
+    return this.usersService.batchVerify(userIds ?? []);
+  }
+
   @Get(':id')
   @Roles(Role.Admin)
   findOne(@Param('id') id: string) {
@@ -56,5 +63,12 @@ export class UsersController {
   @ApiOperation({ summary: 'Verify a volunteer so they start receiving offers' })
   verify(@Param('id') id: string) {
     return this.usersService.verify(id);
+  }
+
+  @Post(':id/flag')
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Flag a volunteer for review' })
+  flag(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.usersService.flag(id, reason ?? 'Flagged by admin');
   }
 }

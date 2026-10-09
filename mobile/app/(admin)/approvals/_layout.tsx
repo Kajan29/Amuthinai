@@ -5,7 +5,7 @@ export default function ApprovalsLayout() {
   const { t } = useTranslation();
 
   return (
-    <Stack>
+    <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" options={{ title: t('admin.approvals') }} />
       <Stack.Screen name="donation/[id]" options={{ title: t('admin.approve') }} />
       <Stack.Screen name="volunteers" options={{ title: t('admin.verifyVolunteers') }} />

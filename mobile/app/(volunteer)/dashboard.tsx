@@ -16,46 +16,108 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useMutation, useQuery } from '@tanstack/react-query';
+
 import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
+import { notificationsApi } from '@/api/notifications.api';
 import { pointsApi } from '@/api/points.api';
-import { logo } from '@/constants';
+import { usersApi } from '@/api/users.api';
+import { logo, URGENT_THRESHOLD_MINUTES } from '@/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocation } from '@/hooks/useLocation';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
+import { useVolunteerTasks } from '@/hooks/useVolunteerTasks';
+import { useAuthStore } from '@/store/auth.store';
 import { colors, spacing } from '@/theme';
 import { volunteerColors } from '@/theme/volunteer';
 import { getVolunteerDashboardMapUrl } from '@/services/mapbox';
 import { toLatLng } from '@/utils/geo';
+import {
+  etaMinutes,
+  formatKm,
+  initials as toInitials,
+  KARMA_PER_DELIVERY,
+} from '@/utils/tasks';
 
 const JAFFNA_DEFAULT = { latitude: 9.6645, longitude: 80.0200 };
+
+const formatClock = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 export default function VolunteerDashboard() {
   const insets = useSafeAreaInsets();
   const { user, confirmLogout } = useAuth();
+  const setUser = useAuthStore((state) => state.setUser);
   const [sidebarVisible, setSidebarVisible] = useState(false);
-  const [isReady, setIsReady] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   // 1. Live GPS Location
   const { point: currentLocation } = useLocation();
 
   // 2. Data Queries
-  const tasks = useOfflineQuery('volunteer.nearby', () => assignmentsApi.nearby());
+  const tasks = useVolunteerTasks();
   const pointsSummary = useOfflineQuery('volunteer.points', () => pointsApi.summary());
+  const unread = useQuery({
+    queryKey: ['notifications.unread'],
+    queryFn: notificationsApi.unreadCount,
+    refetchInterval: 60_000,
+  });
 
-  const items: NearbyTask[] = tasks.data ?? [];
+  const items: NearbyTask[] = tasks.live;
+
+  // "Ready for deliveries" is stored on the profile so the server stops offering tasks when off.
+  const isReady = user?.isAvailable !== false;
+  const availability = useMutation({
+    mutationFn: (value: boolean) => assignmentsApi.updateProfile({ isAvailable: value }),
+    async onSuccess() {
+      setUser(await usersApi.me());
+      await tasks.refetch();
+    },
+    onError(error) {
+      Alert.alert('Could not update availability', (error as Error).message);
+    },
+  });
 
   // Active task in progress
   const activeTask = items.find(
     (task) => task.assignment.status === 'accepted'
   );
 
-  const karmaBalance = pointsSummary.data?.balance ?? user?.karmaPoints ?? 680;
-  const displayName = user?.name || 'Volunteer Kajan';
-  const initials = 'VK';
+  const openTasks = items.filter((task) => task.assignment.status === 'offered');
+  const query = searchQuery.trim().toLowerCase();
+  const visibleTasks = query
+    ? openTasks.filter((task) =>
+        [
+          task.donation.title,
+          task.donation.foodType,
+          task.donation.pickupAddress.line1,
+          task.donation.pickupAddress.city,
+          task.request?.dropAddress.line1,
+          task.request?.dropAddress.city,
+        ]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(query)),
+      )
+    : openTasks;
 
-  const userCoords = currentLocation ? toLatLng(currentLocation) : JAFFNA_DEFAULT;
-  const mapboxUrl = getVolunteerDashboardMapUrl(userCoords);
+  const karmaBalance = pointsSummary.data?.balance ?? user?.karmaPoints ?? 0;
+  const displayName = user?.name || 'Volunteer';
+  const initials = toInitials(user?.name);
+  const hubLabel = user?.address?.district || user?.address?.city || 'Your area';
+
+  const userCoords = currentLocation
+    ? toLatLng(currentLocation)
+    : user?.address?.location
+      ? toLatLng(user.address.location)
+      : JAFFNA_DEFAULT;
+  const mapboxUrl = getVolunteerDashboardMapUrl(
+    userCoords,
+    openTasks.map((task) => ({
+      ...toLatLng(task.donation.pickupAddress.location),
+      urgent: task.isUrgent,
+    })),
+  );
+  const nearestTask = openTasks[0];
 
   function toggleSidebar() {
     setSidebarVisible((prev) => !prev);
@@ -209,11 +271,11 @@ export default function VolunteerDashboard() {
           <View style={styles.headerRightActions}>
             <TouchableOpacity
               style={styles.circularHeaderButton}
-              onPress={() => router.push('/(volunteer)/tasks')}
+              onPress={() => router.push('/notifications' as never)}
               activeOpacity={0.7}
             >
               <Ionicons name="notifications-outline" size={20} color="#1F2937" />
-              <View style={styles.notificationDot} />
+              {(unread.data?.unread ?? 0) > 0 && <View style={styles.notificationDot} />}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -273,11 +335,16 @@ export default function VolunteerDashboard() {
                     <View style={styles.greenLiveDot} />
                     <Text style={styles.readyTitleText}>Ready for Deliveries</Text>
                   </View>
-                  <Text style={styles.readySubText}>3 Tasks Available Nearby</Text>
+                  <Text style={styles.readySubText}>
+                    {isReady
+                      ? `${openTasks.length} ${openTasks.length === 1 ? 'Task' : 'Tasks'} Available Nearby`
+                      : 'Paused — not receiving new tasks'}
+                  </Text>
                 </View>
                 <Switch
-                  value={isReady}
-                  onValueChange={setIsReady}
+                  value={availability.isPending ? !isReady : isReady}
+                  disabled={availability.isPending}
+                  onValueChange={(value) => availability.mutate(value)}
                   trackColor={{ false: '#D1D5DB', true: '#42121E' }}
                   thumbColor="#FFFFFF"
                   style={styles.switchControl}
@@ -293,13 +360,17 @@ export default function VolunteerDashboard() {
                 <View style={styles.pinTriangle} />
               </View>
 
-              {/* Floating Map Pin 2: 'D1 Nallur Zone' */}
-              <View style={styles.pinZoneContainer}>
-                <View style={styles.pinZoneBadge}>
-                  <Text style={styles.pinZoneText}>D1</Text>
+              {/* Floating Map Pin 2: nearest open task */}
+              {nearestTask && (
+                <View style={styles.pinZoneContainer}>
+                  <View style={styles.pinZoneBadge}>
+                    <Text style={styles.pinZoneText}>D1</Text>
+                  </View>
+                  <Text style={styles.pinZoneLabel}>
+                    {nearestTask.donation.pickupAddress.city || nearestTask.donation.pickupAddress.line1}
+                  </Text>
                 </View>
-                <Text style={styles.pinZoneLabel}>Nallur Zone</Text>
-              </View>
+              )}
 
               {/* Bottom Right Expand Button */}
               <TouchableOpacity
@@ -377,201 +448,55 @@ export default function VolunteerDashboard() {
               <Text style={styles.sectionTitle}>Active Community Requests</Text>
             </View>
             <View style={styles.hubBadge}>
-              <Text style={styles.hubBadgeText}>Jaffna Hub</Text>
+              <Text style={styles.hubBadgeText}>{hubLabel}</Text>
             </View>
           </View>
 
           {/* ─── TASK CARDS LIST ─── */}
           <View style={styles.cardsContainer}>
-            {/* ═══ CARD 1: 25 Veg Biryani Lunch Packets (Urgent) ═══ */}
-            {(!searchQuery || '25 veg biryani lunch packets nallur st johns cooked'.includes(searchQuery.toLowerCase())) && (
+            {visibleTasks.map((task) => (
+              <DashboardTaskCard
+                key={task.assignment.id}
+                task={task}
+                onSelect={() => handleTaskSelect(task.assignment.id)}
+                onAccept={() => handleAcceptRide(task.assignment.id)}
+              />
+            ))}
+
+            {visibleTasks.length === 0 && (
               <View style={styles.taskCard}>
-              {/* Top Tag Row */}
-              <View style={styles.cardTagRow}>
-                <View style={styles.urgentPill}>
-                  <View style={styles.urgentDot} />
-                  <Text style={styles.urgentPillText}>Urgent Pickup • 20 mins left</Text>
-                </View>
-                <View style={styles.karmaPill}>
-                  <Text style={styles.karmaPillText}>+120 Karma pts</Text>
-                </View>
-              </View>
-
-              {/* Body Row: Icon + Details */}
-              <TouchableOpacity
-                style={styles.cardBodyRow}
-                onPress={() => handleTaskSelect('asgn-vol-402')}
-                activeOpacity={0.7}
-              >
-                {/* Food Type Icon Frame: Cooked */}
-                <View style={styles.cookedIconBox}>
-                  <Ionicons name="book-outline" size={24} color="#701A2B" />
-                  <Text style={styles.cookedIconLabel}>COOKED</Text>
-                </View>
-
-                {/* Details */}
-                <View style={styles.cardDetailsCol}>
-                  <View style={styles.cardTitleLine}>
-                    <Text style={styles.cardTitle}>25 Veg Biryani Lunch Packets</Text>
-                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-                  </View>
-
-                  {/* Pickup Line */}
-                  <View style={styles.locationStepLine}>
-                    <View style={styles.greenStepDot} />
-                    <Text style={styles.locationStepText}>
-                      Nallur Temple Hall <Text style={styles.distanceSpan}>(1.2 km away)</Text>
-                    </Text>
-                  </View>
-
-                  {/* Dropoff Line */}
-                  <View style={styles.locationStepLine}>
-                    <View style={styles.maroonStepDot} />
-                    <Text style={styles.locationStepText}>
-                      St. John's Shelter <Text style={styles.distanceSpan}>(3.5 km ride)</Text>
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              {/* Card Footer */}
-              <View style={styles.cardFooterRow}>
-                <Text style={styles.footerEstimateText}>Estimated 18 min ride</Text>
-                <TouchableOpacity
-                  style={styles.maroonSolidButton}
-                  onPress={() => handleAcceptRide('asgn-vol-402')}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.maroonSolidButtonText}>Accept Delivery Ride</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-            {/* ═══ CARD 2: 40 Fresh Bread & Buns Baskets (Scheduled) ═══ */}
-            {(!searchQuery || '40 fresh bread buns baskets jaffna town bakery grace care elderly bakery'.includes(searchQuery.toLowerCase())) && (
-              <View style={styles.taskCard}>
-                {/* Top Tag Row */}
-                <View style={styles.cardTagRow}>
-                  <View style={styles.scheduledPill}>
-                    <Ionicons name="time-outline" size={13} color="#0D9488" />
-                    <Text style={styles.scheduledPillText}>Scheduled • 2:30 PM Today</Text>
-                  </View>
-                  <View style={styles.karmaPill}>
-                    <Text style={styles.karmaPillText}>+95 Karma pts</Text>
-                  </View>
-                </View>
-
-                {/* Body Row: Icon + Details */}
-                <TouchableOpacity
-                  style={styles.cardBodyRow}
-                  onPress={() => handleTaskSelect('asgn-bakery-101')}
-                  activeOpacity={0.7}
-                >
-                  {/* Food Type Icon Frame: Bakery */}
-                  <View style={styles.bakeryIconBox}>
-                    <Ionicons name="archive-outline" size={24} color="#B45309" />
-                    <Text style={styles.bakeryIconLabel}>BAKERY</Text>
-                  </View>
-
-                  {/* Details */}
-                  <View style={styles.cardDetailsCol}>
-                    <View style={styles.cardTitleLine}>
-                      <Text style={styles.cardTitle}>40 Fresh Bread & Buns Baskets</Text>
-                      <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-                    </View>
-
-                    {/* Pickup Line */}
-                    <View style={styles.locationStepLine}>
-                      <View style={styles.greenStepDot} />
-                      <Text style={styles.locationStepText}>
-                        Jaffna Town Bakery <Text style={styles.distanceSpan}>(800m away)</Text>
-                      </Text>
-                    </View>
-
-                    {/* Dropoff Line */}
-                    <View style={styles.locationStepLine}>
-                      <View style={styles.maroonStepDot} />
-                      <Text style={styles.locationStepText}>Grace Care Elderly Home</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Card Footer */}
-                <View style={styles.cardFooterRow}>
-                  <Text style={styles.footerEstimateText}>Auto-assigned vehicle: Bike</Text>
-                  <TouchableOpacity
-                    style={styles.maroonOutlineButton}
-                    onPress={() => handleAcceptRide('asgn-bakery-101')}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.maroonOutlineButtonText}>Accept Task</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* ═══ CARD 3: 15kg Fresh Vegetables Hub (Standard) ═══ */}
-            {(!searchQuery || '15kg fresh vegetables hub chavakachcheri nallur produce'.includes(searchQuery.toLowerCase())) && (
-              <View style={styles.taskCard}>
-                {/* Top Tag Row */}
-                <View style={styles.cardTagRow}>
-                  <View style={styles.standardPill}>
-                    <Text style={styles.standardPillText}>Standard Drop • Before 5:00 PM</Text>
-                  </View>
-                  <View style={styles.karmaPill}>
-                    <Text style={styles.karmaPillText}>+150 Karma pts</Text>
-                  </View>
-                </View>
-
-                {/* Body Row: Icon + Details */}
-                <TouchableOpacity
-                  style={styles.cardBodyRow}
-                  onPress={() => handleTaskSelect('asgn-produce-102')}
-                  activeOpacity={0.7}
-                >
-                  {/* Food Type Icon Frame: Produce */}
+                <View style={styles.cardBodyRow}>
                   <View style={styles.produceIconBox}>
-                    <Ionicons name="flash-outline" size={24} color="#059669" />
-                    <Text style={styles.produceIconLabel}>PRODUCE</Text>
+                    <Ionicons
+                      name={tasks.error ? 'cloud-offline-outline' : 'checkmark-done-outline'}
+                      size={24}
+                      color="#059669"
+                    />
                   </View>
-
-                  {/* Details */}
                   <View style={styles.cardDetailsCol}>
-                    <View style={styles.cardTitleLine}>
-                      <Text style={styles.cardTitle}>15kg Fresh Vegetables Hub</Text>
-                      <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-                    </View>
-
-                    {/* Pickup Line */}
-                    <View style={styles.locationStepLine}>
-                      <View style={styles.greenStepDot} />
-                      <Text style={styles.locationStepText}>
-                        Chavakachcheri Hub <Text style={styles.distanceSpan}>(4.8 km)</Text>
-                      </Text>
-                    </View>
-
-                    {/* Dropoff Line */}
-                    <View style={styles.locationStepLine}>
-                      <View style={styles.maroonStepDot} />
-                      <Text style={styles.locationStepText}>Nallur Relief Community Kitchen</Text>
-                    </View>
+                    <Text style={styles.cardTitle}>
+                      {tasks.isLoading
+                        ? 'Looking for nearby tasks…'
+                        : tasks.error
+                          ? 'Could not load tasks'
+                          : !isReady
+                            ? 'You are paused'
+                            : query
+                              ? 'No tasks match your search'
+                              : 'No open tasks nearby right now'}
+                    </Text>
+                    <Text style={styles.locationStepText}>
+                      {tasks.error
+                        ? (tasks.error as Error).message
+                        : !isReady
+                          ? 'Turn on "Ready for Deliveries" to receive tasks.'
+                          : 'New approved donations in your travel radius will appear here.'}
+                    </Text>
                   </View>
-                </TouchableOpacity>
-
-                {/* Card Footer */}
-                <View style={styles.cardFooterRow}>
-                  <Text style={styles.footerEstimateText}>Car or Tuk-tuk recommended</Text>
-                  <TouchableOpacity
-                    style={styles.maroonOutlineButton}
-                    onPress={() => handleAcceptRide('asgn-produce-102')}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.maroonOutlineButtonText}>Accept Task</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
             )}
+
           </View>
 
           {/* Bottom spacing */}
@@ -579,6 +504,131 @@ export default function VolunteerDashboard() {
         </ScrollView>
       </View>
     </SafeAreaView>
+  );
+}
+
+const FOOD_ICON: Record<
+  string,
+  { icon: keyof typeof Ionicons.glyphMap; label: string; variant: 'cooked' | 'bakery' | 'produce' }
+> = {
+  cooked: { icon: 'restaurant-outline', label: 'COOKED', variant: 'cooked' },
+  bakery: { icon: 'archive-outline', label: 'BAKERY', variant: 'bakery' },
+  raw: { icon: 'leaf-outline', label: 'PRODUCE', variant: 'produce' },
+  packaged: { icon: 'cube-outline', label: 'PACKED', variant: 'bakery' },
+  dairy: { icon: 'water-outline', label: 'DAIRY', variant: 'produce' },
+  beverage: { icon: 'cafe-outline', label: 'DRINKS', variant: 'bakery' },
+};
+
+function DashboardTaskCard({
+  task,
+  onSelect,
+  onAccept,
+}: {
+  task: NearbyTask;
+  onSelect: () => void;
+  onAccept: () => void;
+}) {
+  const urgent = task.isUrgent || task.minutesLeft <= URGENT_THRESHOLD_MINUTES;
+  const readyFrom = task.donation.readyFrom ? new Date(task.donation.readyFrom) : null;
+  const scheduled = !urgent && readyFrom !== null && readyFrom.getTime() > Date.now();
+  const food = FOOD_ICON[task.donation.foodType] ?? FOOD_ICON.cooked!;
+  const boxStyle =
+    food.variant === 'cooked'
+      ? styles.cookedIconBox
+      : food.variant === 'bakery'
+        ? styles.bakeryIconBox
+        : styles.produceIconBox;
+  const labelStyle =
+    food.variant === 'cooked'
+      ? styles.cookedIconLabel
+      : food.variant === 'bakery'
+        ? styles.bakeryIconLabel
+        : styles.produceIconLabel;
+  const iconColor = food.variant === 'cooked' ? '#701A2B' : food.variant === 'bakery' ? '#B45309' : '#059669';
+  const drop = task.request?.dropAddress;
+
+  return (
+    <View style={styles.taskCard}>
+      <View style={styles.cardTagRow}>
+        {urgent ? (
+          <View style={styles.urgentPill}>
+            <View style={styles.urgentDot} />
+            <Text style={styles.urgentPillText}>
+              Urgent Pickup • {Math.max(task.minutesLeft, 0)} mins left
+            </Text>
+          </View>
+        ) : scheduled ? (
+          <View style={styles.scheduledPill}>
+            <Ionicons name="time-outline" size={13} color="#0D9488" />
+            <Text style={styles.scheduledPillText}>Scheduled • {formatClock(readyFrom!.toISOString())}</Text>
+          </View>
+        ) : (
+          <View style={styles.standardPill}>
+            <Text style={styles.standardPillText}>
+              Standard Drop • Before {formatClock(task.donation.expiresAt)}
+            </Text>
+          </View>
+        )}
+        <View style={styles.karmaPill}>
+          <Text style={styles.karmaPillText}>+{KARMA_PER_DELIVERY} Karma pts</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity style={styles.cardBodyRow} onPress={onSelect} activeOpacity={0.7}>
+        <View style={boxStyle}>
+          <Ionicons name={food.icon} size={24} color={iconColor} />
+          <Text style={labelStyle}>{food.label}</Text>
+        </View>
+
+        <View style={styles.cardDetailsCol}>
+          <View style={styles.cardTitleLine}>
+            <Text style={styles.cardTitle} numberOfLines={2}>
+              {task.donation.title}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </View>
+
+          <View style={styles.locationStepLine}>
+            <View style={styles.greenStepDot} />
+            <Text style={styles.locationStepText} numberOfLines={1}>
+              {task.donation.pickupAddress.line1}{' '}
+              <Text style={styles.distanceSpan}>({formatKm(task.distanceKm)} away)</Text>
+            </Text>
+          </View>
+
+          <View style={styles.locationStepLine}>
+            <View style={styles.maroonStepDot} />
+            <Text style={styles.locationStepText} numberOfLines={1}>
+              {drop ? (
+                <>
+                  {drop.line1}
+                  {task.routeKm !== null && (
+                    <Text style={styles.distanceSpan}> ({formatKm(task.routeKm)} ride)</Text>
+                  )}
+                </>
+              ) : (
+                'Recipient matched on acceptance'
+              )}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      <View style={styles.cardFooterRow}>
+        <Text style={styles.footerEstimateText}>
+          {task.donation.servings} servings • Est. {etaMinutes(task.distanceKm + (task.routeKm ?? 0))} min ride
+        </Text>
+        <TouchableOpacity
+          style={urgent ? styles.maroonSolidButton : styles.maroonOutlineButton}
+          onPress={onAccept}
+          activeOpacity={0.85}
+        >
+          <Text style={urgent ? styles.maroonSolidButtonText : styles.maroonOutlineButtonText}>
+            {urgent ? 'Accept Delivery Ride' : 'Accept Task'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 

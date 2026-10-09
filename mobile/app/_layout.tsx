@@ -8,11 +8,17 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '@/i18n';
 
 import { queryClient } from '@/api/queryClient';
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { useAuthStore } from '@/store/auth.store';
 import { useOnboardingStore } from '@/store/onboarding.store';
 import { useLanguageStore } from '@/store/language.store';
 import { colors } from '@/theme';
 import { configureGoogleSignIn } from '@/utils/googleAuth';
+
+function PushRegistration() {
+  usePushRegistration();
+  return null;
+}
 
 export default function RootLayout() {
   const restoreAuth = useAuthStore((state) => state.restore);
@@ -32,6 +38,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
+          <PushRegistration />
           <StatusBar style="dark" />
           <Stack
             screenOptions={{
@@ -48,6 +55,7 @@ export default function RootLayout() {
             <Stack.Screen name="(volunteer)" options={{ headerShown: false }} />
             <Stack.Screen name="(recipient)" options={{ headerShown: false }} />
             <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+            <Stack.Screen name="notifications" options={{ headerShown: false }} />
           </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>

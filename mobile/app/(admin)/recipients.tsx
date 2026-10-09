@@ -18,6 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { adminApi } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
 import { colors, radius, spacing } from '@/theme';
+import { formatAddress, formatClock, populatedName } from '@/utils/format';
+import type { FoodRequest } from '@/types';
 
 interface RecipientAidItem {
   id: string;
@@ -33,60 +35,23 @@ interface RecipientAidItem {
   notes: string;
 }
 
-const SAMPLE_RECIPIENT_REQUESTS: RecipientAidItem[] = [
-  {
-    id: 'req-201',
-    recipientName: 'Ariyalai Community Centre',
-    category: 'Vulnerable Households Group',
-    servingsNeeded: 50,
-    neededBy: 'Today, 2:30 PM',
-    dropAddress: 'Ariyalai East Community Hall, Jaffna',
-    district: 'Jaffna',
-    welfareProfile: 'Samurdhi Beneficiary Cluster #04',
-    priorityLevel: 'emergency',
-    status: 'open',
-    notes: 'Elderly residents and flood-affected families. Require hot meals before evening.',
-  },
-  {
-    id: 'req-202',
-    recipientName: 'Grace Care Elderly Home',
-    category: 'Elderly Care Facility',
-    servingsNeeded: 40,
-    neededBy: 'Today, 5:00 PM',
-    dropAddress: 'Navalar Road, Nallur',
-    district: 'Jaffna',
-    welfareProfile: 'Registered Welfare Institution #NGO-JAF-12',
-    priorityLevel: 'high',
-    status: 'matched',
-    notes: 'Soft bakery bread or fresh cooked vegetable parcels needed.',
-  },
-  {
-    id: 'req-203',
-    recipientName: 'Chavakachcheri Children Home',
-    category: 'Orphanage Care',
-    servingsNeeded: 35,
-    neededBy: 'Tomorrow, 12:00 PM',
-    dropAddress: 'Station Road, Chavakachcheri',
-    district: 'Jaffna',
-    welfareProfile: 'Department of Probation & Child Care Verified',
-    priorityLevel: 'standard',
-    status: 'open',
-    notes: 'Nutritious lunch meal packs requested for 35 children.',
-  },
-  {
-    id: 'req-204',
-    recipientName: 'Kopay Fishermen Colony Relief',
-    category: 'Low Income Families',
-    servingsNeeded: 60,
-    neededBy: 'Today, 7:00 PM',
-    dropAddress: 'Coastal Road Bay, Kopay North',
-    district: 'Jaffna',
-    welfareProfile: 'Emergency Ration Cards Verified',
-    priorityLevel: 'emergency',
-    status: 'open',
-    notes: '12 families whose work was disrupted by coastal rain.',
-  },
-];
+function mapRequest(request: FoodRequest): RecipientAidItem {
+  const hoursLeft = (new Date(request.neededBy).getTime() - Date.now()) / 36e5;
+  return {
+    id: request.id,
+    recipientName: populatedName(request.recipientId) || request.dropAddress?.city || 'Recipient',
+    category: request.foodCategory || request.dietaryRequirements?.join(', ') || 'Food request',
+    servingsNeeded: request.servingsNeeded,
+    neededBy: formatClock(request.neededBy) || '—',
+    dropAddress: formatAddress(request.dropAddress),
+    district: request.dropAddress?.district || request.dropAddress?.city || '—',
+    welfareProfile: `Family size ${request.familySize ?? '—'} · ${request.contactPreference || 'in-app'}`,
+    priorityLevel: hoursLeft <= 3 ? 'emergency' : hoursLeft <= 8 ? 'high' : 'standard',
+    status:
+      request.status === 'fulfilled' ? 'fulfilled' : request.status === 'matched' ? 'matched' : 'open',
+    notes: request.notes || 'No additional notes',
+  };
+}
 
 export default function RecipientsQueue() {
   const [filter, setFilter] = useState<'all' | 'open' | 'matched' | 'fulfilled'>('all');
@@ -98,24 +63,10 @@ export default function RecipientsQueue() {
     queryFn: () => adminApi.foodRequests({ status: filter === 'all' ? undefined : filter }),
   });
 
-  const itemsList = useMemo(() => {
-    if (foodRequestsData?.items && foodRequestsData.items.length > 0) {
-      return foodRequestsData.items.map((r: any) => ({
-        id: r._id,
-        recipientName: r.recipient?.name || 'Local Community Group',
-        category: r.dietaryPreference || 'Cooked Meals',
-        servingsNeeded: r.servingsNeeded || 30,
-        neededBy: r.neededBy ? new Date(r.neededBy).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today',
-        dropAddress: r.deliveryLocation?.address || 'Jaffna',
-        district: 'Jaffna',
-        welfareProfile: r.recipient?.welfareStatus || 'Samurdhi Verified',
-        priorityLevel: (r.urgency || 'medium') as any,
-        status: (r.status || 'open') as any,
-        notes: r.notes || 'Household aid request',
-      }));
-    }
-    return SAMPLE_RECIPIENT_REQUESTS;
-  }, [foodRequestsData]);
+  const itemsList = useMemo(
+    () => (foodRequestsData?.items ?? []).filter((item) => item.status !== 'cancelled').map(mapRequest),
+    [foodRequestsData],
+  );
 
   const filteredItems = itemsList.filter((item) => {
     if (filter === 'all') return true;
@@ -130,12 +81,12 @@ export default function RecipientsQueue() {
   const confirmMatch = () => {
     setMatchModalVisible(false);
     Alert.alert(
-      'Donation Matched',
-      `Matched 50 Veg Meals from Nallur Temple Kitchen to ${selectedReq?.recipientName}. Directing to courier dispatch.`,
+      'Match from approvals',
+      `Open an approved donation and assign a volunteer to ${selectedReq?.recipientName}. Nearby open requests are attached automatically.`,
       [
         {
-          text: 'Proceed to Assign Courier',
-          onPress: () => router.push('/(admin)/assign/DN-8842' as any),
+          text: 'Open donations queue',
+          onPress: () => router.push('/(admin)/approvals' as any),
         },
       ],
     );
@@ -276,13 +227,13 @@ export default function RecipientsQueue() {
 
             <View style={styles.matchSuggestionCard}>
               <Text style={styles.matchSuggestionTitle}>
-                50 Pkts Hot Vegetable Rice &amp; Sambar
+                Match from the approvals queue
               </Text>
               <Text style={styles.matchSuggestionMeta}>
-                Donor: Nallur Temple Kitchen · 50 Servings Available
+                Approve a donation, then assign a volunteer. Nearby open requests are attached automatically.
               </Text>
               <Text style={styles.matchSuggestionDistance}>
-                📍 Distance: 3.8 km · 3h 45m safe window remaining
+                {selectedReq?.dropAddress}
               </Text>
             </View>
 

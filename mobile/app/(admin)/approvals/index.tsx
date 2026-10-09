@@ -17,9 +17,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { adminApi, FALLBACK_KPIS } from '@/api/admin.api';
+import { adminApi } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
 import { colors, radius, spacing } from '@/theme';
+import { remainingLabel, remainingMinutes } from '@/utils/format';
 
 export default function ApprovalsHub() {
   const [karmaModalVisible, setKarmaModalVisible] = useState(false);
@@ -29,7 +30,6 @@ export default function ApprovalsHub() {
   const { data: kpis, refetch: refetchKpis, isRefetching } = useQuery({
     queryKey: ['admin.kpis'],
     queryFn: () => adminApi.kpis(),
-    initialData: FALLBACK_KPIS,
   });
 
   const { data: pendingDonationsData, refetch: refetchDonations } = useQuery({
@@ -45,19 +45,23 @@ export default function ApprovalsHub() {
   };
 
   const handleReleaseKarma = () => {
-    setReleasingPoints(true);
-    setTimeout(() => {
-      setReleasingPoints(false);
-      setKarmaModalVisible(false);
-      Alert.alert('Karma Credited', '750 Karma reward points released to 3 volunteer riders successfully.');
-    }, 800);
+    setReleasingPoints(false);
+    setKarmaModalVisible(false);
+    Alert.alert(
+      'Karma is automatic',
+      'Reward points are credited only after a confirmed delivery. There is no manual release queue.',
+    );
   };
 
+  const urgentPending = pendingList.filter((item) => {
+    const minutes = remainingMinutes(item.expiresAt);
+    return minutes !== null && minutes < 120;
+  });
+
   const totalPendingReview =
-    (kpis?.pendingApprovals ?? 8) +
-    (kpis?.pendingVolunteerKyc ?? 6) +
-    (kpis?.openRecipientRequests ?? 7) +
-    (kpis?.pendingKarmaClaims ?? 3);
+    (kpis?.pendingApprovals ?? 0) +
+    (kpis?.pendingVolunteerKyc ?? 0) +
+    (kpis?.openRecipientRequests ?? 0);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -95,12 +99,19 @@ export default function ApprovalsHub() {
             <Ionicons name="time-outline" size={24} color={colors.urgentRed} />
           </View>
           <View style={styles.highPriorityContent}>
-            <Text style={styles.highPriorityTitle}>2 High Priority Items</Text>
+            <Text style={styles.highPriorityTitle}>
+              {urgentPending.length} High Priority Item{urgentPending.length === 1 ? '' : 's'}
+            </Text>
             <Text style={styles.highPrioritySubtitle}>Meals close to expiry threshold</Text>
           </View>
           <TouchableOpacity
             style={styles.reviewNextBtn}
-            onPress={() => router.push('/(admin)/approvals/donation/DN-8842' as any)}
+            onPress={() =>
+              router.push(
+                `/(admin)/approvals/donation/${urgentPending[0]?.id ?? pendingList[0]?.id ?? ''}` as any,
+              )
+            }
+            disabled={!pendingList[0]}
             activeOpacity={0.8}
           >
             <Text style={styles.reviewNextText}>Review Next →</Text>
@@ -127,7 +138,7 @@ export default function ApprovalsHub() {
               </View>
               <View style={styles.pendingPill}>
                 <Text style={styles.pendingPillText}>
-                  {kpis?.pendingApprovals ?? 8} Pending
+                  {kpis?.pendingApprovals ?? 0} Pending
                 </Text>
               </View>
             </View>
@@ -139,10 +150,16 @@ export default function ApprovalsHub() {
             <View style={styles.queueFooter}>
               <View style={styles.queueAlertTag}>
                 <Text style={styles.urgentRedStar}>✻</Text>
-                <Text style={styles.urgentAlertText}>2 Urgent (Expires &lt; 2h)</Text>
+                <Text style={styles.urgentAlertText}>
+                  {urgentPending.length} Urgent (Expires &lt; 2h)
+                </Text>
               </View>
               <TouchableOpacity
-                onPress={() => router.push('/(admin)/approvals/donation/DN-8842' as any)}
+                onPress={() =>
+                  router.push(
+                    `/(admin)/approvals/donation/${pendingList[0]?.id ?? ''}` as any,
+                  )
+                }
                 style={styles.openQueueLink}
               >
                 <Text style={styles.openQueueText}>Open Donations Queue →</Text>
@@ -162,7 +179,7 @@ export default function ApprovalsHub() {
               </View>
               <View style={styles.pendingPill}>
                 <Text style={styles.pendingPillText}>
-                  {kpis?.pendingVolunteerKyc ?? 6} Pending
+                  {kpis?.pendingVolunteerKyc ?? 0} Pending
                 </Text>
               </View>
             </View>
@@ -174,7 +191,9 @@ export default function ApprovalsHub() {
             <View style={styles.queueFooter}>
               <View style={styles.queueTagMint}>
                 <Ionicons name="checkmark-circle-outline" size={14} color={colors.mint} />
-                <Text style={styles.tagMintText}>3 New Submissions</Text>
+                <Text style={styles.tagMintText}>
+                  {kpis?.pendingVolunteerKyc ?? 0} New Submissions
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => router.push('/(admin)/approvals/volunteers')}
@@ -197,7 +216,7 @@ export default function ApprovalsHub() {
               </View>
               <View style={styles.pendingPill}>
                 <Text style={styles.pendingPillText}>
-                  {kpis?.openRecipientRequests ?? 7} Pending
+                  {kpis?.openRecipientRequests ?? 0} Pending
                 </Text>
               </View>
             </View>
@@ -209,7 +228,9 @@ export default function ApprovalsHub() {
             <View style={styles.queueFooter}>
               <View style={styles.queueTagAmber}>
                 <Ionicons name="people-outline" size={14} color={colors.amber} />
-                <Text style={styles.tagAmberText}>4 Priority Families</Text>
+                <Text style={styles.tagAmberText}>
+                  {kpis?.openRecipientRequests ?? 0} Open Requests
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => router.push('/(admin)/recipients' as any)}
@@ -232,7 +253,7 @@ export default function ApprovalsHub() {
               </View>
               <View style={styles.pendingPill}>
                 <Text style={styles.pendingPillText}>
-                  {kpis?.pendingKarmaClaims ?? 3} Pending
+                  0 Pending
                 </Text>
               </View>
             </View>
@@ -244,7 +265,7 @@ export default function ApprovalsHub() {
             <View style={styles.queueFooter}>
               <View style={styles.queueTagMint}>
                 <Ionicons name="gift-outline" size={14} color={colors.mint} />
-                <Text style={styles.tagMintText}>+750 Pts to be credited</Text>
+                <Text style={styles.tagMintText}>Auto-credited on delivery</Text>
               </View>
               <TouchableOpacity
                 onPress={() => setKarmaModalVisible(true)}
@@ -261,47 +282,37 @@ export default function ApprovalsHub() {
           <Text style={styles.sectionHeading}>RECENT DONATIONS IN QUEUE</Text>
           {pendingList.length === 0 ? (
             <View style={styles.sampleDonationCard}>
-              <Image
-                source={{
-                  uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
-                }}
-                style={styles.sampleDonationThumb}
-              />
               <View style={{ flex: 1, gap: 2 }}>
-                <View style={styles.tagRow}>
-                  <View style={[styles.pillBadge, { backgroundColor: '#FEF3D6' }]}>
-                    <Text style={[styles.pillBadgeText, { color: '#B45309' }]}>Expires in 2h</Text>
-                  </View>
-                </View>
-                <Text style={styles.sampleDonationTitle}>Nallur Temple Kitchen</Text>
-                <Text style={styles.sampleDonationSubtitle}>50 Veg Meals • Prep 11:30 AM</Text>
-                <Text style={styles.sampleDonationStatus}>✓ Safety: 68°C Passed</Text>
+                <Text style={styles.sampleDonationTitle}>No donations waiting</Text>
+                <Text style={styles.sampleDonationSubtitle}>
+                  New surplus food submissions will appear here for review.
+                </Text>
               </View>
-              <TouchableOpacity
-                style={styles.sampleDonationBtn}
-                onPress={() => router.push('/(admin)/approvals/donation/DN-8842' as any)}
-              >
-                <Text style={styles.sampleDonationBtnText}>Review →</Text>
-              </TouchableOpacity>
             </View>
           ) : (
             pendingList.map((item) => (
               <View key={item.id} style={styles.sampleDonationCard}>
-                <Image
-                  source={{
-                    uri:
-                      item.photoUrls[0] ||
-                      'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
-                  }}
-                  style={styles.sampleDonationThumb}
-                />
+                {item.photoUrls[0] ? (
+                  <Image source={{ uri: item.photoUrls[0] }} style={styles.sampleDonationThumb} />
+                ) : (
+                  <View style={[styles.sampleDonationThumb, { alignItems: 'center', justifyContent: 'center' }]}>
+                    <Ionicons name="restaurant-outline" size={22} color={colors.mint} />
+                  </View>
+                )}
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.sampleDonationTitle}>{item.title}</Text>
+                  <View style={styles.tagRow}>
+                    <View style={[styles.pillBadge, { backgroundColor: '#FEF3D6' }]}>
+                      <Text style={[styles.pillBadgeText, { color: '#B45309' }]}>
+                        {remainingLabel(item.expiresAt)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.sampleDonationTitle}>{item.donor?.name || item.title}</Text>
                   <Text style={styles.sampleDonationSubtitle}>
                     {item.servings} servings · {item.foodType}
                   </Text>
                   <Text style={styles.sampleDonationStatus}>
-                    Expires in {item.safeForHours}h
+                    {item.foodSafetyVerified ? 'Safety check recorded' : 'Awaiting inspection'}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -330,21 +341,8 @@ export default function ApprovalsHub() {
             </View>
 
             <Text style={styles.karmaModalDesc}>
-              Auditing 3 completed volunteer distribution routes in Northern Sri Lanka. Releasing Karma points will credit the riders’ public profiles immediately.
+              Karma points are awarded automatically after pickup and delivery are confirmed with photo and PIN evidence. There is no pending manual credit queue.
             </Text>
-
-            <View style={styles.karmaItem}>
-              <Text style={styles.karmaItemName}>Kajan S. (Motorbike)</Text>
-              <Text style={styles.karmaItemPoints}>+300 Pts (14.2 km)</Text>
-            </View>
-            <View style={styles.karmaItem}>
-              <Text style={styles.karmaItemName}>Priya T. (Bicycle)</Text>
-              <Text style={styles.karmaItemPoints}>+250 Pts (6.5 km)</Text>
-            </View>
-            <View style={styles.karmaItem}>
-              <Text style={styles.karmaItemName}>Murugan R. (Van)</Text>
-              <Text style={styles.karmaItemPoints}>+200 Pts (28.0 km)</Text>
-            </View>
 
             <TouchableOpacity
               style={styles.confirmReleaseBtn}

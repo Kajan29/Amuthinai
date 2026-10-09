@@ -36,6 +36,44 @@ export class FoodRequest {
   @Prop({ trim: true })
   notes?: string;
 
+  @ApiPropertyOptional({ description: 'Number of family members to feed' })
+  @Prop({ min: 1 })
+  familySize?: number;
+
+  @ApiPropertyOptional({ type: [String] })
+  @Prop({ type: [String], default: [] })
+  dietaryRequirements!: string[];
+
+  @ApiPropertyOptional({ description: 'Kind of food needed, e.g. cooked meals or dry rations' })
+  @Prop({ trim: true })
+  foodCategory?: string;
+
+  @ApiPropertyOptional({ enum: ['call', 'sms', 'whatsapp', 'in_app'] })
+  @Prop({ type: String, enum: ['call', 'sms', 'whatsapp', 'in_app'], default: 'call' })
+  contactPreference!: 'call' | 'sms' | 'whatsapp' | 'in_app';
+
+  @ApiPropertyOptional({ enum: ['doorstep', 'hub_pickup'] })
+  @Prop({ type: String, enum: ['doorstep', 'hub_pickup'], default: 'doorstep' })
+  deliveryMethod!: 'doorstep' | 'hub_pickup';
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  contactPhone?: string;
+
+  @ApiPropertyOptional()
+  @Prop()
+  fulfilledAt?: Date;
+
+  @ApiPropertyOptional()
+  @Prop()
+  cancelledAt?: Date;
+
+  @ApiProperty()
+  createdAt!: Date;
+
+  @ApiProperty()
+  updatedAt!: Date;
+
   @ApiProperty({ type: Address })
   @Prop({ type: AddressSchema, required: true })
   dropAddress!: Address;

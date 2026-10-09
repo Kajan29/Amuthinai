@@ -3,136 +3,64 @@ import { client, request } from './client';
 import type {
   Assignment,
   DeliveryProof,
-  Donation,
   GeoPoint,
   Paginated,
+  TaskView,
   VehicleType,
 } from '@/types';
 
-export interface NearbyTask {
-  assignment: Assignment;
-  donation: Donation;
-  distanceKm: number;
-  minutesLeft: number;
-}
+/** Kept as an alias so screens written against the old name keep compiling. */
+export type NearbyTask = TaskView;
 
 export interface ProofPayload {
   photoUrl: string;
   location: GeoPoint;
-  /** FR9 — required on delivery, ignored on pickup. */
-  pin?: string;
+  /** FR9 — the donor's PIN at pickup, the recipient's PIN at delivery. */
+  pin: string;
+  quantityConfirmed?: number;
+  note?: string;
 }
 
 export interface VolunteerProfilePayload {
   /** FR7 */
-  vehicleType: VehicleType;
-  travelRadiusKm: number;
+  vehicleType?: VehicleType;
+  travelRadiusKm?: number;
+  isAvailable?: boolean;
 }
 
-import { MOCK_VOLUNTEER_TASKS } from '@/constants/mockVolunteerData';
-
-// Mutable in-memory store for active session mutations
-const liveMockTasks = [...MOCK_VOLUNTEER_TASKS];
+export const isOpenTask = (id: string) => id.startsWith('open-');
 
 export const assignmentsApi = {
-  /** FR8 — ordered by urgency, filtered by the volunteer's travel radius (FR7). */
-  nearby: async () => {
-    try {
-      const result = await request<NearbyTask[]>(client.get('/assignments/nearby'));
-      return result && result.length > 0 ? result : liveMockTasks;
-    } catch {
-      return liveMockTasks;
-    }
-  },
+  /** FR8 — own live tasks plus unclaimed donations in the travel radius, urgent first. */
+  nearby: (origin?: { latitude: number; longitude: number }) =>
+    request<TaskView[]>(
+      client.get('/assignments/nearby', {
+        params: origin ? { lat: origin.latitude, lng: origin.longitude } : undefined,
+      }),
+    ),
+
+  history: (params?: { page?: number; pageSize?: number }) =>
+    request<Paginated<TaskView>>(client.get('/assignments/history', { params })),
 
   mine: () => request<Paginated<Assignment>>(client.get('/assignments/mine')),
 
-  byId: async (id: string) => {
-    try {
-      return await request<Assignment>(client.get(`/assignments/${id}`));
-    } catch {
-      const found = liveMockTasks.find((t) => t.assignment.id === id);
-      if (found) return found.assignment;
-      // If id is active or sample
-      return liveMockTasks[0]!.assignment;
-    }
-  },
+  /** Full task view (donation, drop-off, contacts, proofs). Accepts `open-<donationId>` ids. */
+  details: (id: string) => request<TaskView>(client.get(`/assignments/${id}/details`)),
 
-  accept: async (id: string) => {
-    try {
-      return await request<Assignment>(client.post(`/assignments/${id}/accept`));
-    } catch {
-      const idx = liveMockTasks.findIndex((t) => t.assignment.id === id);
-      if (idx !== -1) {
-        liveMockTasks[idx] = {
-          ...liveMockTasks[idx]!,
-          assignment: {
-            ...liveMockTasks[idx]!.assignment,
-            status: 'accepted',
-            acceptedAt: new Date().toISOString(),
-          },
-        };
-        return liveMockTasks[idx]!.assignment;
-      }
-      return {
-        id,
-        donationId: 'don-active-01',
-        volunteerId: 'user-vol-1',
-        status: 'accepted',
-        deliveryPin: '4821',
-        distanceKm: 2.4,
-        offeredAt: new Date().toISOString(),
-        acceptedAt: new Date().toISOString(),
-      };
-    }
-  },
+  byId: (id: string) => request<Assignment>(client.get(`/assignments/${id}`)),
+
+  /** Accepting an `open-` task claims it; another volunteer may have got there first (409). */
+  accept: (id: string) => request<Assignment>(client.post(`/assignments/${id}/accept`)),
 
   decline: (id: string, reason?: string) =>
-    request<Assignment>(client.post(`/assignments/${id}/decline`, { reason })),
+    request<{ declined: true }>(client.post(`/assignments/${id}/decline`, { reason })),
 
   /** FR9 */
-  confirmPickup: async (id: string, payload: ProofPayload) => {
-    try {
-      return await request<DeliveryProof>(client.post(`/assignments/${id}/pickup`, payload));
-    } catch {
-      return {
-        id: `proof-pick-${Date.now()}`,
-        assignmentId: id,
-        stage: 'pickup',
-        photoUrl: payload.photoUrl,
-        capturedAt: new Date().toISOString(),
-        location: payload.location,
-        pinVerified: true,
-      };
-    }
-  },
+  confirmPickup: (id: string, payload: ProofPayload) =>
+    request<DeliveryProof>(client.post(`/assignments/${id}/pickup`, payload)),
 
-  confirmDelivery: async (id: string, payload: ProofPayload) => {
-    try {
-      return await request<DeliveryProof>(client.post(`/assignments/${id}/delivery`, payload));
-    } catch {
-      const idx = liveMockTasks.findIndex((t) => t.assignment.id === id);
-      if (idx !== -1) {
-        liveMockTasks[idx] = {
-          ...liveMockTasks[idx]!,
-          assignment: {
-            ...liveMockTasks[idx]!.assignment,
-            status: 'completed',
-            completedAt: new Date().toISOString(),
-          },
-        };
-      }
-      return {
-        id: `proof-del-${Date.now()}`,
-        assignmentId: id,
-        stage: 'delivery',
-        photoUrl: payload.photoUrl,
-        capturedAt: new Date().toISOString(),
-        location: payload.location,
-        pinVerified: true,
-      };
-    }
-  },
+  confirmDelivery: (id: string, payload: ProofPayload) =>
+    request<DeliveryProof>(client.post(`/assignments/${id}/delivery`, payload)),
 
   updateProfile: (payload: VolunteerProfilePayload) =>
     request<void>(client.patch('/users/me/volunteer-profile', payload)),

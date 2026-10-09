@@ -16,6 +16,7 @@ import {
 import { Role } from 'src/common/enums/role.enum';
 import { clampSafeHours, expiresAt } from 'src/common/utils/freshness.util';
 import { nearSphere } from 'src/common/utils/geo.util';
+import { NotificationsService } from 'src/modules/notifications/notifications.service';
 import { StatusHistoryService } from 'src/modules/status-history/status-history.service';
 
 import { CreateDonationDto } from './dto/create-donation.dto';
@@ -33,6 +34,7 @@ export class DonationsService {
   constructor(
     @InjectModel(Donation.name) private readonly donationModel: Model<Donation>,
     private readonly statusHistory: StatusHistoryService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** FR2, FR3 */
@@ -65,6 +67,13 @@ export class DonationsService {
       actorId: donorId,
       actorRole: Role.Donor,
       note: 'Donation submitted',
+    });
+
+    await this.notifications.sendToAdmins({
+      title: 'New donation awaiting approval',
+      body: `${donation.title} — ${donation.servings} servings, safe until ${formatTime(expiry)}`,
+      type: 'donation',
+      data: { donationId: donation.id as string },
     });
 
     return donation;
@@ -115,7 +124,16 @@ export class DonationsService {
 
     donation.reviewedBy = new Types.ObjectId(adminId);
     donation.reviewedAt = new Date();
-    return donation.save();
+    const saved = await donation.save();
+
+    await this.notifications.sendToUsers([donation.donorId.toString()], {
+      title: 'Donation approved',
+      body: `${donation.title} was approved. We are finding a volunteer to collect it.`,
+      type: 'donation',
+      data: { donationId: id },
+    });
+
+    return saved;
   }
 
   /** FR4 */
@@ -129,7 +147,16 @@ export class DonationsService {
     donation.rejectionReason = reason;
     donation.reviewedBy = new Types.ObjectId(adminId);
     donation.reviewedAt = new Date();
-    return donation.save();
+    const saved = await donation.save();
+
+    await this.notifications.sendToUsers([donation.donorId.toString()], {
+      title: 'Donation not approved',
+      body: `${donation.title}: ${reason}`,
+      type: 'donation',
+      data: { donationId: id },
+    });
+
+    return saved;
   }
 
   /** Admin flags a donation */
@@ -295,4 +322,64 @@ export class DonationsService {
 
     return paginate(items, total, query);
   }
+
+  /** Delivered servings and counts grouped by food type, for admin analytics. */
+  foodTypeBreakdown() {
+    return this.donationModel.aggregate<{ foodType: string; count: number; servings: number }>([
+      { $match: { status: { $nin: [DonationStatus.Rejected, DonationStatus.Cancelled] } } },
+      { $group: { _id: '$foodType', count: { $sum: 1 }, servings: { $sum: '$servings' } } },
+      { $project: { _id: 0, foodType: '$_id', count: 1, servings: 1 } },
+      { $sort: { count: -1 } },
+    ]);
+  }
+
+  /** Delivered donations per calendar month since `from`. */
+  monthlyDelivered(from: Date) {
+    return this.donationModel.aggregate<{
+      year: number;
+      month: number;
+      deliveries: number;
+      servings: number;
+    }>([
+      { $match: { status: DonationStatus.Delivered, updatedAt: { $gte: from } } },
+      {
+        $group: {
+          _id: { year: { $year: '$updatedAt' }, month: { $month: '$updatedAt' } },
+          deliveries: { $sum: 1 },
+          servings: { $sum: '$servings' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          year: '$_id.year',
+          month: '$_id.month',
+          deliveries: 1,
+          servings: 1,
+        },
+      },
+    ]);
+  }
+
+  async deliveredTotals(since?: Date): Promise<{ deliveries: number; servings: number }> {
+    const match: FilterQuery<Donation> = { status: DonationStatus.Delivered };
+    if (since) match.updatedAt = { $gte: since };
+    const [row] = await this.donationModel.aggregate<{ deliveries: number; servings: number }>([
+      { $match: match },
+      { $group: { _id: null, deliveries: { $sum: 1 }, servings: { $sum: '$servings' } } },
+    ]);
+    return row ?? { deliveries: 0, servings: 0 };
+  }
+
+  countExpired() {
+    return this.donationModel.countDocuments({ status: DonationStatus.Expired }).exec();
+  }
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Colombo',
+  });
 }

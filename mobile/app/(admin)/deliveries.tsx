@@ -17,9 +17,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { adminApi } from '@/api/admin.api';
+import { adminApi, type MonitoredTask } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
 import { colors, radius, spacing } from '@/theme';
+import { formatAddress, titleCase } from '@/utils/format';
 
 interface DeliveryItem {
   id: string;
@@ -44,126 +45,63 @@ interface DeliveryItem {
   deliveryProofUrl?: string;
 }
 
-const SAMPLE_DELIVERIES: DeliveryItem[] = [
-  {
-    id: 'del-101',
-    donationTitle: '50 Pkts Hot Vegetable Rice & Sambar',
-    servings: 50,
-    foodType: 'Cooked',
-    status: 'in_transit',
-    donorName: 'Nallur Temple Kitchen',
-    pickupAddress: 'Point Pedro Road, Nallur Kovil North Gate',
-    recipientName: 'Ariyalai Community Centre',
-    dropAddress: 'Ariyalai East, Jaffna',
-    volunteerName: 'Kajan S.',
-    volunteerPhone: '+94 77 123 4567',
-    volunteerVehicle: 'Motorbike (125cc)',
-    volunteerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-    deliveryPin: '4829',
-    minutesElapsed: 22,
-    distanceKm: 4.8,
-    pickupProofUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'del-102',
-    donationTitle: '40 Fresh Buns & Loaves',
-    servings: 40,
-    foodType: 'Bakery',
-    status: 'delayed',
-    donorName: 'Hospital Road Bakery',
-    pickupAddress: 'Hospital Road, Jaffna Town',
-    recipientName: 'Grace Care Elderly Home',
-    dropAddress: 'Navalar Road, Nallur',
-    volunteerName: 'Murugan R.',
-    volunteerPhone: '+94 77 345 6789',
-    volunteerVehicle: 'Toyota HiAce Van',
-    volunteerAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
-    deliveryPin: '7712',
-    minutesElapsed: 54,
-    distanceKm: 8.2,
-    isDelayed: true,
-    delayReason: 'Traffic congestion near railway cross road; courier rerouting.',
-    pickupProofUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'del-103',
-    donationTitle: '30 Vegetable Biryani Packs',
-    servings: 30,
-    foodType: 'Cooked',
-    status: 'picked_up',
-    donorName: 'Kopay Community Kitchen',
-    pickupAddress: 'Main Street, Kopay Central',
-    recipientName: 'Chavakachcheri Children Home',
-    dropAddress: 'Station Road, Chavakachcheri',
-    volunteerName: 'Priya T.',
-    volunteerPhone: '+94 77 234 8901',
-    volunteerVehicle: 'Bicycle (Eco Carrier)',
-    volunteerAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80',
-    deliveryPin: '9301',
-    minutesElapsed: 15,
-    distanceKm: 3.5,
-    pickupProofUrl: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=600&q=80',
-  },
-  {
-    id: 'del-104',
-    donationTitle: '60 Pkts Dinner Rolls & Milk Breads',
-    servings: 60,
-    foodType: 'Bakery',
-    status: 'delivered',
-    donorName: 'Jaffna Central Caterers',
-    pickupAddress: 'Stanely Road, Jaffna',
-    recipientName: 'St. Anthony Relief Hostel',
-    dropAddress: 'Beach Road, Jaffna Coastal',
-    volunteerName: 'Sivaranjan K.',
-    volunteerPhone: '+94 77 987 6543',
-    volunteerVehicle: 'Three-Wheeler',
-    volunteerAvatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=200&q=80',
-    deliveryPin: '5543',
-    minutesElapsed: 38,
-    distanceKm: 5.1,
-    pickupProofUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80',
-    deliveryProofUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80',
-  },
-];
+function mapMonitoredTask(task: MonitoredTask): DeliveryItem {
+  const pickupProof = task.proofs.find((proof) => proof.stage === 'pickup');
+  const deliveryProof = task.proofs.find((proof) => proof.stage === 'delivery');
+  const startedAt = task.assignment.acceptedAt || task.assignment.offeredAt;
+  const minutesElapsed = startedAt
+    ? Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 60_000))
+    : 0;
+  const donationStatus = task.donation.status;
+  const status: DeliveryItem['status'] =
+    task.assignment.status === 'completed'
+      ? 'delivered'
+      : task.isDelayed
+        ? 'delayed'
+        : donationStatus === 'picked_up'
+          ? 'picked_up'
+          : donationStatus === 'in_transit'
+            ? 'in_transit'
+            : 'assigned';
+
+  return {
+    id: task.assignment.id,
+    donationTitle: task.donation.title,
+    servings: task.donation.servings,
+    foodType: titleCase(task.donation.foodType) || 'Food',
+    status,
+    donorName: task.donor?.name || 'Donor',
+    pickupAddress: formatAddress(task.donation.pickupAddress),
+    recipientName: task.recipient?.name || task.request?.dropAddress.city || 'Recipient',
+    dropAddress: formatAddress(task.request?.dropAddress),
+    volunteerName: task.volunteer?.name || 'Unassigned',
+    volunteerPhone: task.volunteer?.phone || '',
+    volunteerVehicle: titleCase(task.volunteer?.vehicleType) || 'Not set',
+    volunteerAvatar: '',
+    deliveryPin: task.assignment.deliveryPin || '—',
+    minutesElapsed,
+    distanceKm: task.routeKm ?? task.distanceKm ?? 0,
+    isDelayed: task.isDelayed,
+    delayReason: task.alerts[0],
+    pickupProofUrl: pickupProof?.photoUrl,
+    deliveryProofUrl: deliveryProof?.photoUrl,
+  };
+}
 
 export default function DeliveriesMonitor() {
   const [filter, setFilter] = useState<'all' | 'in_transit' | 'picked_up' | 'delayed' | 'delivered'>('all');
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryItem | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
 
-  // Query backend
-  const { data: assignmentsData, refetch, isRefetching } = useQuery({
-    queryKey: ['admin.assignments', filter],
-    queryFn: () => adminApi.assignments({ status: filter === 'all' ? undefined : filter }),
+  const { data: liveTasks, refetch, isRefetching } = useQuery({
+    queryKey: ['admin.monitor'],
+    queryFn: () => adminApi.monitor(),
   });
 
-  const deliveriesList: DeliveryItem[] = useMemo(() => {
-    if (assignmentsData?.items && assignmentsData.items.length > 0) {
-      return assignmentsData.items.map((a: any) => ({
-        id: a._id,
-        donationTitle: a.donation?.foodName || 'Cooked Meals',
-        servings: a.donation?.servings || 40,
-        foodType: a.donation?.foodCategory || 'Cooked',
-        status: (a.status as any) || 'in_transit',
-        donorName: a.donation?.donor?.name || 'Local Donor',
-        pickupAddress: a.donation?.pickupLocation?.address || 'Jaffna',
-        recipientName: a.recipientRequest?.recipient?.name || 'Community Centre',
-        dropAddress: a.recipientRequest?.deliveryLocation?.address || 'Jaffna',
-        volunteerName: a.volunteer?.name || 'Assigned Courier',
-        volunteerPhone: a.volunteer?.phone || '+94 77 123 4567',
-        volunteerVehicle: a.volunteer?.vehicleType || 'Motorbike',
-        volunteerAvatar: a.volunteer?.avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80',
-        deliveryPin: a.deliveryPin || '4821',
-        minutesElapsed: 15,
-        distanceKm: 2.8,
-        isDelayed: a.status === 'delayed',
-        delayReason: a.status === 'delayed' ? 'Vehicle technical issue' : undefined,
-        pickupProofUrl: a.pickupProofPhoto || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&q=80',
-        deliveryProofUrl: a.deliveryProofPhoto || undefined,
-      }));
-    }
-    return SAMPLE_DELIVERIES;
-  }, [assignmentsData]);
+  const deliveriesList: DeliveryItem[] = useMemo(
+    () => (liveTasks ?? []).map(mapMonitoredTask),
+    [liveTasks],
+  );
 
   const filteredDeliveries = deliveriesList.filter((item) => {
     if (filter === 'all') return true;
@@ -232,22 +170,38 @@ export default function DeliveriesMonitor() {
         {/* Quick Operational Metrics */}
         <View style={styles.metricsBar}>
           <View style={styles.metricItem}>
-            <Text style={styles.metricVal}>38</Text>
+            <Text style={styles.metricVal}>{deliveriesList.length}</Text>
             <Text style={styles.metricLbl}>Dispatched</Text>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <Text style={[styles.metricVal, { color: colors.urgentRed }]}>04</Text>
+            <Text style={[styles.metricVal, { color: colors.urgentRed }]}>
+              {String(deliveriesList.filter((item) => item.isDelayed).length).padStart(2, '0')}
+            </Text>
             <Text style={styles.metricLbl}>Delayed</Text>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <Text style={[styles.metricVal, { color: colors.mint }]}>98.4%</Text>
+            <Text style={[styles.metricVal, { color: colors.mint }]}>
+              {deliveriesList.length
+                ? `${Math.round(
+                    ((deliveriesList.length - deliveriesList.filter((item) => item.isDelayed).length) /
+                      deliveriesList.length) *
+                      100,
+                  )}%`
+                : '—'}
+            </Text>
             <Text style={styles.metricLbl}>On-Time</Text>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
-            <Text style={styles.metricVal}>4.8km</Text>
+            <Text style={styles.metricVal}>
+              {deliveriesList.length
+                ? `${(
+                    deliveriesList.reduce((sum, item) => sum + item.distanceKm, 0) / deliveriesList.length
+                  ).toFixed(1)}km`
+                : '0km'}
+            </Text>
             <Text style={styles.metricLbl}>Avg Route</Text>
           </View>
         </View>
@@ -269,6 +223,12 @@ export default function DeliveriesMonitor() {
 
         {/* Deliveries List */}
         <View style={styles.deliveriesList}>
+          {filteredDeliveries.length === 0 ? (
+            <View style={styles.deliveryCard}>
+              <Text style={styles.cardTitle}>No live deliveries</Text>
+              <Text style={styles.cardMeta}>Assigned pickups and drop-offs will appear here.</Text>
+            </View>
+          ) : null}
           {filteredDeliveries.map((item) => (
             <TouchableOpacity
               key={item.id}
@@ -338,7 +298,13 @@ export default function DeliveriesMonitor() {
               {/* Volunteer Footer */}
               <View style={styles.cardFooter}>
                 <View style={styles.volunteerFooterInfo}>
-                  <Image source={{ uri: item.volunteerAvatar }} style={styles.miniAvatar} />
+                  {item.volunteerAvatar ? (
+                    <Image source={{ uri: item.volunteerAvatar }} style={styles.miniAvatar} />
+                  ) : (
+                    <View style={[styles.miniAvatar, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.mintLight }]}>
+                      <Ionicons name="person" size={14} color={colors.mint} />
+                    </View>
+                  )}
                   <View>
                     <Text style={styles.volFooterName}>{item.volunteerName}</Text>
                     <Text style={styles.volFooterVehicle}>{item.volunteerVehicle}</Text>

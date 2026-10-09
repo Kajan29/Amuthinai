@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -69,7 +70,10 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
     if (!granted) return null;
 
-    const token = await Notifications.getExpoPushTokenAsync();
+    // Expo push tokens need the EAS project id (set via `eas init` → expo.extra.eas.projectId).
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+    const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
     return token.data;
   } catch (error) {
     console.warn('Could not register push notification token:', error);

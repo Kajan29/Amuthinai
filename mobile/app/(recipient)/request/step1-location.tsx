@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,13 +18,14 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ngosApi } from '@/api/ngos.api';
 import { requestsApi } from '@/api/requests.api';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants';
 import { useRequestDraft } from '@/store/requestDraft.store';
 import type { GeoPoint } from '@/types';
 import { distanceKm, toGeoPoint } from '@/utils/geo';
 import { MapView, Marker } from '@/utils/maps';
-import { JAFFNA_HUBS, type HubItem } from '../hub-map';
+import { ngoToHub, type HubItem } from '../hub-map';
 
 const logoImage = require('../../../assets/images/logo.png');
 
@@ -195,14 +196,40 @@ export default function Step1LocationScreen() {
     }
   }
 
+  const { data: ngoPage } = useQuery({
+    queryKey: ['ngos'],
+    queryFn: () => ngosApi.list(),
+  });
+  const liveHubs = useMemo(
+    () => (ngoPage?.items ?? []).map(ngoToHub).filter((hub): hub is HubItem => Boolean(hub)),
+    [ngoPage?.items],
+  );
+
   // Calculate distances for all relief hubs
-  const hubsWithDistance = JAFFNA_HUBS.map((hub) => {
-    const d = distanceKm(currentPinGeoPoint, toGeoPoint(hub.lat, hub.lng));
-    return { ...hub, distanceKm: d };
-  }).sort((a, b) => a.distanceKm - b.distanceKm);
+  const hubsWithDistance = liveHubs
+    .map((hub) => {
+      const d = distanceKm(currentPinGeoPoint, toGeoPoint(hub.lat, hub.lng));
+      return { ...hub, distanceKm: d };
+    })
+    .sort((a, b) => a.distanceKm - b.distanceKm);
 
   // Auto-find closest hub if none manually picked
-  const nearestHub = hubsWithDistance[0] || JAFFNA_HUBS[0]!;
+  const nearestHub = hubsWithDistance[0] ?? {
+    id: '',
+    name: 'No partner hub yet',
+    category: '',
+    address: pinLocation.addressName || 'Drop a pin',
+    city: '',
+    lat: pinLocation.latitude,
+    lng: pinLocation.longitude,
+    openHours: '',
+    status: 'Upcoming' as const,
+    availableMeals: 0,
+    mealType: '',
+    phone: '',
+    coordinator: '',
+    tags: [] as string[],
+  };
   const selectedHub = selectedHubOverride || nearestHub;
   const selectedHubDistance = distanceKm(
     currentPinGeoPoint,

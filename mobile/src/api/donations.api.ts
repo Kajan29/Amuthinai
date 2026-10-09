@@ -2,7 +2,9 @@ import { client, request } from './client';
 
 import type {
   Address,
+  Assignment,
   ChatMessage,
+  DeliveryProof,
   DeliveryMethod,
   DietaryTag,
   Donation,
@@ -34,6 +36,21 @@ export interface CreateDonationPayload {
   cookedAt: string;
   safeForHours: number;
   pickupAddress: Address;
+  packagingType?: string;
+  contactPersonName?: string;
+  contactPersonPhone?: string;
+}
+
+/** Admins also get the donor's contact details. */
+export interface AdminDonation extends Donation {
+  donor?: { id: string; name: string; phone: string | null; email: string } | null;
+}
+
+export interface DonationAssignmentInfo {
+  assignment: Assignment | null;
+  pickupPin: string | null;
+  volunteer: { name: string; phone: string | null; vehicleType: string | null } | null;
+  proofs: DeliveryProof[];
 }
 
 export interface DonationQuery {
@@ -87,16 +104,11 @@ export const donationsApi = {
   list: (query: DonationQuery = {}) =>
     request<Paginated<Donation>>(client.get('/donations', { params: query })),
 
-  byId: async (id: string) => {
-    try {
-      return await request<Donation>(client.get(`/donations/${id}`));
-    } catch {
-      const { MOCK_VOLUNTEER_TASKS } = await import('@/constants/mockVolunteerData');
-      const found = MOCK_VOLUNTEER_TASKS.find((t) => t.donation.id === id);
-      if (found) return found.donation;
-      return MOCK_VOLUNTEER_TASKS[0]!.donation;
-    }
-  },
+  byId: (id: string) => request<AdminDonation>(client.get(`/donations/${id}`)),
+
+  /** Who is collecting this donation, plus the pickup PIN while it is still waiting. */
+  assignment: (id: string) =>
+    request<DonationAssignmentInfo>(client.get(`/assignments/for-donation/${id}`)),
 
   cancel: (id: string) => request<Donation>(client.post(`/donations/${id}/cancel`)),
 

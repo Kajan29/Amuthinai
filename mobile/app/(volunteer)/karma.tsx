@@ -7,6 +7,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useQuery } from '@tanstack/react-query';
+
+import { assignmentsApi } from '@/api/assignments.api';
 import { pointsApi } from '@/api/points.api';
 import { Badge } from '@/components/ui';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
@@ -15,6 +18,25 @@ import { radius, typography } from '@/theme';
 import { volunteerColors, getTier, KARMA_TIERS } from '@/theme/volunteer';
 import { formatDateTime } from '@/utils/date';
 
+/** Same conversion factors the admin analytics use. */
+const KG_PER_SERVING = 0.4;
+const CO2_PER_KG = 2.5;
+
+/** Longest run of consecutive calendar days (YYYY-MM-DD strings). */
+function longestStreak(days: string[]): number {
+  const sorted = [...new Set(days)].sort();
+  let best = 0;
+  let run = 0;
+  let previous: number | null = null;
+  for (const day of sorted) {
+    const time = new Date(`${day}T00:00:00Z`).getTime();
+    run = previous !== null && time - previous === 86_400_000 ? run + 1 : 1;
+    best = Math.max(best, run);
+    previous = time;
+  }
+  return best;
+}
+
 /** Impact / Karma tab — progression, achievements, leaderboard, and karma history. */
 export default function VolunteerKarma() {
   const insets = useSafeAreaInsets();
@@ -22,23 +44,39 @@ export default function VolunteerKarma() {
 
   const summary = useOfflineQuery('volunteer.points', () => pointsApi.summary());
   const leaderboard = useOfflineQuery('points.leaderboard', () => pointsApi.leaderboard());
+  const history = useQuery({
+    queryKey: ['volunteer.history', 'all'],
+    queryFn: () => assignmentsApi.history({ pageSize: 100 }),
+  });
 
-  const balance = summary.data?.balance ?? user?.karmaPoints ?? 680;
+  const balance = summary.data?.balance ?? user?.karmaPoints ?? 0;
   const tier = getTier(balance);
   const rows = leaderboard.data ?? [];
   const entries = summary.data?.entries ?? [];
 
-  // Mock achievements for the UI
-  const achievements = [
-    { icon: '🚀', label: 'First Delivery', description: 'Completed your first delivery', earned: balance >= 20 },
-    { icon: '⚡', label: 'Speed Runner', description: '5 deliveries in one day', earned: balance >= 200 },
-    { icon: '🔥', label: '10 Streak', description: '10 consecutive days active', earned: balance >= 500 },
-    { icon: '🌟', label: 'Community Star', description: '50 deliveries completed', earned: balance >= 1000 },
-    { icon: '💪', label: 'Heavy Lifter', description: 'Delivered 500+ servings', earned: balance >= 1500 },
-    { icon: '🏆', label: 'Legend', description: '100 deliveries completed', earned: balance >= 3000 },
-  ];
+  const completed = (history.data?.items ?? []).filter((task) => task.assignment.status === 'completed');
+  const deliveryCount = user?.completedDeliveriesCount ?? completed.length;
+  const servingsDelivered = completed.reduce((sum, task) => sum + task.donation.servings, 0);
+  const co2SavedKg = Math.round(servingsDelivered * KG_PER_SERVING * CO2_PER_KG);
 
-  const deliveryCount = Math.floor(balance / 25); // estimate
+  const days = completed
+    .map((task) => task.assignment.completedAt?.slice(0, 10))
+    .filter((day): day is string => Boolean(day));
+  const perDay = days.reduce<Record<string, number>>((acc, day) => {
+    acc[day] = (acc[day] ?? 0) + 1;
+    return acc;
+  }, {});
+  const bestDay = Math.max(0, ...Object.values(perDay));
+  const streak = longestStreak(Object.keys(perDay));
+
+  const achievements = [
+    { icon: '🚀', label: 'First Delivery', description: 'Completed your first delivery', earned: deliveryCount >= 1 },
+    { icon: '⚡', label: 'Speed Runner', description: '5 deliveries in one day', earned: bestDay >= 5 },
+    { icon: '🔥', label: '10 Streak', description: '10 consecutive days active', earned: streak >= 10 },
+    { icon: '🌟', label: 'Community Star', description: '50 deliveries completed', earned: deliveryCount >= 50 },
+    { icon: '💪', label: 'Heavy Lifter', description: 'Delivered 500+ servings', earned: servingsDelivered >= 500 },
+    { icon: '🏆', label: 'Legend', description: '100 deliveries completed', earned: deliveryCount >= 100 },
+  ];
 
   return (
     <ScrollView
@@ -105,12 +143,12 @@ export default function VolunteerKarma() {
         </View>
         <View style={styles.statCard}>
           <Ionicons name="people-outline" size={24} color={volunteerColors.maroon} />
-          <Text style={styles.statValue}>{Math.floor(balance / 5)}</Text>
+          <Text style={styles.statValue}>{servingsDelivered}</Text>
           <Text style={styles.statLabel}>People Fed</Text>
         </View>
         <View style={styles.statCard}>
           <Ionicons name="leaf-outline" size={24} color={volunteerColors.orange} />
-          <Text style={styles.statValue}>{Math.floor(balance / 8)}kg</Text>
+          <Text style={styles.statValue}>{co2SavedKg}kg</Text>
           <Text style={styles.statLabel}>CO₂ Saved</Text>
         </View>
       </View>
@@ -190,7 +228,9 @@ export default function VolunteerKarma() {
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Top Volunteers</Text>
         {rows.length === 0 ? (
-          <Text style={styles.emptyText}>Leaderboard loading...</Text>
+          <Text style={styles.emptyText}>
+            {leaderboard.isLoading ? 'Leaderboard loading...' : 'No karma awarded yet'}
+          </Text>
         ) : (
           rows.slice(0, 5).map((row, index) => {
             const isMe = row.userId === user?.id;

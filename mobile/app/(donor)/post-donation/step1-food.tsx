@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { uploadsApi } from '@/api/uploads.api';
+import { cloudinaryService } from '@/services/cloudinary';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
 import type { DietaryTag, FoodType, QuantityUnit } from '@/types';
@@ -100,7 +100,7 @@ export default function Step1Food() {
 
     setUploading(true);
     try {
-      const uploaded = await uploadsApi.uploadImage(asset.uri);
+      const uploaded = await cloudinaryService.uploadImage(asset.uri, 'amuthinai/donations');
       update({ photoUrls: [...photos, uploaded.url] });
     } catch {
       setPhotoError(t('donor.photoFailed'));

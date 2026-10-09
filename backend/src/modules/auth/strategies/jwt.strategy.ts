@@ -32,6 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   async validate(payload: JwtPayload): Promise<AuthUser> {
     const user = await this.usersService.findById(payload.sub).catch(() => null);
     if (!user?.role) throw new UnauthorizedException('Finish choosing a role to continue');
+    if (user.isActive === false) throw new UnauthorizedException('This account has been deactivated');
 
     return { id: user.id as string, email: user.email, role: user.role };
   }

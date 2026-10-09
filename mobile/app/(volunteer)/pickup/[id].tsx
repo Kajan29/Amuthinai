@@ -1,68 +1,84 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { assignmentsApi } from '@/api/assignments.api';
-import { donationsApi } from '@/api/donations.api';
 import { logo } from '@/constants';
 import { useLocation } from '@/hooks/useLocation';
 import { cloudinaryService } from '@/services/cloudinary';
+import { distanceKm } from '@/utils/geo';
+
+/** Further than this from the pickup and the GPS check is shown as a warning. */
+const ARRIVAL_RADIUS_KM = 0.5;
+
+const UNIT_LABEL: Record<string, string> = {
+  packets: 'packets',
+  kg: 'kg',
+  pieces: 'pieces',
+  litres: 'litres',
+  portions: 'portions',
+};
 
 export default function ConfirmPickup() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { point } = useLocation();
+  const queryClient = useQueryClient();
+  const location = useLocation();
+  const pinInputRef = useRef<TextInput>(null);
 
   const [checklist, setChecklist] = useState({
-    temperature: true,
-    packetCount: true,
-    sealed: true,
+    temperature: false,
+    packetCount: false,
+    sealed: false,
   });
 
-  const [pickupPhotoUrl, setPickupPhotoUrl] = useState<string>(
-    'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&auto=format&fit=crop&q=60'
-  );
+  const [pickupPhotoUrl, setPickupPhotoUrl] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
-  const [photoCapturedAt, setPhotoCapturedAt] = useState<string>('09:38 AM');
-  const [isCloudinaryStored, setIsCloudinaryStored] = useState<boolean>(false);
+  const [photoCapturedAt, setPhotoCapturedAt] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
 
-  const pinDigits = ['4', '9', '1', '2'];
-
-  const assignment = useQuery({
-    queryKey: ['assignment', id],
-    queryFn: () => assignmentsApi.byId(id),
-  });
-
-  const donation = useQuery({
-    queryKey: ['donation', assignment.data?.donationId],
-    queryFn: () => donationsApi.byId(assignment.data!.donationId),
-    enabled: Boolean(assignment.data?.donationId),
+  const task = useQuery({
+    queryKey: ['task', id],
+    queryFn: () => assignmentsApi.details(id),
+    enabled: Boolean(id),
   });
 
   const confirm = useMutation({
     mutationFn: async () => {
-      const location = point ?? {
-        type: 'Point' as const,
-        coordinates: [80.0290, 9.6740] as [number, number],
-      };
+      const point = location.point ?? (await location.refresh());
+      if (!point) throw new Error('Turn on location so we can stamp where the pickup happened.');
+      if (!pickupPhotoUrl) throw new Error('Take a photo of the food containers first.');
+      if (pin.length !== 4) throw new Error('Enter the 4-digit PIN from the donor.');
       return assignmentsApi.confirmPickup(id, {
         photoUrl: pickupPhotoUrl,
-        location,
+        location: point,
+        pin,
+        quantityConfirmed: task.data?.donation.servings,
       });
     },
-    onSuccess: () => {
-      router.push(`/(volunteer)/delivery/${id}`);
+    async onSuccess() {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['task', id] }),
+        queryClient.invalidateQueries({ queryKey: ['volunteer.nearby'] }),
+      ]);
+      router.replace(`/(volunteer)/delivery/${id}`);
+    },
+    onError(error) {
+      Alert.alert('Pickup not confirmed', (error as Error).message);
     },
   });
 
@@ -81,13 +97,8 @@ export default function ConfirmPickup() {
       setIsUploadingPhoto(true);
       const result = await cloudinaryService.uploadImage(uri, 'amuthinai/pickup-proof');
       setPickupPhotoUrl(result.url);
-      setIsCloudinaryStored(true);
       setPhotoCapturedAt(
         new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      );
-      Alert.alert(
-        'Photo Uploaded to Cloudinary! ☁️',
-        'Pickup verification photo has been stored securely in Cloudinary.'
       );
     } catch (err: any) {
       Alert.alert('Upload Error', err?.message || 'Could not upload image to Cloudinary.');
@@ -96,13 +107,50 @@ export default function ConfirmPickup() {
     }
   }
 
-  function handleScanQR() {
-    Alert.alert('Donor QR Scanner', 'Scanning donor proof QR code. PIN verified: 4912');
+  if (task.isPending) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color="#5A1626" size="large" />
+      </SafeAreaView>
+    );
   }
 
-  const orderId = 'KP-84920';
-  const pickupLocationName = donation.data?.pickupAddress?.line1 || 'Nallur Community Hall';
-  const pickupAddressLine = donation.data?.pickupAddress?.city || 'Block 4B, South Gate Entrance, Jaffna';
+  if (task.isError || !task.data) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+        <Ionicons name="alert-circle-outline" size={40} color="#5A1626" />
+        <Text style={styles.locationTitle}>
+          {(task.error as Error | null)?.message ?? 'Task not found'}
+        </Text>
+        <TouchableOpacity style={styles.pickupConcernButton} onPress={() => router.back()}>
+          <Text style={styles.pickupConcernText}>Go back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  const { donation, donor } = task.data;
+  const alreadyCollected = donation.status === 'picked_up' || donation.status === 'in_transit';
+
+  const orderId = task.data.assignment.id.slice(-6).toUpperCase();
+  const pickupLocationName = donation.pickupAddress.line1;
+  const pickupAddressLine = [donation.pickupAddress.city, donation.pickupAddress.district]
+    .filter(Boolean)
+    .join(', ');
+  const quantityLabel = `${donation.servings} ${UNIT_LABEL[donation.quantityUnit ?? 'portions'] ?? 'servings'}`;
+
+  const kmFromPickup = location.point ? distanceKm(location.point, donation.pickupAddress.location) : null;
+  const arrived = kmFromPickup !== null && kmFromPickup <= ARRIVAL_RADIUS_KM;
+  const gpsText = location.isLoading
+    ? 'Getting your GPS location…'
+    : kmFromPickup === null
+      ? location.error ?? 'Location unavailable'
+      : arrived
+        ? 'Arrived & GPS Location Verified'
+        : `You are ${kmFromPickup} km from the pickup`;
+
+  const canSubmit =
+    checkedCount === totalCount && Boolean(pickupPhotoUrl) && pin.length === 4 && !isUploadingPhoto;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -137,11 +185,11 @@ export default function ConfirmPickup() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* ─── 3-STEP PROGRESS STEPPER ─── */}
         <View style={styles.stepperContainer}>
           <View style={styles.stepperLineRow}>
-            {/* Step 1: Route (Done - Teal Checkmark) */}
             <View style={styles.stepperItem}>
               <View style={styles.stepCircleDone}>
                 <Ionicons name="checkmark" size={16} color="#FFFFFF" />
@@ -149,10 +197,8 @@ export default function ConfirmPickup() {
               <Text style={styles.stepLabelDone}>Route</Text>
             </View>
 
-            {/* Connecting Line: Step 1 -> Step 2 (Maroon) */}
             <View style={styles.stepLineMaroon} />
 
-            {/* Step 2: Verification (Active - Maroon 2) */}
             <View style={styles.stepperItem}>
               <View style={styles.stepCircleActive}>
                 <Text style={styles.stepNumActive}>2</Text>
@@ -160,10 +206,8 @@ export default function ConfirmPickup() {
               <Text style={styles.stepLabelActive}>Verification</Text>
             </View>
 
-            {/* Connecting Line: Step 2 -> Step 3 (Gray) */}
             <View style={styles.stepLineGray} />
 
-            {/* Step 3: Delivery (Inactive) */}
             <View style={styles.stepperItem}>
               <View style={styles.stepCircleInactive}>
                 <Text style={styles.stepNumInactive}>3</Text>
@@ -172,6 +216,18 @@ export default function ConfirmPickup() {
             </View>
           </View>
         </View>
+
+        {alreadyCollected && (
+          <TouchableOpacity
+            style={styles.pickupConcernButton}
+            onPress={() => router.replace(`/(volunteer)/delivery/${id}`)}
+          >
+            <Ionicons name="checkmark-circle" size={16} color="#0F766E" />
+            <Text style={[styles.pickupConcernText, { color: '#0F766E' }]}>
+              Pickup already confirmed — continue to delivery
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* ─── PICKUP LOCATION CARD ─── */}
         <View style={styles.locationCard}>
@@ -187,12 +243,18 @@ export default function ConfirmPickup() {
           </View>
 
           <View style={styles.locationStatusRow}>
-            <View style={styles.gpsMatchGroup}>
-              <Ionicons name="checkmark-circle" size={15} color="#0F766E" />
-              <Text style={styles.gpsMatchText}>Arrived & GPS Location Verified</Text>
-            </View>
-            <View style={styles.liveMatchBadge}>
-              <Text style={styles.liveMatchText}>Live Match</Text>
+            <Pressable style={styles.gpsMatchGroup} onPress={() => void location.refresh()}>
+              <Ionicons
+                name={arrived ? 'checkmark-circle' : 'navigate-circle-outline'}
+                size={15}
+                color={arrived ? '#0F766E' : '#B45309'}
+              />
+              <Text style={[styles.gpsMatchText, !arrived && { color: '#B45309' }]}>{gpsText}</Text>
+            </Pressable>
+            <View style={[styles.liveMatchBadge, !arrived && { backgroundColor: '#FEF3C7' }]}>
+              <Text style={[styles.liveMatchText, !arrived && { color: '#B45309' }]}>
+                {arrived ? 'Live Match' : 'Tap to refresh'}
+              </Text>
             </View>
           </View>
         </View>
@@ -212,7 +274,6 @@ export default function ConfirmPickup() {
           </View>
 
           <View style={styles.checklistItemsList}>
-            {/* Item 1 */}
             <TouchableOpacity
               style={styles.checkItemRow}
               onPress={() => toggleCheck('temperature')}
@@ -223,11 +284,14 @@ export default function ConfirmPickup() {
               </View>
               <View style={styles.checkTextCol}>
                 <Text style={styles.checkItemTitle}>Food temperature verified</Text>
-                <Text style={styles.checkItemSubtitle}>Hot/warm insulated packaging intact (Above 60°C)</Text>
+                <Text style={styles.checkItemSubtitle}>
+                  {donation.foodType === 'cooked'
+                    ? 'Hot/warm insulated packaging intact (Above 60°C)'
+                    : 'Stored at a safe temperature for this food type'}
+                </Text>
               </View>
             </TouchableOpacity>
 
-            {/* Item 2 */}
             <TouchableOpacity
               style={styles.checkItemRow}
               onPress={() => toggleCheck('packetCount')}
@@ -237,12 +301,11 @@ export default function ConfirmPickup() {
                 {checklist.packetCount && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
               </View>
               <View style={styles.checkTextCol}>
-                <Text style={styles.checkItemTitle}>Packet count matches listing</Text>
-                <Text style={styles.checkItemSubtitle}>25 fresh veg meal packets counted & confirmed</Text>
+                <Text style={styles.checkItemTitle}>Quantity matches listing</Text>
+                <Text style={styles.checkItemSubtitle}>{quantityLabel} counted & confirmed</Text>
               </View>
             </TouchableOpacity>
 
-            {/* Item 3 */}
             <TouchableOpacity
               style={styles.checkItemRow}
               onPress={() => toggleCheck('sealed')}
@@ -253,7 +316,9 @@ export default function ConfirmPickup() {
               </View>
               <View style={styles.checkTextCol}>
                 <Text style={styles.checkItemTitle}>Sealed hygienic containers</Text>
-                <Text style={styles.checkItemSubtitle}>Tamper-proof seals & allergen label attached</Text>
+                <Text style={styles.checkItemSubtitle}>
+                  {donation.packagingType ? `${donation.packagingType} • ` : ''}Tamper-proof & labelled
+                </Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -266,41 +331,46 @@ export default function ConfirmPickup() {
               <Ionicons name="camera" size={16} color="#701A2B" />
               <Text style={styles.proofTitle}>CONTAINER PHOTO PROOF</Text>
             </View>
-            <View style={[styles.attachedPill, isCloudinaryStored && styles.cloudinaryPill]}>
-              <Text style={[styles.attachedText, isCloudinaryStored && styles.cloudinaryPillText]}>
-                {isCloudinaryStored ? '☁️ Cloudinary Verified' : 'Photo Attached'}
+            <View style={[styles.attachedPill, pickupPhotoUrl && styles.cloudinaryPill]}>
+              <Text style={[styles.attachedText, pickupPhotoUrl && styles.cloudinaryPillText]}>
+                {pickupPhotoUrl ? '☁️ Cloudinary Verified' : 'Required'}
               </Text>
             </View>
           </View>
 
-          {/* Actual Photo Frame with Overlay Badges */}
           <View style={styles.proofPhotoWrapper}>
-            <Image
-              source={{ uri: pickupPhotoUrl }}
-              style={styles.proofActualImage}
-              resizeMode="cover"
-            />
+            {pickupPhotoUrl ? (
+              <Image
+                source={{ uri: pickupPhotoUrl }}
+                style={styles.proofActualImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.proofActualImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                <Ionicons name="camera-outline" size={36} color="#9CA3AF" />
+                <Text style={styles.checkItemSubtitle}>Photograph the food containers at handover</Text>
+              </View>
+            )}
             {isUploadingPhoto && (
               <View style={styles.uploadingOverlay}>
                 <ActivityIndicator color="#FFFFFF" size="large" />
                 <Text style={styles.uploadingOverlayText}>Storing in Cloudinary...</Text>
               </View>
             )}
-            <View style={styles.photoInfoOverlay}>
-              <View style={styles.photoMetaRow}>
-                <Ionicons name="time-outline" size={13} color="#FFFFFF" />
-                <Text style={styles.photoMetaText}>Captured: {photoCapturedAt}</Text>
-              </View>
-              {isCloudinaryStored && (
+            {photoCapturedAt && (
+              <View style={styles.photoInfoOverlay}>
+                <View style={styles.photoMetaRow}>
+                  <Ionicons name="time-outline" size={13} color="#FFFFFF" />
+                  <Text style={styles.photoMetaText}>Captured: {photoCapturedAt}</Text>
+                </View>
                 <View style={styles.cloudBadgeSmall}>
                   <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
                   <Text style={styles.cloudBadgeText}>Cloudinary Stored</Text>
                 </View>
-              )}
-            </View>
+              </View>
+            )}
           </View>
 
-          {/* Photo Action Buttons */}
           <View style={styles.photoActionsRow}>
             <TouchableOpacity
               style={styles.photoActionBtnPrimary}
@@ -330,46 +400,57 @@ export default function ConfirmPickup() {
             <Text style={styles.pinTitle}>SECURE DONOR HANDOVER PIN</Text>
             <Ionicons name="lock-closed-outline" size={16} color="#701A2B" />
           </View>
-          <Text style={styles.pinSubtitle}>Ask donor for their 4-digit handover code</Text>
+          <Text style={styles.pinSubtitle}>Ask the donor for the 4-digit code shown in their app</Text>
 
-          {/* 4 Digit Boxes: 4 - 9 - 1 - 2 */}
-          <View style={styles.pinBoxesRow}>
-            {pinDigits.map((digit, idx) => (
+          <Pressable style={styles.pinBoxesRow} onPress={() => pinInputRef.current?.focus()}>
+            {[0, 1, 2, 3].map((idx) => (
               <View key={idx} style={styles.pinBox}>
-                <Text style={styles.pinDigitText}>{digit}</Text>
+                <Text style={styles.pinDigitText}>{pin[idx] ?? ''}</Text>
               </View>
             ))}
-          </View>
+          </Pressable>
+          <TextInput
+            ref={pinInputRef}
+            value={pin}
+            onChangeText={(value) => setPin(value.replace(/\D/g, '').slice(0, 4))}
+            keyboardType="number-pad"
+            maxLength={4}
+            autoFocus={false}
+            style={{ position: 'absolute', opacity: 0, height: 1, width: 1 }}
+          />
 
-          {/* Divider with text */}
           <View style={styles.pinDividerRow}>
             <View style={styles.pinDividerLine} />
-            <Text style={styles.pinDividerText}>OR SCAN DIRECTLY</Text>
+            <Text style={styles.pinDividerText}>DONOR CAN'T FIND IT?</Text>
             <View style={styles.pinDividerLine} />
           </View>
 
-          {/* Scan QR Code Outline Button */}
           <TouchableOpacity
-            style={styles.scanQRButton}
-            onPress={handleScanQR}
+            style={[styles.scanQRButton, !donor?.phone && { opacity: 0.5 }]}
+            onPress={() => donor?.phone && void Linking.openURL(`tel:${donor.phone}`)}
+            disabled={!donor?.phone}
             activeOpacity={0.8}
           >
-            <Ionicons name="qr-code-outline" size={17} color="#0D9488" />
-            <Text style={styles.scanQRButtonText}>Scan Donor Handover QR Code</Text>
+            <Ionicons name="call-outline" size={17} color="#0D9488" />
+            <Text style={styles.scanQRButtonText}>
+              {donor ? `Call ${donor.name}` : 'Donor contact unavailable'}
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* ─── CONFIRM PICKUP ACTION ─── */}
         <TouchableOpacity
-          style={styles.confirmButton}
+          style={[styles.confirmButton, (!canSubmit || alreadyCollected) && { opacity: 0.55 }]}
           onPress={() => confirm.mutate()}
-          disabled={confirm.isPending}
+          disabled={confirm.isPending || !canSubmit || alreadyCollected}
           activeOpacity={0.85}
         >
           {confirm.isPending ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
-            <Text style={styles.confirmButtonText}>Confirm Pickup & Start Delivery →</Text>
+            <Text style={styles.confirmButtonText}>
+              {canSubmit ? 'Confirm Pickup & Start Delivery →' : 'Complete checklist, photo & PIN'}
+            </Text>
           )}
         </TouchableOpacity>
 

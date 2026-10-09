@@ -18,10 +18,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
+import { assignmentsApi, isOpenTask, type NearbyTask } from '@/api/assignments.api';
 import { enquiriesApi, type CreateEnquiryPayload } from '@/api/enquiries.api';
-import { MOCK_DROP_OFFS, MOCK_VOLUNTEER_TASKS } from '@/constants/mockVolunteerData';
 import { useAuth } from '@/hooks/useAuth';
+import type { EnquiryCategory } from '@/types';
 import { cloudinaryService } from '@/services/cloudinary';
 import { volunteerColors } from '@/theme/volunteer';
 import type { Enquiry } from '@/types';
@@ -85,6 +85,20 @@ export const VOLUNTEER_CONCERN_REASONS = [
   },
 ];
 
+const REASON_CATEGORY: Record<string, EnquiryCategory> = {
+  donor_closed: 'other',
+  food_damaged: 'food_quality',
+  breakdown_delay: 'late_delivery',
+  dropoff_inaccessible: 'wrong_location',
+  recipient_unreachable: 'not_delivered',
+  quantity_mismatch: 'wrong_quantity',
+  safety_hazard: 'road_issue',
+  other: 'other',
+};
+
+/** Sri Lanka Police emergency line — for safety emergencies only; everything else goes to admins. */
+const EMERGENCY_NUMBER = '119';
+
 type OrderCategoryFilter = 'all' | 'current' | 'past';
 type UrgencyLevel = 'normal' | 'moderate' | 'urgent';
 
@@ -103,14 +117,14 @@ interface UnifiedVolunteerTask {
 export default function VolunteerRaiseConcernScreen() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ assignmentId?: string }>();
+  const params = useLocalSearchParams<{ assignmentId?: string; donationId?: string }>();
 
   // Screen Tabs: 'submit' (Submit Concern) | 'history' (My Raised Concerns)
   const [activeTab, setActiveTab] = useState<'submit' | 'history'>('submit');
 
   // Form State
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>(
-    params.assignmentId || ''
+    params.assignmentId || (params.donationId ? `open-${params.donationId}` : '')
   );
   const [orderFilter, setOrderFilter] = useState<OrderCategoryFilter>('all');
   const [selectedReasonId, setSelectedReasonId] = useState<string>(
@@ -121,15 +135,15 @@ export default function VolunteerRaiseConcernScreen() {
   const [attachmentPhotoUrl, setAttachmentPhotoUrl] = useState<string | null>(null);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
-  // 1. Fetch Volunteer Tasks (both nearby & mine)
+  // 1. Fetch the volunteer's live tasks and delivery history
   const nearbyQuery = useQuery({
-    queryKey: ['volunteer', 'tasks', 'nearby'],
+    queryKey: ['volunteer.nearby'],
     queryFn: () => assignmentsApi.nearby(),
   });
 
-  const mineQuery = useQuery({
-    queryKey: ['volunteer', 'assignments', 'mine'],
-    queryFn: () => assignmentsApi.mine(),
+  const historyQuery = useQuery({
+    queryKey: ['volunteer.history'],
+    queryFn: () => assignmentsApi.history({ pageSize: 30 }),
   });
 
   // 2. Fetch Volunteer Concerns History
@@ -138,74 +152,33 @@ export default function VolunteerRaiseConcernScreen() {
     queryFn: () => enquiriesApi.mine(),
   });
 
-  // Combine live tasks & mock tasks to build unified list of Current and Past Orders
+  // Current orders are the volunteer's own live tasks; past orders come from history.
   const unifiedTasks = useMemo<UnifiedVolunteerTask[]>(() => {
     const map = new Map<string, UnifiedVolunteerTask>();
-
-    // Seed with mock tasks
-    for (const t of MOCK_VOLUNTEER_TASKS) {
-      const isCurr = ['offered', 'accepted', 'in_transit'].includes(t.assignment.status);
-      const dropKey = t.assignment.requestId || '';
-      const dropInfo = MOCK_DROP_OFFS[dropKey];
-
+    const add = (t: NearbyTask) => {
+      const isCurr = t.assignment.status === 'offered' || t.assignment.status === 'accepted';
       map.set(t.assignment.id, {
         assignmentId: t.assignment.id,
-        orderNumber:
-          t.assignment.id === 'asgn-vol-402'
-            ? 'VOL-402'
-            : `#${t.assignment.id.slice(-6).toUpperCase()}`,
+        orderNumber: `#${(isOpenTask(t.assignment.id) ? t.donation.id : t.assignment.id).slice(-6).toUpperCase()}`,
         title: t.donation.title,
         servings: t.donation.servings,
         pickupLine: t.donation.pickupAddress.line1,
-        dropoffLine: dropInfo?.name || t.donation.pickupAddress.city,
+        dropoffLine: t.recipient?.name ?? t.request?.dropAddress.line1 ?? 'Drop-off not matched yet',
         status: t.assignment.status,
         isCurrent: isCurr,
         rawTask: t,
       });
+    };
+
+    for (const t of nearbyQuery.data ?? []) {
+      if (!t.isOpen || t.assignment.id === selectedAssignmentId) add(t);
     }
-
-    // Merge API nearby tasks if any
-    if (nearbyQuery.data && Array.isArray(nearbyQuery.data)) {
-      for (const t of nearbyQuery.data) {
-        const isCurr = ['offered', 'accepted', 'in_transit'].includes(t.assignment.status);
-        const dropKey = t.assignment.requestId || '';
-        const dropInfo = MOCK_DROP_OFFS[dropKey];
-
-        map.set(t.assignment.id, {
-          assignmentId: t.assignment.id,
-          orderNumber: `#${t.assignment.id.slice(-6).toUpperCase()}`,
-          title: t.donation?.title || 'Relief Food Package',
-          servings: t.donation?.servings || 10,
-          pickupLine: t.donation?.pickupAddress?.line1 || 'Pickup Kitchen',
-          dropoffLine: dropInfo?.name || 'Designated Community Center',
-          status: t.assignment.status,
-          isCurrent: isCurr,
-          rawTask: t,
-        });
-      }
-    }
-
-    // Merge API mine tasks if any
-    if (mineQuery.data?.items) {
-      for (const a of mineQuery.data.items) {
-        if (!map.has(a.id)) {
-          const isCurr = ['offered', 'accepted', 'in_transit'].includes(a.status);
-          map.set(a.id, {
-            assignmentId: a.id,
-            orderNumber: `#${a.id.slice(-6).toUpperCase()}`,
-            title: 'Assigned Food Delivery',
-            servings: 15,
-            pickupLine: 'Jaffna Hub Point',
-            dropoffLine: 'Community Center',
-            status: a.status,
-            isCurrent: isCurr,
-          });
-        }
-      }
+    for (const t of historyQuery.data?.items ?? []) {
+      if (!map.has(t.assignment.id)) add(t);
     }
 
     return Array.from(map.values());
-  }, [nearbyQuery.data, mineQuery.data]);
+  }, [nearbyQuery.data, historyQuery.data, selectedAssignmentId]);
 
   // Filter tasks according to order category toggle
   const filteredTasks = useMemo(() => {
@@ -238,9 +211,8 @@ export default function VolunteerRaiseConcernScreen() {
 
       const body =
         `=== VOLUNTEER CONCERN REPORT ===\n` +
-        `Volunteer: ${user?.name || 'Volunteer Kajan'} (${user?.phone || '+94 77 123 4567'})\n` +
+        `Volunteer: ${user?.name ?? 'Volunteer'}${user?.phone ? ` (${user.phone})` : ''}\n` +
         `Order Ref: ${currentSelectedTask ? currentSelectedTask.orderNumber : 'No Specific Order'}\n` +
-        `Assignment ID: ${selectedAssignmentId || 'N/A'}\n` +
         `Order Status: ${currentSelectedTask ? (currentSelectedTask.isCurrent ? 'CURRENT / ACTIVE' : 'PAST / DELIVERED') : 'General'}\n` +
         `Food: ${currentSelectedTask ? `${currentSelectedTask.title} (${currentSelectedTask.servings} portions)` : 'N/A'}\n` +
         `Pickup Point: ${currentSelectedTask?.pickupLine || 'N/A'}\n` +
@@ -251,11 +223,14 @@ export default function VolunteerRaiseConcernScreen() {
         `--- DETAILED REPORT ---\n` +
         `${details.trim()}`;
 
+      const linkedAssignment =
+        selectedAssignmentId && !isOpenTask(selectedAssignmentId) ? selectedAssignmentId : undefined;
       const payload: CreateEnquiryPayload = {
-        subject,
+        subject: subject.slice(0, 120),
         body,
-        assignmentId: selectedAssignmentId || undefined,
-        donationId: currentSelectedTask?.rawTask?.donation?.id || undefined,
+        category: REASON_CATEGORY[currentReason.id] ?? 'other',
+        assignmentId: linkedAssignment,
+        donationId: currentSelectedTask?.rawTask?.donation.id,
       };
 
       return enquiriesApi.create(payload);
@@ -287,10 +262,10 @@ export default function VolunteerRaiseConcernScreen() {
     },
   });
 
-  const canSubmit = details.trim().length >= 5;
+  const canSubmit = details.trim().length >= 10;
 
   function handleCallDispatch() {
-    void Linking.openURL('tel:+94212223456');
+    void Linking.openURL(`tel:${EMERGENCY_NUMBER}`);
   }
 
   function handleSelectReason(reason: (typeof VOLUNTEER_CONCERN_REASONS)[0]) {
@@ -342,7 +317,7 @@ export default function VolunteerRaiseConcernScreen() {
           activeOpacity={0.8}
         >
           <Ionicons name="call" size={16} color="#FFFFFF" />
-          <Text style={styles.hotlineHeaderText}>Dispatch</Text>
+          <Text style={styles.hotlineHeaderText}>{EMERGENCY_NUMBER}</Text>
         </TouchableOpacity>
       </View>
 
@@ -423,7 +398,7 @@ export default function VolunteerRaiseConcernScreen() {
             >
               <Ionicons name="call" size={15} color="#FFFFFF" />
               <Text style={styles.emergencyCallText}>
-                Immediate Emergency? Call 24/7 Hotline: +94 21 222 3456
+                Personal safety emergency? Call Police {EMERGENCY_NUMBER}
               </Text>
             </TouchableOpacity>
           </View>
@@ -706,8 +681,8 @@ export default function VolunteerRaiseConcernScreen() {
             />
             <View style={styles.charCountRow}>
               <Text style={styles.charCountText}>
-                {details.trim().length < 5
-                  ? `Min 5 characters required (${5 - details.trim().length} more)`
+                {details.trim().length < 10
+                  ? `Min 10 characters required (${10 - details.trim().length} more)`
                   : `${details.trim().length} characters`}
               </Text>
             </View>
@@ -792,10 +767,10 @@ export default function VolunteerRaiseConcernScreen() {
             <Ionicons name="person-circle-outline" size={26} color={volunteerColors.maroon} />
             <View style={{ flex: 1 }}>
               <Text style={styles.contactVerificationName}>
-                Reporting as: {user?.name || 'Volunteer Kajan'}
+                Reporting as: {user?.name ?? 'Volunteer'}
               </Text>
               <Text style={styles.contactVerificationPhone}>
-                Dispatch Callback Phone: {user?.phone || '+94 77 123 4567'}
+                Callback Phone: {user?.phone || 'Not set — add one in your profile'}
               </Text>
             </View>
           </View>
@@ -903,6 +878,23 @@ export default function VolunteerRaiseConcernScreen() {
                     </View>
                   );
                 })()}
+
+                {(item.responses ?? []).map((reply, index) => (
+                  <View key={`${item.id}-reply-${index}`} style={styles.resolutionBox}>
+                    <View style={styles.resolutionHeaderRow}>
+                      <Ionicons
+                        name={reply.authorRole === 'admin' ? 'shield-outline' : 'person-outline'}
+                        size={16}
+                        color="#2563EB"
+                      />
+                      <Text style={styles.resolutionTitle}>
+                        {reply.authorRole === 'admin' ? 'Admin reply' : reply.authorName} ·{' '}
+                        {new Date(reply.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                    <Text style={styles.resolutionText}>{reply.message}</Text>
+                  </View>
+                ))}
 
                 {item.resolution && (
                   <View style={styles.resolutionBox}>

@@ -6,7 +6,32 @@ export type EnquiryDocument = HydratedDocument<Enquiry>;
 
 export type EnquiryStatus = 'open' | 'in_review' | 'resolved';
 
-/** FR12 — a concern raised by a recipient and worked by an admin. */
+@Schema({ _id: false })
+export class EnquiryResponse {
+  @ApiProperty()
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  authorId!: Types.ObjectId;
+
+  @ApiProperty()
+  @Prop({ required: true })
+  authorName!: string;
+
+  @ApiProperty()
+  @Prop({ required: true })
+  authorRole!: string;
+
+  @ApiProperty()
+  @Prop({ required: true, trim: true })
+  message!: string;
+
+  @ApiProperty()
+  @Prop({ default: () => new Date() })
+  createdAt!: Date;
+}
+
+const EnquiryResponseSchema = SchemaFactory.createForClass(EnquiryResponse);
+
+/** FR12 — a concern raised by a recipient (or volunteer) and worked by an admin. */
 @Schema({
   timestamps: true,
   toJSON: {
@@ -24,12 +49,24 @@ export class Enquiry {
   raisedBy!: Types.ObjectId;
 
   @ApiPropertyOptional()
+  @Prop({ type: String })
+  raisedByRole?: string;
+
+  @ApiPropertyOptional()
   @Prop({ type: Types.ObjectId, ref: 'Donation' })
   donationId?: Types.ObjectId;
 
   @ApiPropertyOptional()
   @Prop({ type: Types.ObjectId, ref: 'Assignment' })
   assignmentId?: Types.ObjectId;
+
+  @ApiPropertyOptional()
+  @Prop({ type: Types.ObjectId, ref: 'FoodRequest' })
+  requestId?: Types.ObjectId;
+
+  @ApiPropertyOptional({ description: 'e.g. late_delivery, food_quality, wrong_location, other' })
+  @Prop({ trim: true })
+  category?: string;
 
   @ApiProperty()
   @Prop({ required: true, trim: true })
@@ -48,6 +85,10 @@ export class Enquiry {
   })
   status!: EnquiryStatus;
 
+  @ApiProperty({ type: [EnquiryResponse] })
+  @Prop({ type: [EnquiryResponseSchema], default: [] })
+  responses!: EnquiryResponse[];
+
   @ApiPropertyOptional()
   @Prop({ trim: true })
   resolution?: string;
@@ -59,6 +100,12 @@ export class Enquiry {
   @ApiPropertyOptional()
   @Prop()
   resolvedAt?: Date;
+
+  @ApiProperty()
+  createdAt!: Date;
+
+  @ApiProperty()
+  updatedAt!: Date;
 }
 
 export const EnquirySchema = SchemaFactory.createForClass(Enquiry);

@@ -14,79 +14,205 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { adminApi, FALLBACK_KPIS } from '@/api/admin.api';
+import { adminApi } from '@/api/admin.api';
+import type { AdminDonation } from '@/api/donations.api';
 import { AdminHeader } from '@/components/AdminHeader';
 import { getAdminDashboardMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing } from '@/theme';
+import {
+  coordsOf,
+  formatClock,
+  padMetric,
+  populatedName,
+  remainingLabel,
+  remainingMinutes,
+  titleCase,
+} from '@/utils/format';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'all' | 'donations' | 'volunteers' | 'recipients' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [mapFilter, setMapFilter] = useState<'all' | 'hubs' | 'donations' | 'routes' | 'demand'>('all');
 
-  // Live Mapbox Streets API static satellite/streets URL
-  const mapboxUrl = useMemo(
-    () => getAdminDashboardMapUrl({ layer: mapFilter, width: 700, height: 380, zoom: 12.8 }),
-    [mapFilter],
-  );
-
-  // Backend queries with fallback
   const { data: kpis, refetch: refetchKpis, isRefetching } = useQuery({
     queryKey: ['admin.kpis'],
     queryFn: () => adminApi.kpis(),
-    initialData: FALLBACK_KPIS,
+  });
+
+  const { data: pendingDonations, refetch: refetchDonations } = useQuery({
+    queryKey: ['admin.pendingDonations'],
+    queryFn: () => adminApi.pendingDonations(),
+  });
+
+  const { data: pendingVolunteers, refetch: refetchVolunteers } = useQuery({
+    queryKey: ['admin.unverifiedVolunteers'],
+    queryFn: () => adminApi.unverifiedVolunteers(),
+  });
+
+  const { data: liveAssignments, refetch: refetchMonitor } = useQuery({
+    queryKey: ['admin.monitor'],
+    queryFn: () => adminApi.monitor(),
+  });
+
+  const { data: openRequests, refetch: refetchRequests } = useQuery({
+    queryKey: ['admin.foodRequests', 'open'],
+    queryFn: () => adminApi.foodRequests({ status: 'open', pageSize: 20 }),
+  });
+
+  const { data: liveDonations } = useQuery({
+    queryKey: ['admin.allDonations', 'live'],
+    queryFn: () => adminApi.allDonations({ pageSize: 50 }),
+  });
+
+  const { data: demandCells } = useQuery({
+    queryKey: ['admin.demand'],
+    queryFn: () => adminApi.demandHeatmap(),
+  });
+
+  const { data: ngos } = useQuery({
+    queryKey: ['admin.ngos'],
+    queryFn: () => adminApi.ngos({ pageSize: 20 }),
   });
 
   const onRefresh = () => {
-    refetchKpis();
+    void refetchKpis();
+    void refetchDonations();
+    void refetchVolunteers();
+    void refetchMonitor();
+    void refetchRequests();
   };
 
-  // Static/Fallback featured task cards matching Screenshot 1
-  const featuredTaskCards = [
-    {
-      id: 'task-nallur',
-      type: 'donation',
-      title: 'Nallur Temple Kitchen',
-      subtitle: '50 Veg Meals • Prep 11:30 AM',
-      tag: 'Expires in 2h',
-      tagTone: 'warning',
-      statusText: 'Safety: 68°C Passed',
-      statusIcon: 'checkmark-circle',
-      statusColor: colors.mint,
-      actionText: 'Review',
-      imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
-      urgent: true,
-      onPress: () => router.push('/(admin)/approvals/donation/DN-8842' as any),
-    },
-    {
-      id: 'task-karthik',
-      type: 'volunteer',
-      title: 'Karthik Rajan',
-      subtitle: 'Motorbike • Jaffna Central',
-      tag: 'Pending KYC',
-      tagTone: 'mint',
-      statusText: 'NIC & Driving License',
-      statusIcon: 'id-card-outline',
-      statusColor: colors.textMuted,
-      actionText: 'Verify',
-      isRiderKyc: true,
-      onPress: () => router.push('/(admin)/approvals/volunteers' as any),
-    },
-    {
-      id: 'task-grace',
-      type: 'dispatch',
-      title: 'Grace Care Elderly Home',
-      subtitle: '40 Fresh Buns & Loaves',
-      tag: 'Matched',
-      tagTone: 'mint',
-      statusText: 'Awaiting Dispatch',
-      statusIcon: 'time-outline',
-      statusColor: colors.amber,
-      actionText: 'Dispatch',
-      imageUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80',
-      onPress: () => router.push('/(admin)/deliveries' as any),
-    },
-  ];
+  const featuredTaskCards = useMemo(() => {
+    const cards: {
+      id: string;
+      type: 'donation' | 'volunteer' | 'dispatch';
+      title: string;
+      subtitle: string;
+      tag: string;
+      tagTone: 'warning' | 'mint';
+      statusText: string;
+      statusIcon: string;
+      statusColor: string;
+      actionText: string;
+      imageUrl?: string;
+      urgent?: boolean;
+      isRiderKyc?: boolean;
+      onPress: () => void;
+    }[] = [];
+
+    for (const donation of pendingDonations?.items ?? []) {
+      const minutes = remainingMinutes(donation.expiresAt);
+      cards.push({
+        id: donation.id,
+        type: 'donation',
+        title: donation.donor?.name || donation.title,
+        subtitle: `${donation.servings} ${titleCase(donation.foodType)} • Prep ${formatClock(donation.cookedAt) || '—'}`,
+        tag: remainingLabel(donation.expiresAt),
+        tagTone: minutes !== null && minutes < 120 ? 'warning' : 'mint',
+        statusText: donation.packagingType
+          ? `Packaging: ${donation.packagingType}`
+          : donation.foodSafetyVerified
+            ? 'Safety check recorded'
+            : 'Awaiting safety review',
+        statusIcon: 'checkmark-circle',
+        statusColor: colors.mint,
+        actionText: 'Review',
+        imageUrl: donation.photoUrls?.[0],
+        urgent: minutes !== null && minutes < 90,
+        onPress: () => router.push(`/(admin)/approvals/donation/${donation.id}` as any),
+      });
+    }
+
+    for (const volunteer of pendingVolunteers?.items ?? []) {
+      cards.push({
+        id: volunteer.id,
+        type: 'volunteer',
+        title: volunteer.name,
+        subtitle: `${titleCase(volunteer.vehicleType) || 'Volunteer'} • ${volunteer.address?.city || volunteer.address?.district || 'Area not set'}`,
+        tag: volunteer.isVerified ? 'Verified' : 'Pending KYC',
+        tagTone: 'mint',
+        statusText: volunteer.nicNumber ? `NIC ${volunteer.nicNumber}` : 'Identity documents pending',
+        statusIcon: 'id-card-outline',
+        statusColor: colors.textMuted,
+        actionText: 'Verify',
+        isRiderKyc: true,
+        onPress: () => router.push('/(admin)/approvals/volunteers' as any),
+      });
+    }
+
+    for (const request of openRequests?.items ?? []) {
+      cards.push({
+        id: request.id,
+        type: 'dispatch',
+        title: populatedName(request.recipientId) || request.dropAddress?.city || 'Food request',
+        subtitle: `${request.servingsNeeded} servings needed • ${request.foodCategory || 'Any food'}`,
+        tag: request.status === 'matched' ? 'Matched' : 'Open',
+        tagTone: 'mint',
+        statusText: `Needed by ${formatClock(request.neededBy) || 'today'}`,
+        statusIcon: 'time-outline',
+        statusColor: colors.amber,
+        actionText: 'Match',
+        imageUrl: undefined,
+        onPress: () => router.push('/(admin)/recipients' as any),
+      });
+    }
+
+    for (const task of liveAssignments ?? []) {
+      if (task.assignment.status === 'completed' || task.assignment.status === 'cancelled') continue;
+      cards.push({
+        id: task.assignment.id,
+        type: 'dispatch',
+        title: task.request?.dropAddress.city || task.donation.title,
+        subtitle: `${task.donation.servings} ${task.donation.title}`,
+        tag: task.isDelayed ? 'Delayed' : titleCase(task.assignment.status) || 'Assigned',
+        tagTone: task.isDelayed ? 'warning' : 'mint',
+        statusText: task.volunteer?.name ? `Courier: ${task.volunteer.name}` : 'Awaiting courier',
+        statusIcon: task.isDelayed ? 'alert-circle' : 'bicycle-outline',
+        statusColor: task.isDelayed ? colors.urgentRed : colors.mint,
+        actionText: 'Monitor',
+        imageUrl: task.donation.photoUrls?.[0],
+        urgent: task.isUrgent || task.isDelayed,
+        onPress: () => router.push('/(admin)/deliveries' as any),
+      });
+    }
+
+    return cards;
+  }, [liveAssignments, openRequests?.items, pendingDonations?.items, pendingVolunteers?.items]);
+
+  const mapPoints = useMemo(() => {
+    const donationPoints = (liveDonations?.items ?? [])
+      .map((donation: AdminDonation) => coordsOf(donation.pickupAddress))
+      .filter((point): point is { latitude: number; longitude: number } => Boolean(point));
+    const deliveryPoints = (liveAssignments ?? [])
+      .map((task) => {
+        const point = coordsOf(task.donation.pickupAddress);
+        return point ? { ...point, delayed: task.isDelayed } : null;
+      })
+      .filter((point): point is { latitude: number; longitude: number; delayed: boolean } => Boolean(point));
+    return {
+      hubs: (ngos?.items ?? [])
+        .map((ngo) => coordsOf(ngo.address))
+        .filter((point): point is { latitude: number; longitude: number } => Boolean(point)),
+      donations: donationPoints,
+      deliveries: deliveryPoints,
+      demand: (demandCells ?? []).map((cell) => ({
+        latitude: cell.latitude,
+        longitude: cell.longitude,
+      })),
+    };
+  }, [demandCells, liveAssignments, liveDonations?.items, ngos?.items]);
+
+  const mapboxUrl = useMemo(
+    () => getAdminDashboardMapUrl({ layer: mapFilter, points: mapPoints, width: 700, height: 380, zoom: 12.8 }),
+    [mapFilter, mapPoints],
+  );
+
+  const hubCount = ngos?.items?.length ?? 0;
+  const donationPinCount = mapPoints.donations.length;
+  const routeCount = (liveAssignments ?? []).filter(
+    (task) => task.assignment.status !== 'completed' && task.assignment.status !== 'cancelled',
+  ).length;
+  const demandCount = demandCells?.length ?? 0;
 
   // Dynamic filter
   const filteredTasks = featuredTaskCards.filter((task) => {
@@ -122,7 +248,7 @@ export default function AdminDashboard() {
               <Ionicons name="clipboard-outline" size={18} color={colors.adminMaroon} />
             </View>
             <Text style={styles.metricValue}>
-              {String(kpis?.pendingApprovals ?? 14).padStart(2, '0')}
+              {padMetric(kpis?.pendingApprovals)}
             </Text>
             <Text style={styles.metricLabel}>Approvals</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.adminMaroon }]} />
@@ -139,7 +265,7 @@ export default function AdminDashboard() {
               <Ionicons name="fast-food-outline" size={18} color={colors.mint} />
             </View>
             <Text style={styles.metricValue}>
-              {String(kpis?.activeDeliveries ?? 38).padStart(2, '0')}
+              {padMetric(kpis?.activeDeliveries)}
             </Text>
             <Text style={styles.metricLabel}>Dispatched</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.mint }]} />
@@ -156,7 +282,7 @@ export default function AdminDashboard() {
               <Ionicons name="bicycle-outline" size={18} color={colors.amber} />
             </View>
             <Text style={styles.metricValue}>
-              {String(kpis?.totalVolunteers ?? 52).padStart(2, '0')}
+              {padMetric(kpis?.totalVolunteers)}
             </Text>
             <Text style={styles.metricLabel}>Volunteers</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.amber }]} />
@@ -173,7 +299,7 @@ export default function AdminDashboard() {
               <Ionicons name="alert-outline" size={18} color={colors.urgentRed} />
             </View>
             <Text style={styles.metricValue}>
-              {String(kpis?.urgentDonations ?? 3).padStart(2, '0')}
+              {padMetric(kpis?.urgentDonations)}
             </Text>
             <Text style={styles.metricLabel}>Urgent</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.urgentRed }]} />
@@ -210,7 +336,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('all')}
           >
             <Text style={[styles.filterPillText, activeTab === 'all' && styles.filterPillTextActive]}>
-              All Tasks ({((kpis?.pendingApprovals ?? 14) + (kpis?.pendingVolunteerKyc ?? 6) + 4)})
+              All Tasks ({(kpis?.pendingApprovals ?? 0) + (kpis?.pendingVolunteerKyc ?? 0) + (kpis?.openRecipientRequests ?? 0)})
             </Text>
           </TouchableOpacity>
 
@@ -219,7 +345,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('donations')}
           >
             <Text style={[styles.filterPillText, activeTab === 'donations' && styles.filterPillTextActive]}>
-              Donations ({kpis?.pendingApprovals ?? 8})
+              Donations ({kpis?.pendingApprovals ?? 0})
             </Text>
           </TouchableOpacity>
 
@@ -228,7 +354,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('volunteers')}
           >
             <Text style={[styles.filterPillText, activeTab === 'volunteers' && styles.filterPillTextActive]}>
-              Volunteers ({kpis?.pendingVolunteerKyc ?? 6})
+              Volunteers ({kpis?.pendingVolunteerKyc ?? 0})
             </Text>
           </TouchableOpacity>
 
@@ -237,7 +363,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('recipients')}
           >
             <Text style={[styles.filterPillText, activeTab === 'recipients' && styles.filterPillTextActive]}>
-              Recipients ({kpis?.openRecipientRequests ?? 7})
+              Recipients ({kpis?.openRecipientRequests ?? 0})
             </Text>
           </TouchableOpacity>
 
@@ -246,20 +372,38 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('urgent')}
           >
             <Text style={[styles.filterPillText, activeTab === 'urgent' && styles.filterPillTextActive]}>
-              Urgent ({kpis?.urgentDonations ?? 3})
+              Urgent ({kpis?.urgentDonations ?? 0})
             </Text>
           </TouchableOpacity>
         </ScrollView>
 
         {/* Actionable Task Cards List (Screenshot 1 Exact Match) */}
         <View style={styles.taskList}>
+          {filteredTasks.length === 0 ? (
+            <View style={styles.taskCard}>
+              <View style={styles.riderKycThumbnail}>
+                <Ionicons name="checkmark-done-outline" size={32} color={colors.mint} />
+                <Text style={styles.riderKycThumbText}>QUEUE CLEAR</Text>
+              </View>
+              <View style={styles.taskBody}>
+                <Text style={styles.taskTitle}>No matching tasks</Text>
+                <Text style={styles.taskSubtitle}>New donations, KYC and requests will appear here.</Text>
+              </View>
+            </View>
+          ) : null}
           {filteredTasks.map((task) => (
             <View key={task.id} style={styles.taskCard}>
               {/* Left thumbnail / icon */}
-              {task.isRiderKyc ? (
+              {task.isRiderKyc || !task.imageUrl ? (
                 <View style={styles.riderKycThumbnail}>
-                  <Ionicons name="bicycle" size={32} color={colors.mint} />
-                  <Text style={styles.riderKycThumbText}>RIDER KYC</Text>
+                  <Ionicons
+                    name={task.isRiderKyc ? 'bicycle' : task.type === 'dispatch' ? 'heart' : 'restaurant'}
+                    size={32}
+                    color={colors.mint}
+                  />
+                  <Text style={styles.riderKycThumbText}>
+                    {task.isRiderKyc ? 'RIDER KYC' : task.type === 'dispatch' ? 'REQUEST' : 'DONATION'}
+                  </Text>
                 </View>
               ) : (
                 <Image
@@ -394,14 +538,14 @@ export default function AdminDashboard() {
               <View style={styles.mapChipStats}>
                 <Text style={styles.mapChipStatsText}>
                   {mapFilter === 'hubs'
-                    ? '4 Operational Hubs'
+                    ? `${hubCount} Operational Hubs`
                     : mapFilter === 'donations'
-                    ? '3 Verified Pickups'
+                    ? `${donationPinCount} Verified Pickups`
                     : mapFilter === 'routes'
-                    ? '3 Active Deliveries'
+                    ? `${routeCount} Active Deliveries`
                     : mapFilter === 'demand'
-                    ? '2 High-Demand Zones'
-                    : '12 Active Coordinates'}
+                    ? `${demandCount} High-Demand Zones`
+                    : `${hubCount + donationPinCount + routeCount + demandCount} Active Coordinates`}
                 </Text>
               </View>
             </View>
@@ -417,7 +561,7 @@ export default function AdminDashboard() {
           <View style={styles.mapLegend}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#2B6CB0' }]} />
-              <Text style={styles.legendText}>Hubs (4)</Text>
+              <Text style={styles.legendText}>Hubs ({hubCount})</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: '#0F7B4F' }]} />
@@ -443,36 +587,36 @@ export default function AdminDashboard() {
 
           <View style={styles.overviewGrid}>
             <View style={styles.overviewItem}>
-              <Text style={styles.overviewNumber}>{kpis?.totalDonations ?? 86}</Text>
+              <Text style={styles.overviewNumber}>{kpis?.totalDonations ?? 0}</Text>
               <Text style={styles.overviewLabel}>Total Donations</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.warning }]}>
-                {kpis?.pendingApprovals ?? 14}
+                {kpis?.pendingApprovals ?? 0}
               </Text>
               <Text style={styles.overviewLabel}>Pending Approvals</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.mint }]}>
-                {kpis?.activeDeliveries ?? 38}
+                {kpis?.activeDeliveries ?? 0}
               </Text>
               <Text style={styles.overviewLabel}>Active Deliveries</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.primary }]}>
-                {kpis?.completedDistributions ?? 68}
+                {kpis?.completedDistributions ?? 0}
               </Text>
               <Text style={styles.overviewLabel}>Completed Distributions</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.amber }]}>
-                {kpis?.verifiedVolunteers ?? 46}
+                {kpis?.verifiedVolunteers ?? 0}
               </Text>
               <Text style={styles.overviewLabel}>Available Volunteers</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.danger }]}>
-                {kpis?.openDisputes ?? 2}
+                {kpis?.openDisputes ?? 0}
               </Text>
               <Text style={styles.overviewLabel}>Unresolved Concerns</Text>
             </View>

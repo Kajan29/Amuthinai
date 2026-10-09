@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { DeliveryProofModule } from 'src/modules/delivery-proof/delivery-proof.module';
 import { DonationsModule } from 'src/modules/donations/donations.module';
 import { FoodRequestsModule } from 'src/modules/food-requests/food-requests.module';
+import { NgosModule } from 'src/modules/ngos/ngos.module';
 import { NotificationsModule } from 'src/modules/notifications/notifications.module';
 import { PointsModule } from 'src/modules/points/points.module';
 import { UsersModule } from 'src/modules/users/users.module';
@@ -21,6 +22,7 @@ import { Assignment, AssignmentSchema } from './schemas/assignment.schema';
     DeliveryProofModule,
     NotificationsModule,
     PointsModule,
+    NgosModule,
   ],
   controllers: [AssignmentsController],
   providers: [AssignmentsService],

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { adminApi, FALLBACK_KPIS } from '@/api/admin.api';
+import { adminApi } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
 import { colors, radius, spacing } from '@/theme';
 
@@ -25,13 +25,9 @@ export default function AnalyticsReports() {
     queryFn: () => adminApi.reports(),
   });
 
-  const kpis = reportData?.kpis ?? FALLBACK_KPIS;
-  const foodBreakdown = reportData?.foodTypeBreakdown ?? [
-    { label: 'Hot Cooked Meals', percentage: 48, count: 284 },
-    { label: 'Fresh Bakery Items', percentage: 24, count: 142 },
-    { label: 'Raw Vegetables & Fruits', percentage: 18, count: 106 },
-    { label: 'Dry Groceries & Rations', percentage: 10, count: 59 },
-  ];
+  const kpis = reportData?.kpis;
+  const impact = reportData?.communityImpact;
+  const foodBreakdown = reportData?.foodTypeBreakdown ?? [];
   const monthlyTrends = reportData?.monthlyTrends ?? [];
   const topVolunteers = reportData?.topVolunteers ?? [];
 
@@ -89,10 +85,10 @@ export default function AnalyticsReports() {
               <Ionicons name="restaurant" size={20} color={colors.adminMaroon} />
             </View>
             <Text style={styles.kpiNumber}>
-              {kpis.servingsToday ? kpis.servingsToday.toLocaleString() : '42,600'}
+              {(impact?.totalMealsDistributed ?? kpis?.servingsToday ?? 0).toLocaleString()}
             </Text>
             <Text style={styles.kpiLabel}>Meals Distributed</Text>
-            <Text style={styles.kpiChange}>+18% from last month</Text>
+            <Text style={styles.kpiChange}>{kpis?.servingsToday ?? 0} servings today</Text>
           </View>
 
           <View style={styles.kpiCard}>
@@ -100,10 +96,10 @@ export default function AnalyticsReports() {
               <Ionicons name="leaf" size={20} color={colors.mint} />
             </View>
             <Text style={styles.kpiNumber}>
-              {kpis.wasteAvertedKg ? `${kpis.wasteAvertedKg.toLocaleString()} kg` : '17,040 kg'}
+              {`${(impact?.wasteAvertedKg ?? kpis?.wasteAvertedKg ?? 0).toLocaleString()} kg`}
             </Text>
             <Text style={styles.kpiLabel}>Food Waste Averted</Text>
-            <Text style={styles.kpiChange}>~42.6 tons landfill save</Text>
+            <Text style={styles.kpiChange}>{impact?.carbonOffsetKg ?? 0} kg CO₂e offset</Text>
           </View>
 
           <View style={styles.kpiCard}>
@@ -111,10 +107,10 @@ export default function AnalyticsReports() {
               <Ionicons name="people" size={20} color={colors.amber} />
             </View>
             <Text style={styles.kpiNumber}>
-              {kpis.completedDistributions ? (kpis.completedDistributions * 4).toLocaleString() : '1,840'}
+              {(impact?.householdsSupported ?? 0).toLocaleString()}
             </Text>
             <Text style={styles.kpiLabel}>Households Fed</Text>
-            <Text style={styles.kpiChange}>4 relief hubs active</Text>
+            <Text style={styles.kpiChange}>{impact?.activeReliefCentres ?? 0} relief hubs active</Text>
           </View>
 
           <View style={styles.kpiCard}>
@@ -122,10 +118,10 @@ export default function AnalyticsReports() {
               <Ionicons name="bicycle" size={20} color="#2B6CB0" />
             </View>
             <Text style={styles.kpiNumber}>
-              {kpis.completedDistributions ? kpis.completedDistributions.toLocaleString() : '580'}
+              {(impact?.totalDeliveries ?? kpis?.completedDistributions ?? 0).toLocaleString()}
             </Text>
             <Text style={styles.kpiLabel}>Completed Deliveries</Text>
-            <Text style={styles.kpiChange}>98.4% on-time rate</Text>
+            <Text style={styles.kpiChange}>{kpis?.activeDeliveries ?? 0} currently active</Text>
           </View>
         </View>
 
@@ -136,11 +132,11 @@ export default function AnalyticsReports() {
 
           <View style={styles.barChartContainer}>
             {monthlyTrends.map((trend) => {
-              const maxWaste = 5500;
+              const maxWaste = Math.max(...monthlyTrends.map((row) => row.wasteKg), 1);
               const heightPercent = Math.min(100, Math.round((trend.wasteKg / maxWaste) * 100));
               return (
                 <View key={trend.month} style={styles.chartCol}>
-                  <Text style={styles.chartColVal}>{trend.wasteKg}k</Text>
+                  <Text style={styles.chartColVal}>{trend.wasteKg}</Text>
                   <View style={styles.barTrack}>
                     <View style={[styles.barFill, { height: `${heightPercent}%` }]} />
                   </View>
@@ -220,7 +216,7 @@ export default function AnalyticsReports() {
                 <View style={styles.volInfo}>
                   <Text style={styles.volName}>{vol.name}</Text>
                   <Text style={styles.volVehicle}>
-                    {vol.vehicle} · ⭐ {vol.rating} Rating
+                    {vol.vehicle}
                   </Text>
                 </View>
 

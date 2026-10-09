@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { CurrentUser, type AuthUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import { RequestStatus } from 'src/common/enums/request-status.enum';
@@ -78,8 +78,9 @@ export class FoodRequestsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.foodRequestsService.findById(id);
+  @Roles(Role.Recipient, Role.Admin)
+  findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.foodRequestsService.findVisible(id, user);
   }
 
   @Patch(':id')

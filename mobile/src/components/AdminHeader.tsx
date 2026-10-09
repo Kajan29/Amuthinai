@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -12,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { notificationsApi } from '@/api/notifications.api';
 import { logo } from '@/constants/images';
 import { useAuth } from '@/hooks/useAuth';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -32,11 +34,21 @@ export function AdminHeader({
   onBack,
   subtitle,
   rightAction,
-  unreadAlertsCount = 3,
+  unreadAlertsCount,
 }: AdminHeaderProps) {
   const { user, confirmLogout } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
   const [alertsVisible, setAlertsVisible] = useState(false);
+  const unread = useQuery({
+    queryKey: ['notifications.unread'],
+    queryFn: notificationsApi.unreadCount,
+  });
+  const alerts = useQuery({
+    queryKey: ['notifications', 'admin-header'],
+    queryFn: () => notificationsApi.list({ pageSize: 8 }),
+    enabled: alertsVisible,
+  });
+  const alertCount = unreadAlertsCount ?? unread.data?.unread ?? 0;
 
   const handleBack = () => {
     if (onBack) {
@@ -98,10 +110,10 @@ export function AdminHeader({
               hitSlop={12}
             >
               <Ionicons name="notifications-outline" size={24} color={colors.adminMaroon} />
-              {unreadAlertsCount > 0 && (
+              {alertCount > 0 && (
                 <View style={styles.badgeDot}>
                   <Text style={styles.badgeDotText}>
-                    {unreadAlertsCount > 9 ? '9+' : unreadAlertsCount}
+                    {alertCount > 9 ? '9+' : alertCount}
                   </Text>
                 </View>
               )}
@@ -166,66 +178,34 @@ export function AdminHeader({
             <View style={styles.alertHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                 <Ionicons name="alert-circle" size={22} color={colors.urgentRed} />
-                <Text style={styles.alertTitle}>Operational Alerts (3)</Text>
+                <Text style={styles.alertTitle}>Operational Alerts ({alertCount})</Text>
               </View>
               <TouchableOpacity onPress={() => setAlertsVisible(false)}>
                 <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.alertItem}>
-              <View style={[styles.alertDot, { backgroundColor: colors.urgentRed }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.alertItemTitle}>Freshness Alert: Nallur Temple Kitchen</Text>
-                <Text style={styles.alertItemDesc}>
-                  50 Veg Meals expires in 1h 45m. Immediate dispatch assignment required.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setAlertsVisible(false);
-                    router.push('/(admin)/approvals');
-                  }}
-                >
-                  <Text style={styles.alertAction}>Review Item →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.alertItem}>
-              <View style={[styles.alertDot, { backgroundColor: colors.warning }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.alertItemTitle}>Volunteer KYC Vetting</Text>
-                <Text style={styles.alertItemDesc}>
-                  3 new delivery riders submitted driving license and NIC documents.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setAlertsVisible(false);
-                    router.push('/(admin)/approvals/volunteers');
-                  }}
-                >
-                  <Text style={styles.alertAction}>Open Volunteers Queue →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.alertItem}>
-              <View style={[styles.alertDot, { backgroundColor: colors.mint }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.alertItemTitle}>High Demand in Ariyalai Community</Text>
-                <Text style={styles.alertItemDesc}>
-                  4 priority households requested emergency dinner packs.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setAlertsVisible(false);
-                    router.push('/(admin)/recipients' as any);
-                  }}
-                >
-                  <Text style={styles.alertAction}>View Recipient Aid →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            {(alerts.data?.items ?? []).length === 0 ? (
+              <Text style={styles.alertItemDesc}>No new operational alerts.</Text>
+            ) : (
+              (alerts.data?.items ?? []).map((alert) => (
+                <View key={alert.id} style={styles.alertItem}>
+                  <View style={[styles.alertDot, { backgroundColor: colors.urgentRed }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.alertItemTitle}>{alert.title}</Text>
+                    <Text style={styles.alertItemDesc}>{alert.body}</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setAlertsVisible(false);
+                        router.push('/(admin)/approvals');
+                      }}
+                    >
+                      <Text style={styles.alertAction}>Open queue →</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
           </View>
         </Pressable>
       </Modal>

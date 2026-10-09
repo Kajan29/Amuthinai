@@ -29,11 +29,24 @@ export class DeliveryProofService {
       photoUrl: dto.photoUrl,
       location: dto.location,
       pinVerified,
+      quantityConfirmed: dto.quantityConfirmed,
+      note: dto.note,
     });
   }
 
   findByAssignment(assignmentId: string) {
-    return this.model.find({ assignmentId }).sort({ capturedAt: 1 }).exec();
+    return this.model
+      .find({ assignmentId: new Types.ObjectId(assignmentId) })
+      .sort({ capturedAt: 1 })
+      .exec();
+  }
+
+  findByAssignments(assignmentIds: string[]) {
+    if (assignmentIds.length === 0) return Promise.resolve([]);
+    return this.model
+      .find({ assignmentId: { $in: assignmentIds.map((id) => new Types.ObjectId(id)) } })
+      .sort({ capturedAt: 1 })
+      .exec();
   }
 
   async findOne(assignmentId: string, stage: ProofStage): Promise<DeliveryProofDocument> {

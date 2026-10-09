@@ -17,97 +17,55 @@ import { adminApi } from '@/api/admin.api';
 import { queryClient } from '@/api/queryClient';
 import { AdminHeader } from '@/components/AdminHeader';
 import { colors, radius, spacing } from '@/theme';
-
-const FALLBACK_SUGGESTIONS = [
-  {
-    volunteer: {
-      id: 'vol-kajan',
-      name: 'Kajan S.',
-      email: 'kajan.volunteer@amuthinai.lk',
-      phone: '+94 77 123 4567',
-      role: 'volunteer' as const,
-      language: 'ta' as const,
-      isVerified: true,
-      karmaPoints: 420,
-      vehicleType: 'motorbike' as const,
-      travelRadiusKm: 15,
-      createdAt: '',
-    },
-    distanceKm: 1.8,
-    activeAssignments: 1,
-    score: 0.94,
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-  },
-  {
-    volunteer: {
-      id: 'vol-priya',
-      name: 'Priya T.',
-      email: 'priya.volunteer@amuthinai.lk',
-      phone: '+94 77 234 8901',
-      role: 'volunteer' as const,
-      language: 'en' as const,
-      isVerified: true,
-      karmaPoints: 240,
-      vehicleType: 'bicycle' as const,
-      travelRadiusKm: 5,
-      createdAt: '',
-    },
-    distanceKm: 2.4,
-    activeAssignments: 0,
-    score: 0.88,
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80',
-  },
-  {
-    volunteer: {
-      id: 'vol-murugan',
-      name: 'Murugan R.',
-      email: 'murugan.volunteer@amuthinai.lk',
-      phone: '+94 77 345 6789',
-      role: 'volunteer' as const,
-      language: 'ta' as const,
-      isVerified: true,
-      karmaPoints: 660,
-      vehicleType: 'van' as const,
-      travelRadiusKm: 25,
-      createdAt: '',
-    },
-    distanceKm: 4.1,
-    activeAssignments: 2,
-    score: 0.81,
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
-  },
-];
+import { formatAddress, titleCase } from '@/utils/format';
 
 export default function AssignVolunteer() {
   const { donationId } = useLocalSearchParams<{ donationId: string }>();
 
-  const { data: suggestions } = useQuery({
+  const { data: options, isPending } = useQuery({
     queryKey: ['assign', donationId],
-    queryFn: () => adminApi.suggestVolunteers(donationId),
+    queryFn: () => adminApi.assignmentOptions(donationId),
+    enabled: Boolean(donationId),
   });
 
+  const matchedRequestId = options?.requests[0]?.id;
+
   const assign = useMutation({
-    mutationFn: (volunteerId: string) => adminApi.assignVolunteer(donationId, volunteerId),
+    mutationFn: (volunteerId: string) =>
+      adminApi.assignVolunteer(donationId, volunteerId, matchedRequestId),
     async onSuccess() {
       await queryClient.invalidateQueries({ queryKey: ['admin.pendingDonations'] });
       await queryClient.invalidateQueries({ queryKey: ['admin.assignments'] });
       await queryClient.invalidateQueries({ queryKey: ['admin.kpis'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin.monitor'] });
       Alert.alert(
         'Courier Assigned',
-        'Pickup task offer dispatched to courier rider via push notification.',
+        'Pickup task offer dispatched to the volunteer.',
         [{ text: 'View Deliveries', onPress: () => router.push('/(admin)/deliveries' as any) }],
       );
     },
-    onError() {
-      Alert.alert(
-        'Courier Assigned',
-        'Courier assigned and dispatch task active on field radar.',
-        [{ text: 'View Deliveries', onPress: () => router.push('/(admin)/deliveries' as any) }],
-      );
+    onError(error) {
+      Alert.alert('Could not assign volunteer', (error as Error).message);
     },
   });
 
-  const items = suggestions && suggestions.length > 0 ? suggestions : (FALLBACK_SUGGESTIONS as any[]);
+  const assignNgo = useMutation({
+    mutationFn: (ngoId: string) => adminApi.assignToNgo(donationId, ngoId, matchedRequestId),
+    async onSuccess() {
+      await queryClient.invalidateQueries({ queryKey: ['admin.assignments'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin.kpis'] });
+      Alert.alert(
+        'NGO Assigned',
+        'This donation was handed to a partner organisation.',
+        [{ text: 'View Deliveries', onPress: () => router.push('/(admin)/deliveries' as any) }],
+      );
+    },
+    onError(error) {
+      Alert.alert('Could not assign NGO', (error as Error).message);
+    },
+  });
+
+  const items = options?.volunteers ?? [];
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -125,8 +83,23 @@ export default function AssignVolunteer() {
           </Text>
         </View>
 
+        {options?.donation ? (
+          <Text style={styles.screenSubheading}>
+            {options.donation.title} · {options.donation.servings} servings
+            {matchedRequestId
+              ? ` · nearest request ${formatAddress(options.requests[0]?.dropAddress)}`
+              : ' · no open request nearby yet'}
+          </Text>
+        ) : null}
+
         {/* Suggestion list */}
         <View style={styles.list}>
+          {isPending ? <ActivityIndicator color={colors.adminMaroon} /> : null}
+          {!isPending && items.length === 0 ? (
+            <Text style={styles.screenSubheading}>
+              No verified volunteers are available within travel radius. Use an NGO fallback below.
+            </Text>
+          ) : null}
           {items.map((item, index) => {
             const isTop = index === 0;
             return (
@@ -135,29 +108,27 @@ export default function AssignVolunteer() {
                 style={[styles.card, isTop && styles.cardTopMatch]}
               >
                 <View style={styles.cardHeader}>
-                  <Image
-                    source={{
-                      uri:
-                        (item as any).avatar ||
-                        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-                    }}
-                    style={styles.avatar}
-                  />
+                  {item.volunteer.avatarUrl ? (
+                    <Image source={{ uri: item.volunteer.avatarUrl }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatar, { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.mintLight }]}>
+                      <Ionicons name="person" size={22} color={colors.mint} />
+                    </View>
+                  )}
                   <View style={{ flex: 1 }}>
                     <View style={styles.nameRow}>
                       <Text style={styles.volName}>{item.volunteer.name}</Text>
                       {isTop && (
                         <View style={styles.bestMatchBadge}>
                           <Ionicons name="sparkles" size={10} color="#FFFFFF" />
-                          <Text style={styles.bestMatchText}>Best Match (94%)</Text>
+                          <Text style={styles.bestMatchText}>
+                            Best Match ({Math.round(item.score * 100)}%)
+                          </Text>
                         </View>
                       )}
                     </View>
                     <Text style={styles.volVehicle}>
-                      {item.volunteer.vehicleType
-                        ? item.volunteer.vehicleType.toUpperCase()
-                        : 'MOTORBIKE'}{' '}
-                      · {item.distanceKm} km from pickup
+                      {titleCase(item.volunteer.vehicleType) || 'Volunteer'} · {item.distanceKm} km from pickup
                     </Text>
                   </View>
                 </View>
@@ -172,7 +143,7 @@ export default function AssignVolunteer() {
                   <View style={styles.statTag}>
                     <Ionicons name="ribbon-outline" size={12} color={colors.mint} />
                     <Text style={styles.statTagText}>
-                      {item.volunteer.karmaPoints ?? 420} Karma
+                      {item.volunteer.karmaPoints ?? 0} Karma
                     </Text>
                   </View>
                   <View style={styles.statTag}>
@@ -214,26 +185,21 @@ export default function AssignVolunteer() {
           })}
         </View>
 
-        {/* Self Delivery Confirmation Option */}
-        <View style={styles.selfDeliveryCard}>
-          <Text style={styles.selfDeliveryTitle}>Donor Self-Delivery Option</Text>
-          <Text style={styles.selfDeliveryDesc}>
-            If the donor is transporting the meal directly to the distribution centre without
-            requiring volunteer courier pickup.
-          </Text>
-          <TouchableOpacity
-            style={styles.confirmSelfBtn}
-            onPress={() => {
-              Alert.alert(
-                'Donor Self-Delivery',
-                'Marked as self-delivery. Handover status code generated for donor.',
-                [{ text: 'OK', onPress: () => router.push('/(admin)/deliveries' as any) }],
-              );
-            }}
-          >
-            <Text style={styles.confirmSelfText}>Confirm Donor Self-Delivery →</Text>
-          </TouchableOpacity>
-        </View>
+        {(options?.ngos ?? []).map((ngo) => (
+          <View key={ngo.id} style={styles.selfDeliveryCard}>
+            <Text style={styles.selfDeliveryTitle}>NGO fallback · {ngo.name}</Text>
+            <Text style={styles.selfDeliveryDesc}>
+              {formatAddress(ngo.address)} · {ngo.distanceKm} km · {ngo.contactPhone}
+            </Text>
+            <TouchableOpacity
+              style={styles.confirmSelfBtn}
+              onPress={() => assignNgo.mutate(ngo.id)}
+              disabled={assignNgo.isPending}
+            >
+              <Text style={styles.confirmSelfText}>Assign to {ngo.name} →</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
 
         <View style={{ height: 60 }} />
       </ScrollView>

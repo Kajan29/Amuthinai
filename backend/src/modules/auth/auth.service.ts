@@ -215,6 +215,9 @@ export class AuthService {
   }
 
   private async issueTokens(user: UserDocument): Promise<AuthResponse> {
+    if (user.isActive === false) {
+      throw new UnauthorizedException('This account has been deactivated. Contact the Amuthinai admin team.');
+    }
     const payload: JwtPayload = { sub: user.id as string, email: user.email, role: user.role };
 
     const [accessToken, refreshToken] = await Promise.all([

@@ -1,15 +1,18 @@
 import { Injectable } from '@nestjs/common';
 
-import { DonationStatus } from 'src/common/enums/donation-status.enum';
+import { FoodType } from 'src/common/enums/food-type.enum';
 import { AssignmentsService } from 'src/modules/assignments/assignments.service';
 import { DonationsService } from 'src/modules/donations/donations.service';
 import { EnquiriesService } from 'src/modules/enquiries/enquiries.service';
 import { FoodRequestsService } from 'src/modules/food-requests/food-requests.service';
+import { NgosService } from 'src/modules/ngos/ngos.service';
 import { UsersService } from 'src/modules/users/users.service';
 
 export interface AdminKpis {
   pendingApprovals: number;
   activeDeliveries: number;
+  activePickups: number;
+  activeAssignments: number;
   servingsToday: number;
   wasteAvertedKg: number;
   openDisputes: number;
@@ -20,12 +23,27 @@ export interface AdminKpis {
   totalDonations: number;
   completedDistributions: number;
   openRecipientRequests: number;
-  pendingKarmaClaims: number;
+  unmetServings: number;
+  expiredDonations: number;
   foodHubsCount: number;
 }
 
 /** Rough conversion used for the impact figure until weights are captured per donation. */
 const KG_PER_SERVING = 0.4;
+
+/** Approximate CO2e avoided per kg of food not sent to landfill. */
+const CO2_PER_KG = 2.5;
+
+const FOOD_TYPE_LABEL: Record<FoodType, string> = {
+  [FoodType.Cooked]: 'Cooked Meals',
+  [FoodType.Raw]: 'Raw Vegetables & Fruits',
+  [FoodType.Packaged]: 'Packaged & Dry Rations',
+  [FoodType.Bakery]: 'Bakery Items',
+  [FoodType.Dairy]: 'Dairy',
+  [FoodType.Beverage]: 'Beverages',
+};
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 @Injectable()
 export class AnalyticsService {
@@ -35,52 +53,53 @@ export class AnalyticsService {
     private readonly assignmentsService: AssignmentsService,
     private readonly enquiriesService: EnquiriesService,
     private readonly usersService: UsersService,
+    private readonly ngosService: NgosService,
   ) {}
 
   async kpis(): Promise<AdminKpis> {
-    const [
-      donationStats,
-      delivered,
-      activeDeliveries,
-      openDisputes,
-      volunteerStats,
-      requestStats,
-    ] = await Promise.all([
-      this.donationsService.countDonationsStats(),
-      this.donationsService.findAll({
-        status: [DonationStatus.Delivered],
-        page: 1,
-        pageSize: 100,
-        skip: 0,
-      }),
-      this.assignmentsService.countActiveDeliveries(),
-      this.enquiriesService.countOpen(),
-      this.usersService.countVolunteers(),
-      this.foodRequestsService.countRequestsStats(),
-    ]);
-
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const servingsToday = delivered.items
-      .filter((donation) => donation.updatedAt >= startOfDay)
-      .reduce((total, donation) => total + donation.servings, 0);
+    const [
+      donationStats,
+      today,
+      assignmentStats,
+      openDisputes,
+      volunteerStats,
+      requestStats,
+      unmetServings,
+      expiredDonations,
+      foodHubsCount,
+    ] = await Promise.all([
+      this.donationsService.countDonationsStats(),
+      this.donationsService.deliveredTotals(startOfDay),
+      this.assignmentsService.countAssignmentsStats(),
+      this.enquiriesService.countOpen(),
+      this.usersService.countVolunteers(),
+      this.foodRequestsService.countRequestsStats(),
+      this.foodRequestsService.unmetServings(),
+      this.donationsService.countExpired(),
+      this.ngosService.countActive(),
+    ]);
 
     return {
       pendingApprovals: donationStats.pending,
-      activeDeliveries: activeDeliveries || 38,
-      servingsToday: servingsToday || 240,
-      wasteAvertedKg: Math.round((servingsToday || 240) * KG_PER_SERVING),
+      activeDeliveries: assignmentStats.active,
+      activePickups: assignmentStats.active,
+      activeAssignments: assignmentStats.active + assignmentStats.offered,
+      servingsToday: today.servings,
+      wasteAvertedKg: Math.round(today.servings * KG_PER_SERVING),
       openDisputes,
-      totalVolunteers: volunteerStats.total || 52,
-      verifiedVolunteers: volunteerStats.verified || 46,
-      pendingVolunteerKyc: volunteerStats.pending || 6,
-      urgentDonations: donationStats.urgent || 3,
-      totalDonations: donationStats.total || 86,
-      completedDistributions: donationStats.delivered || 68,
-      openRecipientRequests: requestStats.open || 7,
-      pendingKarmaClaims: 3,
-      foodHubsCount: 4,
+      totalVolunteers: volunteerStats.total,
+      verifiedVolunteers: volunteerStats.verified,
+      pendingVolunteerKyc: volunteerStats.pending,
+      urgentDonations: donationStats.urgent,
+      totalDonations: donationStats.total,
+      completedDistributions: donationStats.delivered,
+      openRecipientRequests: requestStats.open,
+      unmetServings,
+      expiredDonations,
+      foodHubsCount,
     };
   }
 
@@ -90,40 +109,68 @@ export class AnalyticsService {
   }
 
   async reports() {
-    const [kpis, demand] = await Promise.all([
-      this.kpis(),
-      this.demandByDistrict(),
-    ]);
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5, 1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const [kpis, demand, byFoodType, monthly, top, allTime, households, unfulfilled] =
+      await Promise.all([
+        this.kpis(),
+        this.demandByDistrict(),
+        this.donationsService.foodTypeBreakdown(),
+        this.donationsService.monthlyDelivered(sixMonthsAgo),
+        this.usersService.topVolunteers(5),
+        this.donationsService.deliveredTotals(),
+        this.foodRequestsService.householdsServed(),
+        this.foodRequestsService.aggregateUnfulfilledByArea(),
+      ]);
+
+    const totalCount = byFoodType.reduce((sum, row) => sum + row.count, 0);
+    const foodTypeBreakdown = byFoodType.map((row) => ({
+      label: FOOD_TYPE_LABEL[row.foodType as FoodType] ?? row.foodType,
+      count: row.count,
+      percentage: totalCount ? Math.round((row.count / totalCount) * 100) : 0,
+    }));
+
+    const monthlyTrends = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(sixMonthsAgo);
+      date.setMonth(sixMonthsAgo.getMonth() + index);
+      const row = monthly.find(
+        (entry) => entry.year === date.getFullYear() && entry.month === date.getMonth() + 1,
+      );
+      const servings = row?.servings ?? 0;
+      return {
+        month: MONTHS[date.getMonth()]!,
+        deliveries: row?.deliveries ?? 0,
+        servings,
+        wasteKg: Math.round(servings * KG_PER_SERVING),
+      };
+    });
+
+    const topVolunteers = top.map((volunteer) => ({
+      id: volunteer.id as string,
+      name: volunteer.name,
+      vehicle: volunteer.vehicleType ?? 'Not set',
+      deliveries: volunteer.completedDeliveriesCount ?? 0,
+      karma: volunteer.karmaPoints ?? 0,
+    }));
+
+    const wasteKg = Math.round(allTime.servings * KG_PER_SERVING);
 
     return {
       kpis,
       demand,
-      foodTypeBreakdown: [
-        { label: 'Hot Cooked Meals', percentage: 48, count: 284 },
-        { label: 'Fresh Bakery Items', percentage: 24, count: 142 },
-        { label: 'Raw Vegetables & Fruits', percentage: 18, count: 106 },
-        { label: 'Dry Groceries & Rations', percentage: 10, count: 59 },
-      ],
-      monthlyTrends: [
-        { month: 'May', deliveries: 185, servings: 4200, wasteKg: 1680 },
-        { month: 'Jun', deliveries: 230, servings: 5100, wasteKg: 2040 },
-        { month: 'Jul', deliveries: 310, servings: 6800, wasteKg: 2720 },
-        { month: 'Aug', deliveries: 420, servings: 9400, wasteKg: 3760 },
-        { month: 'Sep', deliveries: 510, servings: 11200, wasteKg: 4480 },
-        { month: 'Oct', deliveries: 580, servings: 12850, wasteKg: 5140 },
-      ],
-      topVolunteers: [
-        { name: 'Kajan S.', vehicle: 'Motorbike', deliveries: 48, karma: 1440, rating: 4.95 },
-        { name: 'Priya T.', vehicle: 'Bicycle', deliveries: 36, karma: 1080, rating: 4.90 },
-        { name: 'Murugan R.', vehicle: 'Van', deliveries: 31, karma: 930, rating: 4.88 },
-        { name: 'Sivaranjan K.', vehicle: 'Three-Wheeler', deliveries: 27, karma: 810, rating: 4.85 },
-        { name: 'Shalini K.', vehicle: 'Foot', deliveries: 19, karma: 570, rating: 4.92 },
-      ],
+      unfulfilledByArea: unfulfilled,
+      foodTypeBreakdown,
+      monthlyTrends,
+      topVolunteers,
       communityImpact: {
-        totalMealsDistributed: 42600,
-        householdsSupported: 1840,
-        carbonOffsetKg: 17040,
-        activeReliefCentres: 4,
+        totalMealsDistributed: allTime.servings,
+        totalDeliveries: allTime.deliveries,
+        householdsSupported: households,
+        wasteAvertedKg: wasteKg,
+        carbonOffsetKg: Math.round(wasteKg * CO2_PER_KG),
+        activeReliefCentres: kpis.foodHubsCount,
       },
     };
   }

@@ -27,7 +27,7 @@ export default function RecipientProfileScreen() {
   });
 
   const user = profileUser || authUser;
-  const displayName = user?.name || 'Selvi Ramanathan';
+  const displayName = user?.name || 'Recipient';
   const hubCity = user?.address?.city || 'Nallur';
   const hubDistrict = user?.address?.district || 'Jaffna';
 

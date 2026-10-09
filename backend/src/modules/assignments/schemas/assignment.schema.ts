@@ -48,6 +48,27 @@ export class Assignment {
   @Prop({ required: true, select: false })
   deliveryPin!: string;
 
+  /**
+   * FR9 — shown only to the donor; the volunteer types it in at pickup to prove they
+   * collected from the right person.
+   */
+  @ApiHideProperty()
+  @Prop({ select: false })
+  pickupPin?: string;
+
+  /** NGO fallback — set when an admin hands the donation to a partner NGO. */
+  @ApiPropertyOptional()
+  @Prop({ type: Types.ObjectId, ref: 'Ngo' })
+  ngoId?: Types.ObjectId;
+
+  @ApiPropertyOptional()
+  @Prop()
+  pickedUpAt?: Date;
+
+  @ApiPropertyOptional()
+  @Prop({ trim: true })
+  cancelReason?: string;
+
   @ApiProperty({ description: 'Pickup distance from the volunteer at offer time' })
   @Prop({ required: true })
   distanceKm!: number;
@@ -67,6 +88,12 @@ export class Assignment {
   @ApiPropertyOptional()
   @Prop({ trim: true })
   declineReason?: string;
+
+  @ApiProperty()
+  createdAt!: Date;
+
+  @ApiProperty()
+  updatedAt!: Date;
 }
 
 export const AssignmentSchema = SchemaFactory.createForClass(Assignment);

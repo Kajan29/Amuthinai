@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 
 import { uploadsApi } from '@/api/uploads.api';
 import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '@/constants';
@@ -64,36 +65,37 @@ export const cloudinaryService = {
     folder: string = 'amuthinai',
     _onProgress?: (progress: CloudinaryUploadProgress) => void
   ): Promise<CloudinaryUploadResult> {
-    const cloudName = CLOUDINARY_CLOUD_NAME || 'rrotphpj';
-    const uploadPreset = CLOUDINARY_UPLOAD_PRESET || 'amuthinai_unsigned';
+    const cloudName = CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = CLOUDINARY_UPLOAD_PRESET;
 
     try {
+      if (!cloudName || !uploadPreset) {
+        throw new Error('EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME / UPLOAD_PRESET are not set');
+      }
+
       // 1. Try direct client-side upload to Cloudinary
       const formData = new FormData();
 
-      const filename = imageUri.split('/').pop() || 'photo.jpg';
+      const filename = imageUri.split('/').pop()?.split('?')[0] || 'photo.jpg';
       const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      const type = match ? `image/${match[1]!.toLowerCase().replace('jpg', 'jpeg')}` : 'image/jpeg';
 
-      formData.append('file', {
-        uri: imageUri,
-        name: filename,
-        type,
-      } as any);
+      if (Platform.OS === 'web') {
+        // Web pickers return blob:/data: URIs; FormData needs the actual Blob there.
+        const blob = await (await fetch(imageUri)).blob();
+        formData.append('file', blob, match ? filename : 'photo.jpg');
+      } else {
+        formData.append('file', { uri: imageUri, name: filename, type } as any);
+      }
 
       formData.append('upload_preset', uploadPreset);
       formData.append('folder', folder);
-      formData.append('tags', 'amuthinai,mobile,volunteer');
+      formData.append('tags', 'amuthinai,mobile');
 
       const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
 
-      const response = await fetch(cloudinaryUrl, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // No explicit Content-Type: fetch must add the multipart boundary itself.
+      const response = await fetch(cloudinaryUrl, { method: 'POST', body: formData });
 
       if (response.ok) {
         const data = await response.json();
@@ -107,7 +109,8 @@ export const cloudinaryService = {
         };
       }
 
-      console.warn('Direct Cloudinary upload returned non-OK, trying backend upload fallback...');
+      const body = await response.text();
+      console.warn(`Direct Cloudinary upload failed (${response.status}): ${body}. Trying backend upload…`);
     } catch (err) {
       console.warn('Direct Cloudinary upload threw an error, trying backend upload fallback:', err);
     }

@@ -19,33 +19,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminApi } from '@/api/admin.api';
-import { donationsApi } from '@/api/donations.api';
 import { queryClient } from '@/api/queryClient';
 import { AdminHeader } from '@/components/AdminHeader';
 import { colors, radius, spacing } from '@/theme';
-
-const SAMPLE_INSPECTION_PHOTOS = [
-  {
-    id: 'p1',
-    url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
-    tag: 'Steam',
-  },
-  {
-    id: 'p2',
-    url: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=800&q=80',
-    tag: 'Packs',
-  },
-  {
-    id: 'p3',
-    url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=800&q=80',
-    tag: 'Sealed',
-  },
-  {
-    id: 'p4',
-    url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80',
-    tag: '+2 More',
-  },
-];
+import {
+  formatAddress,
+  formatClock,
+  remainingLabel,
+  remainingMinutes,
+  titleCase,
+} from '@/utils/format';
 
 export default function DonationInspectionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -55,21 +38,27 @@ export default function DonationInspectionDetail() {
   const [actionType, setActionType] = useState<'reject' | 'flag'>('reject');
   const [reason, setReason] = useState('');
 
-  // Fetch real donation if available, otherwise use mock matching Screenshot 4
-  const { data: realDonation } = useQuery({
-    queryKey: ['donation', id],
-    queryFn: () => (id && id !== 'DN-8842' ? donationsApi.byId(id) : null),
-    enabled: Boolean(id && id !== 'DN-8842'),
+  const { data: realDonation, isPending } = useQuery({
+    queryKey: ['admin.donation', id],
+    queryFn: () => adminApi.donation(id!),
+    enabled: Boolean(id),
   });
 
-  const donationIdDisplay = id && id !== 'DN-8842' ? `#${id.slice(-6).toUpperCase()}` : '#DN-8842';
+  const donationIdDisplay = id ? `#${id.slice(-6).toUpperCase()}` : '';
+  const minutesLeft = remainingMinutes(realDonation?.expiresAt);
+  const photos = (realDonation?.photoUrls ?? []).map((url, index) => ({
+    id: `${index}`,
+    url,
+    tag: index === 0 ? 'Food' : `Photo ${index + 1}`,
+  }));
+  const contactPhone = realDonation?.contactPersonPhone || realDonation?.donor?.phone || '';
+  const contactName = realDonation?.contactPersonName || realDonation?.donor?.name || 'Donor';
+  const dietary = realDonation?.dietaryTags?.map(titleCase).join(', ') || 'Not specified';
 
-  // Mutations
   const approveMutation = useMutation({
     mutationFn: async () => {
-      if (id && id !== 'DN-8842') {
-        await adminApi.approveDonation(id);
-      }
+      if (!id) throw new Error('Missing donation id');
+      await adminApi.approveDonation(id);
     },
     async onSuccess() {
       await queryClient.invalidateQueries({ queryKey: ['admin.pendingDonations'] });
@@ -80,32 +69,24 @@ export default function DonationInspectionDetail() {
         [
           {
             text: 'Dispatch Volunteer',
-            onPress: () => router.push(`/(admin)/assign/${id || 'DN-8842'}` as any),
+            onPress: () => router.push(`/(admin)/assign/${id}` as any),
           },
           { text: 'Back to Queues', onPress: () => router.back() },
         ],
       );
     },
-    onError() {
-      Alert.alert(
-        'Donation Approved',
-        'Verified and ready for dispatch. Forwarding to assignment.',
-        [
-          {
-            text: 'Dispatch Volunteer',
-            onPress: () => router.push(`/(admin)/assign/${id || 'DN-8842'}` as any),
-          },
-        ],
-      );
+    onError(error) {
+      Alert.alert('Could not approve donation', (error as Error).message);
     },
   });
 
   const rejectMutation = useMutation({
     mutationFn: async () => {
+      if (!id) throw new Error('Missing donation id');
       if (actionType === 'reject') {
-        await adminApi.rejectDonation(id || 'DN-8842', reason.trim());
+        await adminApi.rejectDonation(id, reason.trim());
       } else {
-        await adminApi.flagDonation(id || 'DN-8842', reason.trim());
+        await adminApi.flagDonation(id, reason.trim());
       }
     },
     async onSuccess() {
@@ -113,14 +94,12 @@ export default function DonationInspectionDetail() {
       setRejectModalVisible(false);
       Alert.alert(
         actionType === 'reject' ? 'Donation Rejected' : 'Donation Flagged',
-        `Outcome recorded. Notification delivered to donor.`,
+        'Outcome recorded. Notification delivered to donor.',
       );
       router.back();
     },
-    onError() {
-      setRejectModalVisible(false);
-      Alert.alert('Outcome Recorded', 'Updated in audit log.');
-      router.back();
+    onError(error) {
+      Alert.alert('Could not update donation', (error as Error).message);
     },
   });
 
@@ -141,78 +120,94 @@ export default function DonationInspectionDetail() {
       />
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        {isPending && !realDonation ? (
+          <View style={{ paddingVertical: 40 }}>
+            <ActivityIndicator color={colors.adminMaroon} />
+          </View>
+        ) : null}
+
         {/* Status & ID Row (Screenshot 4 Match) */}
         <View style={styles.statusIdRow}>
           <View style={styles.statusLiveWrap}>
             <View style={styles.orangeDot} />
-            <Text style={styles.statusLiveText}>Awaiting Verification &amp; Dispatch</Text>
+            <Text style={styles.statusLiveText}>
+              {titleCase(realDonation?.status) || 'Awaiting Verification & Dispatch'}
+            </Text>
           </View>
           <Text style={styles.donationIdText}>{donationIdDisplay}</Text>
         </View>
 
         {/* Food Overview Card (Screenshot 4 Match) */}
         <View style={styles.foodOverviewCard}>
-          <Image
-            source={{
-              uri:
-                realDonation?.photoUrls[0] ||
-                'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80',
-            }}
-            style={styles.foodCardThumb}
-          />
+          {realDonation?.photoUrls[0] ? (
+            <Image source={{ uri: realDonation.photoUrls[0] }} style={styles.foodCardThumb} />
+          ) : (
+            <View style={[styles.foodCardThumb, { alignItems: 'center', justifyContent: 'center' }]}>
+              <Ionicons name="restaurant-outline" size={28} color={colors.mint} />
+            </View>
+          )}
           <View style={styles.foodCardInfo}>
-            <Text style={styles.foodCardTitle}>
-              {realDonation?.title || '50 Pkts Hot Vegetable Rice & Sambar'}
-            </Text>
+            <Text style={styles.foodCardTitle}>{realDonation?.title || 'Donation details'}</Text>
 
             <View style={styles.donorRow}>
               <Ionicons name="storefront" size={14} color="#C45A2C" />
-              <Text style={styles.donorName}>Nallur Kitchen</Text>
-              <Ionicons name="checkmark-circle" size={14} color={colors.mint} />
+              <Text style={styles.donorName}>{realDonation?.donor?.name || 'Donor'}</Text>
+              {realDonation?.foodSafetyVerified ? (
+                <Ionicons name="checkmark-circle" size={14} color={colors.mint} />
+              ) : null}
             </View>
 
             <View style={styles.prepTimeRow}>
               <Ionicons name="time-outline" size={14} color="#C45A2C" />
-              <Text style={styles.prepTimeText}>Prep: 11:30 AM · </Text>
-              <Text style={styles.timeRemainingText}>3h 45m left</Text>
+              <Text style={styles.prepTimeText}>
+                Prep: {formatClock(realDonation?.cookedAt) || '—'} ·{' '}
+              </Text>
+              <Text style={styles.timeRemainingText}>{remainingLabel(realDonation?.expiresAt)}</Text>
             </View>
 
             <View style={styles.unitsRow}>
               <Ionicons name="cube-outline" size={14} color={colors.textMuted} />
               <Text style={styles.unitsText}>
-                {realDonation?.servings || 50} Units | Eco Containers
+                {realDonation?.servings ?? 0} {realDonation?.quantityUnit || 'units'}
+                {realDonation?.packagingType ? ` | ${realDonation.packagingType}` : ''}
               </Text>
             </View>
           </View>
 
           <View style={styles.freshBadge}>
             <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-            <Text style={styles.freshBadgeText}>Fresh</Text>
+            <Text style={styles.freshBadgeText}>
+              {minutesLeft !== null && minutesLeft <= 0 ? 'Expired' : 'Fresh'}
+            </Text>
           </View>
         </View>
 
         {/* Inspection Photos Gallery (Screenshot 4 Match) */}
         <View style={styles.sectionWrap}>
           <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>INSPECTION PHOTOS (4)</Text>
+            <Text style={styles.sectionTitle}>INSPECTION PHOTOS ({photos.length})</Text>
             <Text style={styles.sectionActionHint}>Tap to zoom</Text>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosScroll}>
-            {SAMPLE_INSPECTION_PHOTOS.map((photo) => (
-              <TouchableOpacity
-                key={photo.id}
-                style={styles.photoItemWrap}
-                onPress={() => setActivePhotoModal(photo.url)}
-                activeOpacity={0.8}
-              >
-                <Image source={{ uri: photo.url }} style={styles.photoThumb} />
-                <View style={styles.photoTagOverlay}>
-                  <Text style={styles.photoTagText}>{photo.tag}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          {photos.length === 0 ? (
+            <Text style={styles.checkDesc}>No photos uploaded with this donation.</Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosScroll}>
+              {photos.map((photo) => (
+                <TouchableOpacity
+                  key={photo.id}
+                  style={styles.photoItemWrap}
+                  onPress={() => setActivePhotoModal(photo.url)}
+                  activeOpacity={0.8}
+                >
+                  <Image source={{ uri: photo.url }} style={styles.photoThumb} />
+                  <View style={styles.photoTagOverlay}>
+                    <Text style={styles.photoTagText}>{photo.tag}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Quality & Safety Verification Checklist (Screenshot 4 Match) */}
@@ -236,10 +231,15 @@ export default function DonationInspectionDetail() {
               <View style={styles.checkContent}>
                 <View style={styles.checkTopRow}>
                   <Text style={styles.checkTitle}>Thermal Safety Check</Text>
-                  <Text style={styles.checkHighlightGreen}>72°C (Fresh Hot)</Text>
+                  <Text style={styles.checkHighlightGreen}>
+                    {realDonation?.thermalTemp
+                      ? `${realDonation.thermalTemp}°C`
+                      : remainingLabel(realDonation?.expiresAt)}
+                  </Text>
                 </View>
                 <Text style={styles.checkDesc}>
-                  Cooked fresh at 11:15 AM in commercial food-grade kettle.
+                  Cooked at {formatClock(realDonation?.cookedAt) || 'unspecified time'}. Safe window{' '}
+                  {realDonation?.safeForHours ?? 6} hours.
                 </Text>
               </View>
             </View>
@@ -252,10 +252,13 @@ export default function DonationInspectionDetail() {
               <View style={styles.checkContent}>
                 <View style={styles.checkTopRow}>
                   <Text style={styles.checkTitle}>Food-Grade Packaging</Text>
-                  <Text style={styles.checkHighlightGreen}>Sealed &amp; Insulated</Text>
+                  <Text style={styles.checkHighlightGreen}>
+                    {realDonation?.packagingType || 'See photos'}
+                  </Text>
                 </View>
                 <Text style={styles.checkDesc}>
-                  Packed with eco leaf inner liners inside thermal carriers.
+                  {realDonation?.handling?.map(titleCase).join(', ') ||
+                    'Packaging condition provided by the donor.'}
                 </Text>
               </View>
             </View>
@@ -268,10 +271,10 @@ export default function DonationInspectionDetail() {
               <View style={styles.checkContent}>
                 <View style={styles.checkTopRow}>
                   <Text style={styles.checkTitle}>Dietary &amp; Allergen Tags</Text>
-                  <Text style={styles.checkHighlightGreen}>Pure Vegetarian</Text>
+                  <Text style={styles.checkHighlightGreen}>{dietary}</Text>
                 </View>
                 <Text style={styles.checkDesc}>
-                  No nuts, 100% plant-based, suitable for community distribution.
+                  {realDonation?.description || 'Dietary notes provided by the donor.'}
                 </Text>
               </View>
             </View>
@@ -284,11 +287,11 @@ export default function DonationInspectionDetail() {
               <View style={styles.checkContent}>
                 <View style={styles.checkTopRow}>
                   <Text style={styles.checkTitle}>Pickup Bay Verified</Text>
-                  <Text style={styles.checkHighlightText}>North Gate Bay 2</Text>
+                  <Text style={styles.checkHighlightText}>
+                    {realDonation?.pickupBay || realDonation?.pickupAddress?.city || 'Pickup'}
+                  </Text>
                 </View>
-                <Text style={styles.checkDesc}>
-                  Nallur Kovil North Entrance, Easy two-wheeler parking.
-                </Text>
+                <Text style={styles.checkDesc}>{formatAddress(realDonation?.pickupAddress)}</Text>
               </View>
             </View>
 
@@ -302,13 +305,17 @@ export default function DonationInspectionDetail() {
                   <Text style={styles.checkTitle}>Point of Contact</Text>
                   <TouchableOpacity
                     style={styles.callBtn}
-                    onPress={() => handleCallContact('+94772345678')}
+                    onPress={() => contactPhone && handleCallContact(contactPhone)}
+                    disabled={!contactPhone}
                   >
                     <Ionicons name="call" size={12} color={colors.adminMaroon} />
                     <Text style={styles.callBtnText}>Call</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.checkDesc}>Kajan S. · +94 77 234 5678</Text>
+                <Text style={styles.checkDesc}>
+                  {contactName}
+                  {contactPhone ? ` · ${contactPhone}` : ''}
+                </Text>
               </View>
             </View>
           </View>
@@ -320,9 +327,12 @@ export default function DonationInspectionDetail() {
             <Ionicons name="notifications" size={20} color="#B45309" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.demandAlertTitle}>Sector 2 High Priority Demand</Text>
+            <Text style={styles.demandAlertTitle}>
+              {realDonation?.urgentPrioritySector || remainingLabel(realDonation?.expiresAt)}
+            </Text>
             <Text style={styles.demandAlertDesc}>
-              Recommend direct bike courier assignment to Ariyalai Community Centre.
+              {realDonation?.handoverInstructions ||
+                'Approve this donation, then assign a nearby volunteer or NGO fallback.'}
             </Text>
           </View>
         </View>

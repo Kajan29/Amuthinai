@@ -10,13 +10,22 @@ import { FilterQuery, Model, Types } from 'mongoose';
 import { paginate, PaginationQueryDto, type PaginatedDto } from 'src/common/dto/pagination.dto';
 import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { nearSphere } from 'src/common/utils/geo.util';
+import { NgosService } from 'src/modules/ngos/ngos.service';
+import { NotificationsService } from 'src/modules/notifications/notifications.service';
 
 import { CreateFoodRequestDto } from './dto/create-food-request.dto';
 import { FoodRequest, FoodRequestDocument } from './schemas/food-request.schema';
 
+/** Radius used for the "relief hubs near you" counter on the recipient dashboard. */
+const HUB_RADIUS_KM = 15;
+
 @Injectable()
 export class FoodRequestsService {
-  constructor(@InjectModel(FoodRequest.name) private readonly model: Model<FoodRequest>) {}
+  constructor(
+    @InjectModel(FoodRequest.name) private readonly model: Model<FoodRequest>,
+    private readonly ngosService: NgosService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /** FR5 — one open request per recipient keeps the matching queue honest. */
   async create(recipientId: string, dto: CreateFoodRequestDto): Promise<FoodRequestDocument> {
@@ -33,11 +42,22 @@ export class FoodRequestsService {
       throw new BadRequestException('The needed-by time must be in the future');
     }
 
-    return this.model.create({
+    const request = await this.model.create({
       ...dto,
+      familySize: dto.familySize ?? dto.servingsNeeded,
       recipientId: new Types.ObjectId(recipientId),
       neededBy: new Date(dto.neededBy),
     });
+
+    const area = dto.dropAddress.district || dto.dropAddress.city || dto.dropAddress.line1;
+    await this.notifications.sendToAdmins({
+      title: 'New food request',
+      body: `${request.servingsNeeded} servings needed in ${area}`,
+      type: 'request',
+      data: { requestId: request.id as string },
+    });
+
+    return request;
   }
 
   async findMine(
@@ -112,9 +132,35 @@ export class FoodRequestsService {
     if (request.recipientId.toString() !== recipientId) {
       throw new ForbiddenException('This request belongs to another recipient');
     }
+    if (request.status !== RequestStatus.Open) {
+      throw new BadRequestException(
+        request.status === RequestStatus.Matched
+          ? 'A volunteer is already assigned. Raise a concern so the admin can help.'
+          : 'This request is already closed',
+      );
+    }
 
     request.status = RequestStatus.Cancelled;
+    request.cancelledAt = new Date();
     return request.save();
+  }
+
+  /** Recipients only ever see their own requests; admins see all. */
+  async findVisible(id: string, user: { id: string; role: string }): Promise<FoodRequestDocument> {
+    const request = await this.findById(id);
+    if (user.role !== 'admin' && request.recipientId.toString() !== user.id) {
+      throw new ForbiddenException('This request belongs to another recipient');
+    }
+    return request;
+  }
+
+  /** FR6 — closest open request to a pickup point, used when a volunteer claims a donation. */
+  async findBestOpenMatch(
+    coordinates: [number, number],
+    radiusKm: number,
+  ): Promise<FoodRequestDocument | null> {
+    const [match] = await this.findOpenNear(coordinates, radiusKm);
+    return match ?? null;
   }
 
   async update(
@@ -134,6 +180,12 @@ export class FoodRequestsService {
     if (patch.neededBy) request.neededBy = new Date(patch.neededBy);
     if (patch.notes !== undefined) request.notes = patch.notes;
     if (patch.dropAddress) request.dropAddress = patch.dropAddress as any;
+    if (patch.familySize) request.familySize = patch.familySize;
+    if (patch.dietaryRequirements) request.dietaryRequirements = patch.dietaryRequirements;
+    if (patch.foodCategory !== undefined) request.foodCategory = patch.foodCategory;
+    if (patch.contactPreference) request.contactPreference = patch.contactPreference;
+    if (patch.deliveryMethod) request.deliveryMethod = patch.deliveryMethod;
+    if (patch.contactPhone !== undefined) request.contactPhone = patch.contactPhone;
 
     return request.save();
   }
@@ -162,9 +214,10 @@ export class FoodRequestsService {
     if (excludeRecipientId) {
       filter.recipientId = { $ne: new Types.ObjectId(excludeRecipientId) };
     }
+    // Other recipients' identities are never exposed; only enough to spot a duplicate.
     return this.model
       .find(filter)
-      .populate('recipientId', 'name phone email')
+      .select('servingsNeeded status dropAddress.city dropAddress.district createdAt')
       .limit(10)
       .exec();
   }
@@ -179,7 +232,67 @@ export class FoodRequestsService {
   }
 
   async markFulfilled(id: string): Promise<void> {
-    await this.model.updateOne({ _id: id }, { status: RequestStatus.Fulfilled }).exec();
+    await this.model
+      .updateOne({ _id: id }, { status: RequestStatus.Fulfilled, fulfilledAt: new Date() })
+      .exec();
+  }
+
+  /** Puts a matched request back in the open queue, e.g. after its donation expired. */
+  async reopen(id: string): Promise<void> {
+    await this.model
+      .updateOne(
+        { _id: id, status: RequestStatus.Matched },
+        { status: RequestStatus.Open, $unset: { matchedDonationId: 1 } },
+      )
+      .exec();
+  }
+
+  /** Open demand grouped by city/district, including requests already past their needed-by time. */
+  aggregateUnfulfilledByArea() {
+    return this.model.aggregate<{
+      area: string;
+      open: number;
+      matched: number;
+      overdue: number;
+      servingsNeeded: number;
+    }>([
+      { $match: { status: { $in: [RequestStatus.Open, RequestStatus.Matched] } } },
+      {
+        $group: {
+          _id: { $ifNull: ['$dropAddress.district', '$dropAddress.city'] },
+          open: { $sum: { $cond: [{ $eq: ['$status', RequestStatus.Open] }, 1, 0] } },
+          matched: { $sum: { $cond: [{ $eq: ['$status', RequestStatus.Matched] }, 1, 0] } },
+          overdue: { $sum: { $cond: [{ $lt: ['$neededBy', new Date()] }, 1, 0] } },
+          servingsNeeded: { $sum: '$servingsNeeded' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          area: { $ifNull: ['$_id', 'Unknown'] },
+          open: 1,
+          matched: 1,
+          overdue: 1,
+          servingsNeeded: 1,
+        },
+      },
+      { $sort: { servingsNeeded: -1 } },
+    ]);
+  }
+
+  async householdsServed(): Promise<number> {
+    const recipients = await this.model.distinct('recipientId', {
+      status: RequestStatus.Fulfilled,
+    });
+    return recipients.length;
+  }
+
+  async unmetServings(): Promise<number> {
+    const [row] = await this.model.aggregate<{ servings: number }>([
+      { $match: { status: RequestStatus.Open } },
+      { $group: { _id: null, servings: { $sum: '$servingsNeeded' } } },
+    ]);
+    return row?.servings ?? 0;
   }
 
   /** FR8 — open demand grouped by district, feeding the admin heat-map. */
@@ -191,7 +304,7 @@ export class FoodRequestsService {
       openRequests: number;
       servingsNeeded: number;
     }>([
-      { $match: { status: RequestStatus.Open, neededBy: { $gt: new Date() } } },
+      { $match: { status: RequestStatus.Open } },
       {
         $group: {
           _id: { $ifNull: ['$dropAddress.district', '$dropAddress.city'] },
@@ -249,11 +362,21 @@ export class FoodRequestsService {
 
     const mealsShared = servingsResult.length > 0 ? servingsResult[0].totalServings : 0;
 
+    const latest = await this.model
+      .findOne({ recipientId: new Types.ObjectId(recipientId) })
+      .sort({ createdAt: -1 })
+      .exec();
+    const origin = latest?.dropAddress?.location?.coordinates;
+    const nearbyHubs = origin
+      ? await this.ngosService.countActiveNear(origin, HUB_RADIUS_KM)
+      : await this.ngosService.countActive();
+
     return {
       activeNeeds: activeNeedsCount,
       totalRequests,
+      fulfilled: fulfilledCount,
       mealsShared,
-      nearbyHubs: 4, // TODO: Calculate based on actual hub/NGO locations
+      nearbyHubs,
     };
   }
 }

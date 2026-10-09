@@ -87,6 +87,13 @@ export class UsersService {
     if (query.role) filter.role = query.role;
     if (query.isVerified !== undefined) filter.isVerified = query.isVerified;
     if (query.isFlagged !== undefined) filter.isFlagged = query.isFlagged;
+    if (query.isActive !== undefined) {
+      filter.isActive = query.isActive ? { $ne: false } : false;
+    }
+    if (query.search?.trim()) {
+      const pattern = new RegExp(escapeRegex(query.search.trim()), 'i');
+      filter.$or = [{ name: pattern }, { email: pattern }, { phone: pattern }];
+    }
 
     const [items, total] = await Promise.all([
       this.userModel.find(filter).skip(query.skip).limit(query.pageSize).sort({ createdAt: -1 }),
@@ -146,6 +153,53 @@ export class UsersService {
     return user.save();
   }
 
+  /** Admin-only role change, including promoting a trusted user to admin. */
+  async changeRole(id: string, role: Role, actingAdminId: string): Promise<UserDocument> {
+    if (id === actingAdminId && role !== Role.Admin) {
+      throw new ConflictException('You cannot remove your own admin role');
+    }
+    const user = await this.findById(id);
+    user.role = role;
+    if (role !== Role.Volunteer) user.isVerified = true;
+    return user.save();
+  }
+
+  async setActive(id: string, isActive: boolean, actingAdminId: string): Promise<UserDocument> {
+    if (id === actingAdminId && !isActive) {
+      throw new ConflictException('You cannot deactivate your own account');
+    }
+    const user = await this.findById(id);
+    user.isActive = isActive;
+    return user.save();
+  }
+
+  async countByRole(): Promise<Record<string, number>> {
+    const rows = await this.userModel.aggregate<{ _id: string | null; count: number }>([
+      { $group: { _id: '$role', count: { $sum: 1 } } },
+    ]);
+    return Object.fromEntries(rows.map((row) => [row._id ?? 'unassigned', row.count]));
+  }
+
+  async adminIds(): Promise<string[]> {
+    const admins = await this.userModel
+      .find({ role: Role.Admin, isActive: { $ne: false } })
+      .select('_id')
+      .exec();
+    return admins.map((admin) => admin.id as string);
+  }
+
+  topVolunteers(limit = 5) {
+    return this.userModel
+      .find({ role: Role.Volunteer, isActive: { $ne: false } })
+      .sort({ completedDeliveriesCount: -1, karmaPoints: -1 })
+      .limit(limit)
+      .exec();
+  }
+
+  async incrementCompletedDeliveries(id: string): Promise<void> {
+    await this.userModel.updateOne({ _id: id }, { $inc: { completedDeliveriesCount: 1 } }).exec();
+  }
+
   async countVolunteers(): Promise<{ total: number; verified: number; pending: number; flagged: number }> {
     const [total, verified, flagged] = await Promise.all([
       this.userModel.countDocuments({ role: Role.Volunteer }),
@@ -161,6 +215,8 @@ export class UsersService {
       .find({
         role: Role.Volunteer,
         isVerified: true,
+        isAvailable: { $ne: false },
+        isActive: { $ne: false },
         'address.location': nearSphere(coordinates, radiusKm),
       })
       .limit(25)
@@ -184,4 +240,8 @@ export class UsersService {
   comparePassword(plain: string, hash: string): Promise<boolean> {
     return bcrypt.compare(plain, hash);
   }
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

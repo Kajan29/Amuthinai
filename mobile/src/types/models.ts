@@ -79,6 +79,10 @@ export interface User {
   badgeTitle?: string;
   avatarUrl?: string;
   completedDeliveriesCount?: number;
+  /** Volunteers only — the "Ready for deliveries" toggle. */
+  isAvailable?: boolean;
+  /** False once an admin deactivates the account. */
+  isActive?: boolean;
   createdAt: string;
 }
 
@@ -118,15 +122,29 @@ export interface Donation {
   updatedAt: string;
 }
 
+export type ContactPreference = 'call' | 'sms' | 'whatsapp' | 'in_app';
+
+export type RequestDeliveryMethod = 'doorstep' | 'hub_pickup';
+
 export interface FoodRequest {
   id: string;
   recipientId: string;
   servingsNeeded: number;
+  familySize?: number;
   neededBy: string;
   notes?: string;
+  dietaryRequirements?: string[];
+  foodCategory?: string;
+  contactPreference?: ContactPreference;
+  deliveryMethod?: RequestDeliveryMethod;
+  contactPhone?: string;
   dropAddress: Address;
   status: RequestStatus;
+  matchedDonationId?: string;
+  fulfilledAt?: string;
+  cancelledAt?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Assignment {
@@ -134,13 +152,19 @@ export interface Assignment {
   donationId: string;
   requestId?: string;
   volunteerId: string;
+  ngoId?: string;
   status: AssignmentStatus;
-  /** FR9 — handed to the recipient to confirm delivery. */
-  deliveryPin: string;
+  /** FR9 — only ever present in the recipient's tracking payload. */
+  deliveryPin?: string;
   distanceKm: number;
   offeredAt: string;
   acceptedAt?: string;
+  pickedUpAt?: string;
   completedAt?: string;
+  declineReason?: string;
+  cancelReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DeliveryProof {
@@ -151,6 +175,70 @@ export interface DeliveryProof {
   capturedAt: string;
   location: GeoPoint;
   pinVerified: boolean;
+  quantityConfirmed?: number;
+  note?: string;
+}
+
+export interface ContactInfo {
+  name: string;
+  phone: string | null;
+}
+
+/** The recipient request a task delivers to. */
+export interface TaskRequestInfo {
+  id: string;
+  servingsNeeded: number;
+  familySize: number | null;
+  neededBy: string;
+  notes: string | null;
+  dietaryRequirements: string[];
+  foodCategory: string | null;
+  deliveryMethod: string;
+  contactPreference: string;
+  status: RequestStatus;
+  dropAddress: Address;
+}
+
+/**
+ * One volunteer task. Open tasks are approved donations nobody has claimed yet; their
+ * assignment id is `open-<donationId>` until a volunteer accepts.
+ */
+export interface TaskView {
+  assignment: Assignment;
+  donation: Donation;
+  distanceKm: number;
+  routeKm: number | null;
+  minutesLeft: number;
+  isOpen: boolean;
+  isUrgent: boolean;
+  request: TaskRequestInfo | null;
+  /** Revealed only after the volunteer accepts. */
+  donor: ContactInfo | null;
+  recipient: ContactInfo | null;
+  proofs: DeliveryProof[];
+}
+
+export type NotificationType =
+  | 'donation'
+  | 'assignment'
+  | 'urgent'
+  | 'pickup'
+  | 'delivery'
+  | 'delay'
+  | 'enquiry'
+  | 'request'
+  | 'points'
+  | 'system';
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  type: NotificationType;
+  data: Record<string, string>;
+  read: boolean;
+  createdAt: string;
 }
 
 /** FR12 / NFR7 — append-only, hash-chained status log. */
@@ -172,17 +260,45 @@ export interface ChatMessage {
   sentAt: string;
 }
 
+export type EnquiryStatus = 'open' | 'in_review' | 'resolved';
+
+export type EnquiryCategory =
+  | 'late_delivery'
+  | 'not_delivered'
+  | 'food_quality'
+  | 'wrong_quantity'
+  | 'wrong_location'
+  | 'volunteer_behaviour'
+  | 'road_issue'
+  | 'other';
+
+export interface EnquiryResponse {
+  authorId: string;
+  authorName: string;
+  authorRole: Role;
+  message: string;
+  createdAt: string;
+}
+
 export interface Enquiry {
   id: string;
   raisedBy: string;
+  raisedByRole?: Role;
   donationId?: string;
   assignmentId?: string;
+  requestId?: string;
+  category?: EnquiryCategory;
   subject: string;
   body: string;
-  status: 'open' | 'in_review' | 'resolved';
+  status: EnquiryStatus;
+  responses?: EnquiryResponse[];
   resolution?: string;
   resolvedAt?: string;
   createdAt: string;
+  updatedAt?: string;
+  /** Admin list only. */
+  raiser?: { id: string; name: string; role: Role; phone: string | null } | null;
+  donation?: { id: string; title: string; status: DonationStatus; servings: number } | null;
 }
 
 export interface Ngo {

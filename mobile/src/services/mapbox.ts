@@ -58,39 +58,29 @@ export function getMapboxStaticMapUrl(params: {
 /**
  * Volunteer Dashboard Hero Map URL
  */
-export function getVolunteerDashboardMapUrl(userCoords?: LatLng): string {
+export function getVolunteerDashboardMapUrl(
+  userCoords?: LatLng,
+  taskPickups: (LatLng & { urgent?: boolean })[] = [],
+): string {
   const user = userCoords || { latitude: 9.6645, longitude: 80.0200 };
+  const markers: MapboxMarker[] = [
+    { latitude: user.latitude, longitude: user.longitude, color: '0F766E', size: 's' },
+    ...taskPickups.slice(0, 9).map((pickup, index) => ({
+      latitude: pickup.latitude,
+      longitude: pickup.longitude,
+      label: String(index + 1),
+      color: pickup.urgent ? 'D97706' : '5A1626',
+      size: 's' as const,
+    })),
+  ];
   return getMapboxStaticMapUrl({
-    center: {
-      latitude: user.latitude + 0.003,
-      longitude: user.longitude + 0.005,
-    },
+    center: user,
     zoom: 13.2,
     width: 600,
     height: 320,
     retina: true,
-    markers: [
-      {
-        latitude: user.latitude,
-        longitude: user.longitude,
-        color: '0F766E', // Teal user location
-        size: 's',
-      },
-      {
-        latitude: 9.6740,
-        longitude: 80.0290,
-        label: '1',
-        color: '5A1626', // Nallur Temple Hall (Biryani)
-        size: 's',
-      },
-      {
-        latitude: 9.6640,
-        longitude: 80.0190,
-        label: '2',
-        color: 'D97706', // Town Bakery
-        size: 's',
-      },
-    ],
+    markers,
+    auto: markers.length > 1,
   });
 }
 
@@ -159,62 +149,69 @@ export async function getMapboxDirections(
 /**
  * Admin Dashboard & Operations Map URL with layer-based markers (Hubs, Pickups, Dropoffs, Demand)
  */
-export function getAdminDashboardMapUrl(params?: {
+export interface AdminMapPoints {
+  hubs: LatLng[];
+  donations: LatLng[];
+  deliveries: (LatLng & { delayed?: boolean })[];
+  demand: LatLng[];
+}
+
+/** Static URLs get long quickly; Mapbox rejects anything over ~8k characters. */
+const MAX_STATIC_MARKERS = 60;
+
+export function getAdminDashboardMapUrl(params: {
   layer?: 'all' | 'hubs' | 'donations' | 'routes' | 'demand';
+  points: AdminMapPoints;
   zoom?: number;
   width?: number;
   height?: number;
 }): string {
-  const layer = params?.layer ?? 'all';
-  const width = params?.width ?? 680;
-  const height = params?.height ?? 380;
-  const zoom = params?.zoom ?? 12.8;
+  const layer = params.layer ?? 'all';
+  const width = params.width ?? 680;
+  const height = params.height ?? 380;
+  const zoom = params.zoom ?? 12.8;
+  const { points } = params;
 
   const markers: MapboxMarker[] = [];
 
-  // Hubs (Navy / Blue - 'h')
   if (layer === 'all' || layer === 'hubs') {
-    markers.push(
-      { latitude: 9.6615, longitude: 80.0167, label: 'h', color: '1E3A4B', size: 's' },
-      { latitude: 9.6744, longitude: 80.0286, label: 'h', color: '1E3A4B', size: 's' },
-      { latitude: 9.6542, longitude: 80.1582, label: 'h', color: '1E3A4B', size: 's' },
-      { latitude: 9.6924, longitude: 80.0528, label: 'h', color: '1E3A4B', size: 's' },
-    );
+    markers.push(...points.hubs.map((p) => ({ ...p, label: 'h', color: '1E3A4B', size: 's' as const })));
   }
-
-  // Approved Donations (Teal / Green - '1', '2', '3')
   if (layer === 'all' || layer === 'donations') {
     markers.push(
-      { latitude: 9.6744, longitude: 80.0286, label: '1', color: '0F766E', size: 's' },
-      { latitude: 9.6610, longitude: 80.0195, label: '2', color: '0F766E', size: 's' },
-      { latitude: 9.6910, longitude: 80.0510, label: '3', color: '0F766E', size: 's' },
+      ...points.donations.map((p, index) => ({
+        ...p,
+        label: String((index % 9) + 1),
+        color: '0F766E',
+        size: 's' as const,
+      })),
     );
   }
-
-  // Active Deliveries / Routes (Maroon / Orange - 'd')
   if (layer === 'all' || layer === 'routes') {
     markers.push(
-      { latitude: 9.6520, longitude: 80.0380, label: 'd', color: '5A1626', size: 's' },
-      { latitude: 9.6710, longitude: 80.0240, label: 'd', color: 'D97706', size: 's' },
-      { latitude: 9.6580, longitude: 80.1520, label: 'd', color: '5A1626', size: 's' },
+      ...points.deliveries.map((p) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        label: 'd',
+        color: p.delayed ? 'D97706' : '5A1626',
+        size: 's' as const,
+      })),
     );
+  }
+  if (layer === 'all' || layer === 'demand') {
+    markers.push(...points.demand.map((p) => ({ ...p, label: 'x', color: 'E53E3E', size: 's' as const })));
   }
 
-  // Demand Heat-Zones (Urgent Red - '!')
-  if (layer === 'all' || layer === 'demand') {
-    markers.push(
-      { latitude: 9.6660, longitude: 80.0210, label: '!', color: 'E53E3E', size: 's' },
-      { latitude: 9.6500, longitude: 80.0350, label: '!', color: 'E53E3E', size: 's' },
-    );
-  }
+  const limited = markers.slice(0, MAX_STATIC_MARKERS);
 
   return getMapboxStaticMapUrl({
-    center: { latitude: 9.6680, longitude: 80.0280 },
+    center: limited[0] ?? { latitude: 9.6680, longitude: 80.0280 },
     zoom,
     width,
     height,
     retina: true,
     style: 'streets-v12',
-    markers,
+    markers: limited,
+    auto: limited.length > 1,
   });
 }

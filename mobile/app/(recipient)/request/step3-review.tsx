@@ -49,7 +49,7 @@ export default function Step3ReviewScreen() {
       return requestsApi.create(payload);
     },
     async onSuccess() {
-      const hubName = draft.hubName || 'Jaffna Relief Hub';
+      const hubName = draft.hubName || draft.dropAddress?.city || 'your area';
       const count = draft.servingsNeeded || 1;
       await notifyFoodRequestPlaced(hubName, count);
       reset();
@@ -132,7 +132,7 @@ export default function Step3ReviewScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.rowLabel}>Selected Hub & Location</Text>
-              <Text style={styles.rowValue}>{draft.hubName || 'Jaffna Town Relief Hub'}</Text>
+              <Text style={styles.rowValue}>{draft.hubName || draft.dropAddress?.line1 || 'Selected location'}</Text>
               <Text style={styles.rowSubvalue}>{draft.hubAddress || 'Hospital Road, Jaffna'}</Text>
             </View>
           </View>

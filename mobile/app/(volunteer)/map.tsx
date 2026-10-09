@@ -12,35 +12,41 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
+import type { NearbyTask } from '@/api/assignments.api';
 import { Badge } from '@/components/ui';
 import { URGENT_THRESHOLD_MINUTES } from '@/constants';
-import { MOCK_DROP_OFFS } from '@/constants/mockVolunteerData';
 import { getMapboxStaticMapUrl } from '@/services/mapbox';
-import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { useLocation } from '@/hooks/useLocation';
+import { useVolunteerTasks } from '@/hooks/useVolunteerTasks';
+import { useAuthStore } from '@/store/auth.store';
 import { radius, typography } from '@/theme';
 import { volunteerColors } from '@/theme/volunteer';
 import { toLatLng } from '@/utils/geo';
 import { MapView, Marker, Circle } from '@/utils/maps';
+import { dropOffLabel, etaMinutes, formatKm, KARMA_PER_DELIVERY, pickupLabel } from '@/utils/tasks';
 
 /** Full-screen volunteer map showing all nearby tasks with interactive markers */
 export default function VolunteerMap() {
   const insets = useSafeAreaInsets();
   const { point } = useLocation();
+  const user = useAuthStore((state) => state.user);
+  const travelRadiusKm = user?.travelRadiusKm ?? 10;
+  const homePoint = user?.address?.location;
 
-  const tasks = useOfflineQuery('volunteer.nearby', () => assignmentsApi.nearby());
-  const items = tasks.data ?? [];
+  const tasks = useVolunteerTasks();
+  const items = tasks.live;
 
   const [selectedTask, setSelectedTask] = useState<NearbyTask | null>(null);
 
-  const urgentCount = items.filter((t) => t.minutesLeft <= URGENT_THRESHOLD_MINUTES).length;
+  const urgentCount = items.filter((t) => t.isUrgent || t.minutesLeft <= URGENT_THRESHOLD_MINUTES).length;
 
   const center = point
     ? toLatLng(point)
-    : items[0]
-      ? toLatLng(items[0].donation.pickupAddress.location)
-      : { latitude: 9.6615, longitude: 80.0255 };
+    : homePoint
+      ? toLatLng(homePoint)
+      : items[0]
+        ? toLatLng(items[0].donation.pickupAddress.location)
+        : { latitude: 9.6615, longitude: 80.0255 };
 
   const mapboxFullMapUrl = getMapboxStaticMapUrl({
     center,
@@ -71,10 +77,10 @@ export default function VolunteerMap() {
           showsMyLocationButton
         >
           {/* Travel radius circle */}
-          {point && (
+          {(point || homePoint) && (
             <Circle
-              center={toLatLng(point)}
-              radius={5000} // 5km default radius
+              center={toLatLng((point ?? homePoint)!)}
+              radius={travelRadiusKm * 1000}
               fillColor="rgba(15, 123, 79, 0.08)"
               strokeColor={volunteerColors.green}
               strokeWidth={1}
@@ -83,14 +89,14 @@ export default function VolunteerMap() {
 
           {/* Task markers */}
           {items.map((task) => {
-            const isUrgent = task.minutesLeft <= URGENT_THRESHOLD_MINUTES;
+            const isUrgent = task.isUrgent || task.minutesLeft <= URGENT_THRESHOLD_MINUTES;
             const isActive = task.assignment.status === 'accepted';
             return (
               <Marker
                 key={task.assignment.id}
                 coordinate={toLatLng(task.donation.pickupAddress.location)}
                 title={task.donation.title}
-                description={`${task.distanceKm} km · ${task.donation.servings} servings`}
+                description={`${formatKm(task.distanceKm)} · ${task.donation.servings} servings`}
                 pinColor={
                   isActive
                     ? volunteerColors.orange
@@ -157,10 +163,10 @@ export default function VolunteerMap() {
                   {selectedTask.donation.title}
                 </Text>
                 <Text style={styles.popupMeta}>
-                  {selectedTask.donation.servings} servings · {selectedTask.distanceKm} km away
+                  {selectedTask.donation.servings} servings · {formatKm(selectedTask.distanceKm)} away
                 </Text>
               </View>
-              {selectedTask.minutesLeft <= URGENT_THRESHOLD_MINUTES && (
+              {(selectedTask.isUrgent || selectedTask.minutesLeft <= URGENT_THRESHOLD_MINUTES) && (
                 <Badge label="Urgent" tone="danger" />
               )}
             </View>
@@ -168,32 +174,30 @@ export default function VolunteerMap() {
             <View style={styles.popupStatsRow}>
               <View style={styles.popupStat}>
                 <Ionicons name="navigate-outline" size={14} color={volunteerColors.green} />
-                <Text style={styles.popupStatText}>{selectedTask.distanceKm} km</Text>
+                <Text style={styles.popupStatText}>{formatKm(selectedTask.distanceKm)}</Text>
               </View>
               <View style={styles.popupStat}>
                 <Ionicons name="time-outline" size={14} color={volunteerColors.green} />
                 <Text style={styles.popupStatText}>
-                  ~{Math.round(selectedTask.distanceKm * 4)} min
+                  ~{etaMinutes(selectedTask.distanceKm + (selectedTask.routeKm ?? 0))} min
                 </Text>
               </View>
               <View style={styles.popupStat}>
                 <Ionicons name="leaf-outline" size={14} color={volunteerColors.orange} />
-                <Text style={styles.popupStatText}>
-                  +{Math.round(selectedTask.distanceKm * 20 + selectedTask.donation.servings * 2)} pts
-                </Text>
+                <Text style={styles.popupStatText}>+{KARMA_PER_DELIVERY} pts</Text>
               </View>
             </View>
 
             <View style={styles.popupRouteRow}>
               <View style={[styles.popupRouteDot, { backgroundColor: volunteerColors.green }]} />
               <Text style={styles.popupRouteText} numberOfLines={1}>
-                Pickup: {selectedTask.donation.pickupAddress.line1}, {selectedTask.donation.pickupAddress.city}
+                Pickup: {pickupLabel(selectedTask)}
               </Text>
             </View>
             <View style={styles.popupRouteRow}>
               <View style={[styles.popupRouteDot, { backgroundColor: volunteerColors.urgentRed }]} />
               <Text style={styles.popupRouteText} numberOfLines={1}>
-                Drop-off: {selectedTask.assignment.requestId && MOCK_DROP_OFFS[selectedTask.assignment.requestId] ? MOCK_DROP_OFFS[selectedTask.assignment.requestId]!.name : 'Community Food Hub · Jaffna'}
+                Drop-off: {dropOffLabel(selectedTask)}
               </Text>
             </View>
 

@@ -704,7 +704,7 @@ export default function RecipientRequestsScreen() {
                     {/* Volunteer Current Position */}
                     <Marker
                       coordinate={{ latitude: volunteerLat, longitude: volunteerLng }}
-                      title={`Volunteer: ${liveTrackingData?.volunteer?.name || 'Ramesh Kumar'}`}
+                      title={`Volunteer: ${liveTrackingData?.volunteer?.name || 'Waiting'}`}
                       description="Courier In Transit (~15 mins away)"
                     >
                       <View style={styles.mapMarkerVolunteer}>
@@ -764,7 +764,7 @@ export default function RecipientRequestsScreen() {
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={styles.courierName}>
-                      {liveTrackingData?.volunteer?.name || 'Ramesh Kumar'}
+                      {liveTrackingData?.volunteer?.name || 'Waiting for a volunteer'}
                     </Text>
                     <View style={styles.verifiedBadge}>
                       <Ionicons name="checkmark-circle" size={12} color="#0F7B4F" />
@@ -772,14 +772,15 @@ export default function RecipientRequestsScreen() {
                     </View>
                   </View>
                   <Text style={styles.courierVehicle}>
-                    {liveTrackingData?.volunteer?.vehicleType || 'Motorbike (WP BE-4821)'}
+                    {liveTrackingData?.volunteer?.vehicleType || 'Vehicle not set'}
                   </Text>
                 </View>
 
                 <TouchableOpacity
                   style={styles.callCourierBtn}
                   onPress={() =>
-                    Linking.openURL(`tel:${liveTrackingData?.volunteer?.phone || '+94771234567'}`)
+                    liveTrackingData?.volunteer?.phone &&
+                    Linking.openURL(`tel:${liveTrackingData.volunteer.phone}`)
                   }
                 >
                   <Ionicons name="call" size={16} color="#FFFFFF" />
@@ -793,7 +794,12 @@ export default function RecipientRequestsScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.endpointLabel}>START POINT (RELIEF HUB)</Text>
                     <Text style={styles.endpointValue}>
-                      {liveTrackingData?.donation?.pickupAddress?.line1 || 'Point Pedro Road, Nallur Community Hub'}
+                      {[
+                        liveTrackingData?.donation?.pickupAddress?.city,
+                        liveTrackingData?.donation?.pickupAddress?.district,
+                      ]
+                        .filter(Boolean)
+                        .join(', ') || 'Pickup location pending'}
                     </Text>
                   </View>
                 </View>

@@ -30,36 +30,6 @@ interface ConcernItem {
   resolution?: string;
 }
 
-const SAMPLE_CONCERNS: ConcernItem[] = [
-  {
-    id: 'disp-301',
-    subject: 'Delivery Delay Enquiry · Ariyalai Sector 2',
-    sender: 'S. Thevarajah (Samurdhi Card #441)',
-    body: 'We were expecting the 4 dinner parcels by 1:30 PM for our elderly mother. The courier has not arrived yet. Please verify courier location.',
-    status: 'open',
-    createdAt: 'Today, 1:45 PM',
-    address: 'Ariyalai East, Ward 4',
-  },
-  {
-    id: 'disp-302',
-    subject: 'Portion Allocation for 6-Member Household',
-    sender: 'K. Meenakshi (Navalar Welfare Group)',
-    body: 'We received 2 food parcels but our registered household has 6 members. Can we request an additional 2 parcels for the evening distribution?',
-    status: 'open',
-    createdAt: 'Today, 11:20 AM',
-    address: 'Navalar Road, Nallur',
-  },
-  {
-    id: 'disp-303',
-    subject: 'Packaging Quality Commendation & Feedback',
-    sender: 'Grace Care Elderly Home Coordinator',
-    body: 'The hot rice parcels from Nallur Kitchen arrived warm at 68°C. We thank the Amuthinai team and volunteer Kajan S. for safe handling.',
-    status: 'resolved',
-    resolution: 'Acknowledged by Admin. Karma bonus points credited to volunteer Kajan S.',
-    createdAt: 'Yesterday, 6:00 PM',
-    address: 'Nallur Central',
-  },
-];
 
 export default function UnresolvedConcerns() {
   const [filter, setFilter] = useState<'all' | 'open' | 'resolved'>('all');
@@ -83,21 +53,20 @@ export default function UnresolvedConcerns() {
     },
   });
 
-  const concernsList: ConcernItem[] = useMemo(() => {
-    if (disputesData?.items && disputesData.items.length > 0) {
-      return disputesData.items.map((d: any) => ({
-        id: d._id,
+  const concernsList: ConcernItem[] = useMemo(
+    () =>
+      (disputesData?.items ?? []).map((d) => ({
+        id: d.id,
         subject: d.subject || 'Recipient Feedback',
-        sender: d.senderName || 'Community Member',
-        body: d.message || d.body || 'Feedback details',
+        sender: d.raiser?.name || 'Community Member',
+        body: d.body || 'Feedback details',
         status: d.status || 'open',
-        createdAt: 'Recent',
-        address: d.location || 'Jaffna',
-        resolution: d.resolutionNotes || d.resolution,
-      }));
-    }
-    return SAMPLE_CONCERNS;
-  }, [disputesData]);
+        createdAt: d.createdAt ? new Date(d.createdAt).toLocaleString() : 'Recent',
+        address: d.donation?.title || d.category || 'Amuthinai',
+        resolution: d.resolution,
+      })),
+    [disputesData],
+  );
 
   const items = concernsList.filter((item: ConcernItem) => {
     if (filter === 'all') return true;

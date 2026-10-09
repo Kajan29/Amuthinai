@@ -41,102 +41,10 @@ interface VolunteerCardItem {
   priorDeliveries: number;
 }
 
-const SEED_VOLUNTEERS: VolunteerCardItem[] = [
-  {
-    id: 'vol-kajan',
-    name: 'Kajan S.',
-    roleSubtitle: 'Motorbike Delivery Volunteer',
-    badge: 'Ready for Review',
-    badgeTone: 'mint',
-    verificationDetail: 'NIC + License Verified',
-    metaInfo: '14 Prior Deliveries',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-    isVerified: false,
-    isFlagged: false,
-    appliedText: 'Applied 2h ago',
-    vehicleType: 'Motorbike (125cc)',
-    travelRadiusKm: 15,
-    phone: '+94 77 123 4567',
-    nicNumber: '199824501234',
-    priorDeliveries: 14,
-  },
-  {
-    id: 'vol-priya',
-    name: 'Priya T.',
-    roleSubtitle: 'Bicycle Delivery • Nallur Central',
-    badge: 'Eco-Carrier',
-    badgeTone: 'neutral',
-    verificationDetail: 'Student ID + Consent Letter',
-    metaInfo: 'Campus Route: 3.2 km',
-    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80',
-    isVerified: false,
-    isFlagged: false,
-    appliedText: 'Campus Route: 3.2 km',
-    vehicleType: 'Bicycle (Rear carrier basket)',
-    travelRadiusKm: 5,
-    phone: '+94 77 234 8901',
-    nicNumber: '200178401987',
-    priorDeliveries: 8,
-  },
-  {
-    id: 'vol-murugan',
-    name: 'Murugan R.',
-    roleSubtitle: 'Van / Bulk Food Transport',
-    badge: 'Bulk Cargo (150kg)',
-    badgeTone: 'mint',
-    verificationDetail: 'Vehicle Inspection Passed • Commercial Class',
-    metaInfo: 'Available: Weekends',
-    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
-    isVerified: false,
-    isFlagged: false,
-    appliedText: 'Available: Weekends',
-    vehicleType: 'Toyota HiAce Van (150kg cargo)',
-    travelRadiusKm: 25,
-    phone: '+94 77 345 6789',
-    nicNumber: '198512304567',
-    priorDeliveries: 22,
-  },
-  {
-    id: 'vol-shalini',
-    name: 'Shalini K.',
-    roleSubtitle: 'Foot Volunteer • Jaffna Town',
-    badge: '1km Radius',
-    badgeTone: 'neutral',
-    verificationDetail: 'Neighborhood Resident • Food Safety Briefing Pending',
-    metaInfo: 'Applied yesterday',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-    isVerified: false,
-    isFlagged: false,
-    appliedText: 'Applied yesterday',
-    vehicleType: 'Foot / Push Trolley',
-    travelRadiusKm: 2,
-    phone: '+94 77 456 7890',
-    nicNumber: '199567803456',
-    priorDeliveries: 4,
-  },
-  {
-    id: 'vol-karthik',
-    name: 'Karthik Rajan',
-    roleSubtitle: 'Motorbike • Jaffna Central',
-    badge: 'Pending KYC',
-    badgeTone: 'amber',
-    verificationDetail: 'NIC & Driving License Pending Inspection',
-    metaInfo: 'Applied 3h ago',
-    avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=200&q=80',
-    isVerified: false,
-    isFlagged: false,
-    appliedText: 'Applied 3h ago',
-    vehicleType: 'Motorbike',
-    travelRadiusKm: 10,
-    phone: '+94 77 567 8901',
-    nicNumber: '199934208765',
-    priorDeliveries: 0,
-  },
-];
 
 export default function VolunteerApprovals() {
   const [filterTab, setFilterTab] = useState<'pending' | 'approved' | 'flagged'>('pending');
-  const [selectedIds, setSelectedIds] = useState<string[]>(['vol-kajan', 'vol-priya', 'vol-murugan']);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedVolunteer, setSelectedVolunteer] = useState<VolunteerCardItem | null>(null);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
 
@@ -150,29 +58,32 @@ export default function VolunteerApprovals() {
       }),
   });
 
-  const volunteerItems: VolunteerCardItem[] = useMemo(() => {
-    if (volunteersData?.items && volunteersData.items.length > 0) {
-      return volunteersData.items.map((u: any) => ({
-        id: u._id,
+  const volunteerItems: VolunteerCardItem[] = useMemo(
+    () =>
+      (volunteersData?.items ?? []).map((u) => ({
+        id: u.id,
         name: u.name,
-        roleSubtitle: `${u.vehicleType ? u.vehicleType.charAt(0).toUpperCase() + u.vehicleType.slice(1) : 'Motorbike'} Delivery Volunteer`,
+        roleSubtitle: `${u.vehicleType ? u.vehicleType.charAt(0).toUpperCase() + u.vehicleType.slice(1) : 'Volunteer'} Delivery Volunteer`,
         badge: u.badgeTitle || (u.isVerified ? 'Verified Rider' : 'Ready for Review'),
-        badgeTone: (u.isVerified ? 'mint' : 'neutral') as 'mint' | 'neutral' | 'amber',
-        verificationDetail: u.nicNumber ? `NIC: ${u.nicNumber}` : 'NIC + License Verified',
+        badgeTone: (u.isFlagged ? 'amber' : u.isVerified ? 'mint' : 'neutral') as 'mint' | 'neutral' | 'amber',
+        verificationDetail: u.nicNumber
+          ? `NIC: ${u.nicNumber}`
+          : u.drivingLicenseNumber
+            ? `License: ${u.drivingLicenseNumber}`
+            : 'Documents pending',
         metaInfo: `${u.completedDeliveriesCount || 0} Prior Deliveries`,
-        avatarUrl: u.avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80',
+        avatarUrl: u.avatarUrl || '',
         isVerified: !!u.isVerified,
         isFlagged: !!u.isFlagged,
-        appliedText: 'Recently applied',
-        vehicleType: u.vehicleType || 'motorbike',
-        travelRadiusKm: u.travelRadiusKm || 5,
-        phone: u.phone || '+94 77 123 4567',
-        nicNumber: u.nicNumber || '199512345678',
+        appliedText: u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Applied',
+        vehicleType: u.vehicleType || 'not set',
+        travelRadiusKm: u.travelRadiusKm || 0,
+        phone: u.phone || '',
+        nicNumber: u.nicNumber || 'Not provided',
         priorDeliveries: u.completedDeliveriesCount || 0,
-      }));
-    }
-    return SEED_VOLUNTEERS;
-  }, [volunteersData]);
+      })),
+    [volunteersData],
+  );
 
   // Batch verify mutation
   const batchVerifyMutation = useMutation({
@@ -183,10 +94,8 @@ export default function VolunteerApprovals() {
       Alert.alert('Success', `${selectedIds.length} volunteers approved for active dispatch.`);
       setSelectedIds([]);
     },
-    onError: () => {
-      // Optimistic simulated success if backend offline
-      Alert.alert('Volunteers Approved', `${selectedIds.length} volunteers approved and verified in local registry.`);
-      setSelectedIds([]);
+    onError: (error) => {
+      Alert.alert('Could not verify volunteers', (error as Error).message);
     },
   });
 

@@ -1,15 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
   Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,41 +21,57 @@ import { assignmentsApi } from '@/api/assignments.api';
 import { logo } from '@/constants';
 import { useLocation } from '@/hooks/useLocation';
 import { cloudinaryService } from '@/services/cloudinary';
+import { distanceKm } from '@/utils/geo';
+import { initials, KARMA_PER_DELIVERY } from '@/utils/tasks';
+
+const ARRIVAL_RADIUS_KM = 0.5;
 
 export default function ConfirmDelivery() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { point } = useLocation();
+  const queryClient = useQueryClient();
+  const location = useLocation();
+  const pinInputRef = useRef<TextInput>(null);
 
-  const [deliveryPhotoUrl, setDeliveryPhotoUrl] = useState<string>(
-    'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800&auto=format&fit=crop&q=80'
-  );
+  const [deliveryPhotoUrl, setDeliveryPhotoUrl] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
-  const [photoCapturedAt, setPhotoCapturedAt] = useState<string>('12:42 PM');
-  const [isCloudinaryStored, setIsCloudinaryStored] = useState<boolean>(false);
+  const [photoCapturedAt, setPhotoCapturedAt] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+
+  const task = useQuery({
+    queryKey: ['task', id],
+    queryFn: () => assignmentsApi.details(id),
+    enabled: Boolean(id),
+  });
 
   const completeTask = useMutation({
     mutationFn: async () => {
-      const location = point ?? {
-        type: 'Point' as const,
-        coordinates: [80.0245, 9.6630] as [number, number],
-      };
+      const point = location.point ?? (await location.refresh());
+      if (!point) throw new Error('Turn on location so we can stamp where the delivery happened.');
+      if (!deliveryPhotoUrl) throw new Error('Take a handover photo first.');
+      if (pin.length !== 4) throw new Error('Enter the 4-digit PIN from the recipient.');
       return assignmentsApi.confirmDelivery(id, {
         photoUrl: deliveryPhotoUrl,
-        location,
-        pin: '7491',
+        location: point,
+        pin,
+        quantityConfirmed: task.data?.donation.servings,
       });
     },
-    onSuccess: () => {
+    async onSuccess() {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['volunteer.nearby'] }),
+        queryClient.invalidateQueries({ queryKey: ['volunteer.history'] }),
+        queryClient.invalidateQueries({ queryKey: ['volunteer.points'] }),
+        queryClient.invalidateQueries({ queryKey: ['task', id] }),
+      ]);
+      const servings = task.data?.donation.servings ?? 0;
       Alert.alert(
         'Delivery Complete! 🎉',
-        'You nourished 25 individuals today in Jaffna! +120 Karma Points added to your profile.',
-        [
-          {
-            text: 'Return to Dashboard',
-            onPress: () => router.replace('/(volunteer)/dashboard'),
-          },
-        ]
+        `You delivered ${servings} servings. +${KARMA_PER_DELIVERY} Karma Points added to your profile.`,
+        [{ text: 'Return to Dashboard', onPress: () => router.replace('/(volunteer)/dashboard') }],
       );
+    },
+    onError(error) {
+      Alert.alert('Delivery not confirmed', (error as Error).message);
     },
   });
 
@@ -65,13 +83,8 @@ export default function ConfirmDelivery() {
       setIsUploadingPhoto(true);
       const result = await cloudinaryService.uploadImage(uri, 'amuthinai/delivery-proof');
       setDeliveryPhotoUrl(result.url);
-      setIsCloudinaryStored(true);
       setPhotoCapturedAt(
         new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      );
-      Alert.alert(
-        'Photo Uploaded to Cloudinary! ☁️',
-        'Delivery handover photo has been stored securely in Cloudinary.'
       );
     } catch (err: any) {
       Alert.alert('Upload Error', err?.message || 'Could not upload handover image to Cloudinary.');
@@ -80,31 +93,69 @@ export default function ConfirmDelivery() {
     }
   }
 
+  if (task.isPending) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color="#5A1626" size="large" />
+      </SafeAreaView>
+    );
+  }
+
+  if (task.isError || !task.data) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+        <Ionicons name="alert-circle-outline" size={40} color="#5A1626" />
+        <Text style={styles.shelterTitle}>{(task.error as Error | null)?.message ?? 'Task not found'}</Text>
+        <TouchableOpacity style={styles.receiptLink} onPress={() => router.back()}>
+          <Text style={styles.receiptLinkText}>Go back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  const { donation, request, recipient, assignment } = task.data;
+  const delivered = assignment.status === 'completed' || donation.status === 'delivered';
+  const inTransit = donation.status === 'in_transit' || donation.status === 'picked_up';
+
+  const refId = assignment.id.slice(-6).toUpperCase();
+  const drop = request?.dropAddress;
+  const shelterName = recipient?.name ?? drop?.line1 ?? 'Recipient';
+  const shelterAddress = drop ? [drop.line1, drop.city, drop.district].filter(Boolean).join(', ') : 'No drop-off linked';
+  const recipientPhone = recipient?.phone ?? null;
+
+  const kmFromDrop = location.point && drop ? distanceKm(location.point, drop.location) : null;
+  const arrived = kmFromDrop !== null && kmFromDrop <= ARRIVAL_RADIUS_KM;
+
   function handleCallCoordinator() {
-    void Linking.openURL('tel:+94773456789');
+    if (recipientPhone) void Linking.openURL(`tel:${recipientPhone}`);
   }
 
   function handleWhatsAppCoordinator() {
-    void Linking.openURL('https://wa.me/94773456789?text=Hello%20Sister%20Mary,%20I%20have%20arrived%20with%20the%20meals.');
+    if (!recipientPhone) return;
+    const digits = recipientPhone.replace(/\D/g, '').replace(/^0/, '94');
+    const message = encodeURIComponent(`Hello ${shelterName}, I have arrived with your food delivery.`);
+    void Linking.openURL(
+      request?.contactPreference === 'sms'
+        ? `sms:${recipientPhone}`
+        : `https://wa.me/${digits}?text=${message}`,
+    );
   }
 
   function handleHelp() {
     Alert.alert(
       'Need Assistance?',
-      'Coordinator: Sister Mary Teresa (+94 77 345 6789)\nJaffna Emergency Dispatch: +94 21 222 3456'
+      `Recipient: ${shelterName}${recipientPhone ? ` (${recipientPhone})` : ''}\n\nAsk the recipient for the 4-digit delivery PIN shown in their app. If something is wrong, raise a concern and an admin will help.`,
     );
   }
 
   function handleShareImpact() {
     Alert.alert(
-      'Route Receipt & Impact',
-      'Task Ref #KP-84920\nRoute: Nallur Temple Hall → St. John\'s Community Hub\nTotal: 25 Veg Biryani Lunch Packets\nKarma: +120 pts earned'
+      'Route Receipt',
+      `Task Ref #${refId}\nRoute: ${donation.pickupAddress.line1} → ${shelterName}\nFood: ${donation.title} (${donation.servings} servings)\nKarma: +${KARMA_PER_DELIVERY} pts on completion`,
     );
   }
 
-  const refId = 'KP-84920';
-  const shelterName = "St. John's Community Hub";
-  const shelterAddress = 'Chundikuli, Jaffna (Shelter Dropoff Bay B)';
+  const canSubmit = inTransit && !delivered && Boolean(deliveryPhotoUrl) && pin.length === 4 && !isUploadingPhoto;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -139,11 +190,11 @@ export default function ConfirmDelivery() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* ─── 3-STEP PROGRESS STEPPER ─── */}
         <View style={styles.stepperContainer}>
           <View style={styles.stepperLineRow}>
-            {/* Step 1: Route (Done) */}
             <View style={styles.stepperItem}>
               <View style={styles.stepCircleDone}>
                 <Ionicons name="checkmark" size={16} color="#FFFFFF" />
@@ -151,10 +202,8 @@ export default function ConfirmDelivery() {
               <Text style={styles.stepLabelDone}>1. Route</Text>
             </View>
 
-            {/* Connecting Line 1 (Dark Green/Maroon) */}
             <View style={styles.stepLineMaroon} />
 
-            {/* Step 2: Verification (Done) */}
             <View style={styles.stepperItem}>
               <View style={styles.stepCircleDone}>
                 <Ionicons name="checkmark" size={16} color="#FFFFFF" />
@@ -162,29 +211,51 @@ export default function ConfirmDelivery() {
               <Text style={styles.stepLabelDone}>2. Verification</Text>
             </View>
 
-            {/* Connecting Line 2 (Maroon) */}
             <View style={styles.stepLineMaroon} />
 
-            {/* Step 3: Delivered (Active - Maroon) */}
             <View style={styles.stepperItem}>
-              <View style={styles.stepCircleActive}>
-                <Text style={styles.stepNumActive}>3</Text>
+              <View style={delivered ? styles.stepCircleDone : styles.stepCircleActive}>
+                {delivered ? (
+                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.stepNumActive}>3</Text>
+                )}
               </View>
-              <Text style={styles.stepLabelActive}>3. Delivered</Text>
+              <Text style={delivered ? styles.stepLabelDone : styles.stepLabelActive}>3. Delivered</Text>
             </View>
           </View>
         </View>
 
-        {/* ─── SHELTER DESTINATION CARD ─── */}
+        {!inTransit && !delivered && (
+          <TouchableOpacity
+            style={styles.deliveryConcernButton}
+            onPress={() => router.replace(`/(volunteer)/pickup/${id}`)}
+          >
+            <Ionicons name="arrow-back-circle-outline" size={16} color="#DC2626" />
+            <Text style={styles.deliveryConcernText}>Confirm the pickup first</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ─── DESTINATION CARD ─── */}
         <View style={styles.destinationCard}>
           <View style={styles.destinationTopRow}>
-            <View style={styles.arrivedBadge}>
-              <View style={styles.arrivedDot} />
-              <Text style={styles.arrivedText}>Arrived at Shelter</Text>
+            <View style={[styles.arrivedBadge, !arrived && { backgroundColor: '#FEF3C7' }]}>
+              <View style={[styles.arrivedDot, !arrived && { backgroundColor: '#B45309' }]} />
+              <Text style={[styles.arrivedText, !arrived && { color: '#B45309' }]}>
+                {delivered
+                  ? 'Delivered'
+                  : arrived
+                    ? 'Arrived at Drop-off'
+                    : kmFromDrop !== null
+                      ? `${kmFromDrop} km to drop-off`
+                      : location.isLoading
+                        ? 'Locating…'
+                        : 'En route'}
+              </Text>
             </View>
             <TouchableOpacity
               style={styles.locationPinCircle}
-              onPress={() => router.push('/(volunteer)/map')}
+              onPress={() => void location.refresh()}
               activeOpacity={0.8}
             >
               <Ionicons name="location-outline" size={18} color="#0D9488" />
@@ -194,28 +265,32 @@ export default function ConfirmDelivery() {
           <Text style={styles.shelterTitle}>{shelterName}</Text>
           <Text style={styles.shelterAddress}>{shelterAddress}</Text>
 
-          {/* Recipient Coordinator Row */}
           <View style={styles.coordinatorCard}>
             <View style={styles.coordinatorAvatar}>
-              <Text style={styles.coordinatorAvatarText}>ST</Text>
+              <Text style={styles.coordinatorAvatarText}>{initials(shelterName)}</Text>
             </View>
             <View style={styles.coordinatorInfo}>
-              <Text style={styles.coordinatorName}>Sister Mary Teresa</Text>
-              <Text style={styles.coordinatorRole}>Community Coordinator</Text>
+              <Text style={styles.coordinatorName}>{recipient?.name ?? 'Recipient'}</Text>
+              <Text style={styles.coordinatorRole}>
+                {request
+                  ? `${request.servingsNeeded} servings requested${request.familySize ? ` • family of ${request.familySize}` : ''}`
+                  : 'Recipient'}
+              </Text>
             </View>
 
-            {/* Phone & WhatsApp Action Buttons */}
             <View style={styles.coordinatorButtons}>
               <TouchableOpacity
-                style={styles.coordinatorActionBtn}
+                style={[styles.coordinatorActionBtn, !recipientPhone && { opacity: 0.4 }]}
                 onPress={handleCallCoordinator}
+                disabled={!recipientPhone}
                 activeOpacity={0.8}
               >
                 <Ionicons name="call-outline" size={16} color="#1F2937" />
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.coordinatorActionBtn}
+                style={[styles.coordinatorActionBtn, !recipientPhone && { opacity: 0.4 }]}
                 onPress={handleWhatsAppCoordinator}
+                disabled={!recipientPhone}
                 activeOpacity={0.8}
               >
                 <Ionicons name="chatbubble-ellipses-outline" size={16} color="#1F2937" />
@@ -229,44 +304,44 @@ export default function ConfirmDelivery() {
           <View style={styles.proofHeaderRow}>
             <Text style={styles.proofTitle}>PROOF OF HANDOVER</Text>
             <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark-circle" size={13} color="#0F766E" />
-              <Text style={styles.verifiedText}>Handover Verified</Text>
+              <Ionicons
+                name={deliveryPhotoUrl ? 'checkmark-circle' : 'ellipse-outline'}
+                size={13}
+                color="#0F766E"
+              />
+              <Text style={styles.verifiedText}>{deliveryPhotoUrl ? 'Photo Attached' : 'Photo Required'}</Text>
             </View>
           </View>
 
-          {/* Photo Container with Live Overlays */}
           <View style={styles.photoContainer}>
-            <Image
-              source={{ uri: deliveryPhotoUrl }}
-              style={styles.handoverPhoto}
-              resizeMode="cover"
-            />
+            {deliveryPhotoUrl ? (
+              <Image source={{ uri: deliveryPhotoUrl }} style={styles.handoverPhoto} resizeMode="cover" />
+            ) : (
+              <View style={[styles.handoverPhoto, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#E5E7EB' }]}>
+                <Ionicons name="camera-outline" size={36} color="#9CA3AF" />
+                <Text style={styles.shelterAddress}>Photograph the food being handed over</Text>
+              </View>
+            )}
             {isUploadingPhoto && (
               <View style={styles.uploadingOverlay}>
                 <ActivityIndicator color="#FFFFFF" size="large" />
                 <Text style={styles.uploadingOverlayText}>Storing in Cloudinary...</Text>
               </View>
             )}
-            {/* Overlay Badges */}
-            <View style={styles.photoOverlayRow}>
-              <View style={styles.livePhotoBadge}>
-                <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
-                <Text style={styles.livePhotoText}>Live Photo: {photoCapturedAt}</Text>
-              </View>
-              {isCloudinaryStored ? (
+            {photoCapturedAt && (
+              <View style={styles.photoOverlayRow}>
+                <View style={styles.livePhotoBadge}>
+                  <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
+                  <Text style={styles.livePhotoText}>Live Photo: {photoCapturedAt}</Text>
+                </View>
                 <View style={styles.cloudBadgeSmall}>
                   <Ionicons name="cloud-done" size={12} color="#FFFFFF" />
                   <Text style={styles.cloudBadgeText}>Cloudinary Verified</Text>
                 </View>
-              ) : (
-                <View style={styles.pinVerifiedBadge}>
-                  <Text style={styles.pinVerifiedText}>PIN VERIFIED: 7491</Text>
-                </View>
-              )}
-            </View>
+              </View>
+            )}
           </View>
 
-          {/* Photo Action Buttons */}
           <View style={styles.photoActionsRow}>
             <TouchableOpacity
               style={styles.photoActionBtnPrimary}
@@ -289,17 +364,28 @@ export default function ConfirmDelivery() {
             </TouchableOpacity>
           </View>
 
-          {/* Recipient Feedback */}
+          {/* Recipient delivery PIN */}
           <View style={styles.feedbackCard}>
             <View style={styles.feedbackHeaderRow}>
-              <Text style={styles.feedbackTitle}>Recipient Feedback</Text>
-              <View style={styles.starsRow}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons key={star} name="star" size={14} color="#F59E0B" />
-                ))}
-              </View>
+              <Text style={styles.feedbackTitle}>Recipient Delivery PIN</Text>
+              <Ionicons name="lock-closed-outline" size={14} color="#5A1626" />
             </View>
-            <Text style={styles.feedbackQuote}>"Warm & Freshly Cooked • 25 Portions"</Text>
+            <Text style={styles.feedbackQuote}>Ask the recipient for the 4-digit PIN in their app</Text>
+            <Pressable style={pinStyles.row} onPress={() => pinInputRef.current?.focus()}>
+              {[0, 1, 2, 3].map((idx) => (
+                <View key={idx} style={pinStyles.box}>
+                  <Text style={pinStyles.digit}>{pin[idx] ?? ''}</Text>
+                </View>
+              ))}
+            </Pressable>
+            <TextInput
+              ref={pinInputRef}
+              value={pin}
+              onChangeText={(value) => setPin(value.replace(/\D/g, '').slice(0, 4))}
+              keyboardType="number-pad"
+              maxLength={4}
+              style={pinStyles.hiddenInput}
+            />
           </View>
         </View>
 
@@ -311,23 +397,26 @@ export default function ConfirmDelivery() {
           <View style={styles.impactTextCol}>
             <Text style={styles.impactTitle}>COMMUNITY IMPACT</Text>
             <Text style={styles.impactDescription}>
-              You nourished <Text style={styles.impactHighlight}>25 individuals</Text> today in Jaffna!{' '}
-              <Text style={styles.impactKarma}>+120 Karma Points</Text> added to your volunteer rank.
+              You are delivering <Text style={styles.impactHighlight}>{donation.servings} servings</Text>
+              {drop?.city ? ` in ${drop.city}` : ''}.{' '}
+              <Text style={styles.impactKarma}>+{KARMA_PER_DELIVERY} Karma Points</Text> on completion.
             </Text>
           </View>
         </View>
 
         {/* ─── BOTTOM ACTION BUTTONS ─── */}
         <TouchableOpacity
-          style={styles.completeButton}
+          style={[styles.completeButton, !canSubmit && { opacity: 0.55 }]}
           onPress={() => completeTask.mutate()}
-          disabled={completeTask.isPending}
+          disabled={completeTask.isPending || !canSubmit}
           activeOpacity={0.85}
         >
           {completeTask.isPending ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
-            <Text style={styles.completeButtonText}>Complete Task & Return →</Text>
+            <Text style={styles.completeButtonText}>
+              {delivered ? 'Delivered ✓' : canSubmit ? 'Complete Task & Return →' : 'Add photo & PIN to complete'}
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -336,7 +425,7 @@ export default function ConfirmDelivery() {
           onPress={handleShareImpact}
           activeOpacity={0.7}
         >
-          <Text style={styles.receiptLinkText}>View Route Receipt / Share Impact</Text>
+          <Text style={styles.receiptLinkText}>View Route Receipt</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -358,6 +447,22 @@ export default function ConfirmDelivery() {
     </SafeAreaView>
   );
 }
+
+const pinStyles = StyleSheet.create({
+  row: { flexDirection: 'row', justifyContent: 'center', gap: 14, marginTop: 10 },
+  box: {
+    width: 54,
+    height: 52,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#5A1626',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  digit: { fontSize: 22, fontWeight: '800', color: '#5A1626' },
+  hiddenInput: { position: 'absolute', opacity: 0, height: 1, width: 1 },
+});
 
 const styles = StyleSheet.create({
   safeArea: {

@@ -18,6 +18,7 @@ import { adminApi } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
 import { getAdminDashboardMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing } from '@/theme';
+import { coordsOf, formatAddress, remainingLabel } from '@/utils/format';
 import { Circle, MapView, Marker, Polyline } from '@/utils/maps';
 
 const JAFFNA_REGION = {
@@ -27,110 +28,108 @@ const JAFFNA_REGION = {
   longitudeDelta: 0.08,
 };
 
-const HUBS = [
-  {
-    id: 'hub-1',
-    name: 'Jaffna Central Operations Hub',
-    type: 'Central Headquarters',
-    latitude: 9.6615,
-    longitude: 80.0167,
-    address: 'Hospital Road, Jaffna',
-    activeVolunteers: 18,
-  },
-  {
-    id: 'hub-2',
-    name: 'Nallur Community Distribution Hub',
-    type: 'Regional Distribution',
-    latitude: 9.6744,
-    longitude: 80.0286,
-    address: 'Point Pedro Road, Nallur',
-    activeVolunteers: 14,
-  },
-  {
-    id: 'hub-3',
-    name: 'Chavakachcheri Relief Depot',
-    type: 'Sub-Centre',
-    latitude: 9.6542,
-    longitude: 80.1582,
-    address: 'Kandy Road, Chavakachcheri',
-    activeVolunteers: 9,
-  },
-  {
-    id: 'hub-4',
-    name: 'Kopay Aid Station',
-    type: 'Field Post',
-    latitude: 9.6924,
-    longitude: 80.0528,
-    address: 'Main Street, Kopay',
-    activeVolunteers: 7,
-  },
-];
-
-const APPROVED_DONATIONS = [
-  {
-    id: 'don-1',
-    title: '50 Pkts Hot Vegetable Rice & Sambar',
-    donor: 'Nallur Temple Kitchen',
-    latitude: 9.6744,
-    longitude: 80.0286,
-    servings: 50,
-    freshWindow: '3h 45m left',
-  },
-  {
-    id: 'don-2',
-    title: '40 Fresh Buns & Loaves',
-    donor: 'Hospital Road Bakery',
-    latitude: 9.662,
-    longitude: 80.019,
-    servings: 40,
-    freshWindow: '5h 10m left',
-  },
-  {
-    id: 'don-3',
-    title: '30 Vegetable Biryani Packs',
-    donor: 'Kopay Community Kitchen',
-    latitude: 9.6924,
-    longitude: 80.0528,
-    servings: 30,
-    freshWindow: '2h 20m left',
-  },
-];
-
-const ACTIVE_ROUTES = [
-  {
-    id: 'route-1',
-    courier: 'Kajan S. (Motorbike)',
-    status: 'In Transit to Ariyalai',
-    coords: [
-      { latitude: 9.6744, longitude: 80.0286 },
-      { latitude: 9.668, longitude: 80.023 },
-      { latitude: 9.655, longitude: 80.038 },
-    ],
-  },
-  {
-    id: 'route-2',
-    courier: 'Priya T. (Bicycle)',
-    status: 'In Transit to Grace Care',
-    coords: [
-      { latitude: 9.662, longitude: 80.019 },
-      { latitude: 9.669, longitude: 80.025 },
-    ],
-  },
-];
 
 export default function CentralLiveMap() {
   const [activeLayer, setActiveLayer] = useState<'all' | 'hubs' | 'donations' | 'routes' | 'demand'>('all');
   const [selectedEntity, setSelectedEntity] = useState<any>(null);
 
-  const mapboxUrl = useMemo(
-    () => getAdminDashboardMapUrl({ layer: activeLayer, width: 800, height: 600, zoom: 12.6 }),
-    [activeLayer],
-  );
-
   const { data: demandCells } = useQuery({
     queryKey: ['admin.demand'],
     queryFn: () => adminApi.demandHeatmap(),
   });
+
+  const { data: ngos } = useQuery({
+    queryKey: ['admin.ngos'],
+    queryFn: () => adminApi.ngos({ pageSize: 30 }),
+  });
+
+  const { data: donationsData } = useQuery({
+    queryKey: ['admin.allDonations', 'map'],
+    queryFn: () => adminApi.allDonations({ pageSize: 50 }),
+  });
+
+  const { data: liveTasks } = useQuery({
+    queryKey: ['admin.monitor'],
+    queryFn: () => adminApi.monitor(),
+  });
+
+  const hubs = useMemo(
+    () =>
+      (ngos?.items ?? [])
+        .map((ngo) => {
+          const point = coordsOf(ngo.address);
+          if (!point) return null;
+          return {
+            id: ngo.id,
+            name: ngo.name,
+            type: 'Partner organisation',
+            ...point,
+            address: formatAddress(ngo.address),
+            activeVolunteers: 0,
+          };
+        })
+        .filter((hub): hub is NonNullable<typeof hub> => Boolean(hub)),
+    [ngos?.items],
+  );
+
+  const approvedDonations = useMemo(
+    () =>
+      (donationsData?.items ?? [])
+        .map((donation) => {
+          const point = coordsOf(donation.pickupAddress);
+          if (!point) return null;
+          return {
+            id: donation.id,
+            title: donation.title,
+            donor: donation.donor?.name || donation.pickupAddress.city,
+            ...point,
+            servings: donation.servings,
+            freshWindow: remainingLabel(donation.expiresAt),
+          };
+        })
+        .filter((donation): donation is NonNullable<typeof donation> => Boolean(donation)),
+    [donationsData?.items],
+  );
+
+  const activeRoutes = useMemo(
+    () =>
+      (liveTasks ?? [])
+        .filter((task) => task.assignment.status !== 'completed' && task.assignment.status !== 'cancelled')
+        .map((task) => {
+          const pickup = coordsOf(task.donation.pickupAddress);
+          const drop = coordsOf(task.request?.dropAddress);
+          if (!pickup) return null;
+          return {
+            id: task.assignment.id,
+            courier: task.volunteer?.name || 'Courier',
+            status: task.assignment.status,
+            coords: drop ? [pickup, drop] : [pickup],
+          };
+        })
+        .filter((route): route is NonNullable<typeof route> => Boolean(route)),
+    [liveTasks],
+  );
+
+  const mapPoints = useMemo(
+    () => ({
+      hubs: hubs.map((hub) => ({ latitude: hub.latitude, longitude: hub.longitude })),
+      donations: approvedDonations.map((donation) => ({
+        latitude: donation.latitude,
+        longitude: donation.longitude,
+      })),
+      deliveries: activeRoutes.flatMap((route) => route.coords),
+      demand: (demandCells ?? []).map((cell) => ({
+        latitude: cell.latitude,
+        longitude: cell.longitude,
+      })),
+    }),
+    [activeRoutes, approvedDonations, demandCells, hubs],
+  );
+
+  const mapboxUrl = useMemo(
+    () => getAdminDashboardMapUrl({ layer: activeLayer, points: mapPoints, width: 800, height: 600, zoom: 12.6 }),
+    [activeLayer, mapPoints],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -190,7 +189,7 @@ export default function CentralLiveMap() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.mapboxEntitiesScroll}
                 >
-                  {HUBS.map((hub) => (
+                  {hubs.map((hub) => (
                     <TouchableOpacity
                       key={hub.id}
                       style={[
@@ -214,7 +213,7 @@ export default function CentralLiveMap() {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {APPROVED_DONATIONS.map((don) => (
+                  {approvedDonations.map((don) => (
                     <TouchableOpacity
                       key={don.id}
                       style={[
@@ -238,7 +237,7 @@ export default function CentralLiveMap() {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {ACTIVE_ROUTES.map((route) => (
+                  {activeRoutes.map((route) => (
                     <TouchableOpacity
                       key={route.id}
                       style={[
@@ -269,7 +268,7 @@ export default function CentralLiveMap() {
             <MapView style={styles.map} initialRegion={JAFFNA_REGION}>
               {/* Hub Markers */}
               {(activeLayer === 'all' || activeLayer === 'hubs') &&
-                HUBS.map((hub) => (
+                hubs.map((hub) => (
                   <Marker
                     key={hub.id}
                     coordinate={{ latitude: hub.latitude, longitude: hub.longitude }}
@@ -282,7 +281,7 @@ export default function CentralLiveMap() {
 
               {/* Donation Markers */}
               {(activeLayer === 'all' || activeLayer === 'donations') &&
-                APPROVED_DONATIONS.map((don) => (
+                approvedDonations.map((don) => (
                   <Marker
                     key={don.id}
                     coordinate={{ latitude: don.latitude, longitude: don.longitude }}
@@ -295,7 +294,7 @@ export default function CentralLiveMap() {
 
               {/* Active Delivery Routes */}
               {(activeLayer === 'all' || activeLayer === 'routes') &&
-                ACTIVE_ROUTES.map((route) => (
+                activeRoutes.map((route) => (
                   <Polyline
                     key={route.id}
                     coordinates={route.coords}
@@ -341,11 +340,11 @@ export default function CentralLiveMap() {
                   style={styles.entityBtn}
                   onPress={() => {
                     if (selectedEntity.entityType === 'donation') {
-                      router.push('/(admin)/approvals/donation/DN-8842' as any);
+                      router.push(`/(admin)/approvals/donation/${selectedEntity.id}` as any);
                     } else {
                       Alert.alert(
                         selectedEntity.name,
-                        `Managing operations for ${selectedEntity.name}. ${selectedEntity.activeVolunteers || 14} volunteers currently online.`,
+                        selectedEntity.address || selectedEntity.status || 'Live operations record',
                       );
                     }
                   }}
@@ -360,7 +359,7 @@ export default function CentralLiveMap() {
             <View style={styles.legendBottomRow}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#2B6CB0' }]} />
-                <Text style={styles.legendText}>Food Hubs (4)</Text>
+                <Text style={styles.legendText}>Food Hubs ({hubs.length})</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: '#0F7B4F' }]} />

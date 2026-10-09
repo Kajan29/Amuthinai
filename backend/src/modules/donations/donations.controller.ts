@@ -6,8 +6,10 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 import { ChatService } from 'src/modules/chat/chat.service';
 import { PointsService } from 'src/modules/points/points.service';
+import { UsersService } from 'src/modules/users/users.service';
 
 import { DonationsService } from './donations.service';
+import type { DonationDocument } from './schemas/donation.schema';
 import { CreateDonationDto } from './dto/create-donation.dto';
 import { QueryDonationsDto } from './dto/query-donations.dto';
 import { RejectDonationDto } from './dto/review-donation.dto';
@@ -21,6 +23,7 @@ export class DonationsController {
     private readonly donationsService: DonationsService,
     private readonly chatService: ChatService,
     private readonly pointsService: PointsService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Post()
@@ -32,9 +35,11 @@ export class DonationsController {
 
   @Get()
   @ApiOperation({ summary: 'Donors see their own donations; admins see all' })
-  findAll(@CurrentUser() user: AuthUser, @Query() query: QueryDonationsDto) {
+  async findAll(@CurrentUser() user: AuthUser, @Query() query: QueryDonationsDto) {
     const scope = user.role === Role.Donor ? { donorId: user.id } : undefined;
-    return this.donationsService.findAll(query, scope);
+    const page = await this.donationsService.findAll(query, scope);
+    if (user.role !== Role.Admin) return page;
+    return { ...page, items: await this.withDonor(page.items) };
   }
 
   @Get('stats')
@@ -50,8 +55,14 @@ export class DonationsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.donationsService.findById(id);
+  async findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    const donation =
+      user.role === Role.Donor
+        ? await this.donationsService.findOwned(id, user.id)
+        : await this.donationsService.findById(id);
+    if (user.role !== Role.Admin) return donation;
+    const [withDonor] = await this.withDonor([donation]);
+    return withDonor;
   }
 
   @Get(':id/timeline')
@@ -103,5 +114,22 @@ export class DonationsController {
   @Post(':id/messages')
   sendMessage(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: SendMessageDto) {
     return this.chatService.send(id, user, dto.body);
+  }
+
+  /** Admin views show who donated; donor contact details are never sent to other roles here. */
+  private async withDonor(donations: DonationDocument[]) {
+    const donorIds = [...new Set(donations.map((donation) => donation.donorId.toString()))];
+    const donors = await this.usersService.findManyByIds(donorIds);
+    const byId = new Map(donors.map((donor) => [donor.id as string, donor]));
+
+    return donations.map((donation) => {
+      const donor = byId.get(donation.donorId.toString());
+      return {
+        ...donation.toJSON(),
+        donor: donor
+          ? { id: donor.id as string, name: donor.name, phone: donor.phone, email: donor.email }
+          : null,
+      };
+    });
   }
 }

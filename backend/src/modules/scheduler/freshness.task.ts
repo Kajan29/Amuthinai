@@ -5,22 +5,26 @@ import { Cron } from '@nestjs/schedule';
 import { DonationStatus } from 'src/common/enums/donation-status.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { URGENT_THRESHOLD_MINUTES, minutesUntilExpiry } from 'src/common/utils/freshness.util';
+import { AssignmentsService } from 'src/modules/assignments/assignments.service';
 import { DonationsService } from 'src/modules/donations/donations.service';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
 import { UsersService } from 'src/modules/users/users.service';
 
 /**
- * FR3 — runs on the schedule in FRESHNESS_CRON (every 15 minutes by default) and does two
- * things: alerts on donations about to pass their safe window, and expires the ones that
- * already have so they stop appearing in volunteer task lists.
+ * FR3 — runs on the schedule in FRESHNESS_CRON (every 15 minutes by default). It alerts on
+ * donations about to pass their safe window, expires the ones that already have, and flags
+ * deliveries that are stuck at one step for too long.
  */
 @Injectable()
 export class FreshnessTask {
   private readonly logger = new Logger(FreshnessTask.name);
   private readonly systemActorId: string;
+  /** Alerts already sent in this process, so a 15-minute cron does not repeat them. */
+  private readonly alerted = new Set<string>();
 
   constructor(
     private readonly donationsService: DonationsService,
+    private readonly assignmentsService: AssignmentsService,
     private readonly notificationsService: NotificationsService,
     private readonly usersService: UsersService,
     config: ConfigService,
@@ -31,22 +35,37 @@ export class FreshnessTask {
 
   @Cron(process.env.FRESHNESS_CRON ?? '0 */15 * * * *', { name: 'freshness' })
   async run(): Promise<void> {
-    await Promise.all([this.alertOnUrgent(), this.expireStale()]);
+    await Promise.all([this.alertOnUrgent(), this.expireStale(), this.alertOnDelays()]);
   }
 
-  /** FR8 — nudge the assigned volunteer while there is still time to deliver. */
+  /** FR8 — warn the donor, the assigned volunteer and the admins while there is still time. */
   private async alertOnUrgent(): Promise<void> {
     const donations = await this.donationsService.findExpiringWithin(URGENT_THRESHOLD_MINUTES);
-    if (donations.length === 0) return;
+    const fresh = donations.filter((donation) => !this.alerted.has(`urgent:${donation.id as string}`));
+    if (fresh.length === 0) return;
 
-    this.logger.log(`${donations.length} donation(s) entering the urgent window`);
+    this.logger.log(`${fresh.length} donation(s) entering the urgent window`);
+    const live = await this.assignmentsService.findLiveForDonations(
+      fresh.map((donation) => donation.id as string),
+    );
 
-    for (const donation of donations) {
-      await this.notificationsService.sendToUsers([donation.donorId.toString()], {
-        title: 'Food is nearing its safe limit',
-        body: `${donation.title} expires in ${minutesUntilExpiry(donation.expiresAt)} minutes.`,
-        data: { donationId: donation.id as string },
-      });
+    for (const donation of fresh) {
+      const id = donation.id as string;
+      this.alerted.add(`urgent:${id}`);
+      const minutes = minutesUntilExpiry(donation.expiresAt);
+      const payload = {
+        title: 'Urgent: food nearing its safe limit',
+        body: `${donation.title} must be delivered within ${minutes} minutes.`,
+        type: 'urgent' as const,
+        data: { donationId: id },
+      };
+
+      const volunteerIds = live
+        .filter((assignment) => assignment.donationId.toString() === id)
+        .map((assignment) => assignment.volunteerId.toString());
+
+      await this.notificationsService.sendToUsers([donation.donorId.toString(), ...volunteerIds], payload);
+      await this.notificationsService.sendToAdmins(payload);
     }
   }
 
@@ -61,30 +80,63 @@ export class FreshnessTask {
       return;
     }
 
+    let expired = 0;
     for (const donation of stale) {
+      const id = donation.id as string;
       try {
-        await this.donationsService.transition(donation.id as string, DonationStatus.Expired, {
+        await this.donationsService.transition(id, DonationStatus.Expired, {
           actorId,
           actorRole: Role.Admin,
           note: 'Safe consumption window closed',
         });
+        expired += 1;
+        await this.assignmentsService.closeForExpiredDonation(id);
+        await this.notificationsService.sendToUsers([donation.donorId.toString()], {
+          title: 'Donation expired',
+          body: `${donation.title} passed its safe window before it could be delivered.`,
+          type: 'urgent',
+          data: { donationId: id },
+        });
       } catch (error) {
-        // An illegal transition here means another actor already closed it out.
-        this.logger.debug(`Skipped expiring ${donation.id as string}: ${(error as Error).message}`);
+        // Picked-up food cannot expire automatically; an admin follows up via delay alerts.
+        this.logger.debug(`Skipped expiring ${id}: ${(error as Error).message}`);
       }
     }
 
-    this.logger.log(`Expired ${stale.length} donation(s)`);
+    if (expired > 0) this.logger.log(`Expired ${expired} donation(s)`);
+  }
+
+  /** Live monitoring — tell admins about tasks stuck waiting for acceptance, pickup or delivery. */
+  private async alertOnDelays(): Promise<void> {
+    const delayed = await this.assignmentsService.findDelayed();
+    for (const assignment of delayed) {
+      const key = `delay:${assignment.id as string}:${assignment.status}:${assignment.pickedUpAt ? 'transit' : 'pickup'}`;
+      if (this.alerted.has(key)) continue;
+      this.alerted.add(key);
+
+      const donation = await this.donationsService
+        .findById(assignment.donationId.toString())
+        .catch(() => null);
+      if (!donation) continue;
+
+      const stage =
+        assignment.status === 'offered'
+          ? 'is still waiting for a volunteer to accept'
+          : assignment.pickedUpAt
+            ? 'has not been delivered yet'
+            : 'has not been picked up yet';
+
+      await this.notificationsService.sendToAdmins({
+        title: 'Delivery delayed',
+        body: `${donation.title} ${stage}.`,
+        type: 'delay',
+        data: { assignmentId: assignment.id as string, donationId: donation.id as string },
+      });
+    }
   }
 
   private async firstAdminId(): Promise<string | null> {
-    const admins = await this.usersService.findAll({
-      role: Role.Admin,
-      page: 1,
-      pageSize: 1,
-      skip: 0,
-    });
-
-    return (admins.items[0]?.id as string | undefined) ?? null;
+    const admins = await this.usersService.adminIds();
+    return admins[0] ?? null;
   }
 }

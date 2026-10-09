@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import type { CreateRequestPayload } from '@/api/requests.api';
 
-export interface RequestDraft extends Partial<CreateRequestPayload> {
+export interface RequestDraft extends Omit<Partial<CreateRequestPayload>, 'deliveryMethod'> {
   hubId?: string;
   hubName?: string;
   hubAddress?: string;
@@ -22,20 +22,8 @@ interface RequestDraftState {
 /** Recipient request being composed across the three wizard steps (FR5). */
 export const useRequestDraft = create<RequestDraftState>((set, get) => ({
   draft: {
-    hubId: '1',
-    hubName: 'Jaffna Town Relief Hub',
-    hubAddress: 'Hospital Road, Jaffna',
-    hubDistance: '0.6 km away',
-    mealCategory: 'Cooked Hot Meals (Rice, Sambar & Curry)',
-    servingsNeeded: 3,
-    dietaryPreference: 'Pure Vegetarian (No meat/eggs)',
-    deliveryMethod: 'Volunteer Doorstep Delivery',
+    servingsNeeded: 1,
     neededBy: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-    dropAddress: {
-      line1: 'Hospital Road',
-      city: 'Jaffna',
-      location: { type: 'Point', coordinates: [80.0167, 9.6615] },
-    },
   },
 
   update(patch) {
@@ -45,20 +33,8 @@ export const useRequestDraft = create<RequestDraftState>((set, get) => ({
   reset() {
     set({
       draft: {
-        hubId: '1',
-        hubName: 'Jaffna Town Relief Hub',
-        hubAddress: 'Hospital Road, Jaffna',
-        hubDistance: '0.6 km away',
-        mealCategory: 'Cooked Hot Meals (Rice, Sambar & Curry)',
-        servingsNeeded: 3,
-        dietaryPreference: 'Pure Vegetarian (No meat/eggs)',
-        deliveryMethod: 'Volunteer Doorstep Delivery',
+        servingsNeeded: 1,
         neededBy: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-        dropAddress: {
-          line1: 'Hospital Road',
-          city: 'Jaffna',
-          location: { type: 'Point', coordinates: [80.0167, 9.6615] },
-        },
       },
     });
   },

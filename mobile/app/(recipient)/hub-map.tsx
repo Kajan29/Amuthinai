@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -15,9 +16,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ngosApi } from '@/api/ngos.api';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants';
 import { useAuth } from '@/hooks/useAuth';
-import type { GeoPoint } from '@/types';
+import type { GeoPoint, Ngo } from '@/types';
 import { distanceKm, toGeoPoint } from '@/utils/geo';
 import { MapView, Marker } from '@/utils/maps';
 
@@ -38,104 +40,26 @@ export interface HubItem {
   tags: string[];
 }
 
-export const JAFFNA_HUBS: HubItem[] = [
-  {
-    id: 'hub-1',
-    name: 'Nallur Community Relief Hub',
-    category: 'Community Center',
-    address: 'Point Pedro Road, Nallur',
-    city: 'Nallur',
-    lat: 9.6738,
-    lng: 80.0336,
-    openHours: '09:00 AM - 06:00 PM',
-    status: 'Open Today',
-    availableMeals: 65,
-    mealType: 'Fresh Rice & Curry Packs',
-    phone: '+94212224589',
-    coordinator: 'Ramesh Kumar (Volunteer Lead)',
-    tags: ['🍱 Hot Cooked Meals', '♿ Accessible', '📦 Fast Pickup'],
-  },
-  {
-    id: 'hub-2',
-    name: 'Jaffna Central Distribution Center',
-    category: 'Regional Relief Base',
-    address: 'Hospital Road, Jaffna Town',
-    city: 'Jaffna',
-    lat: 9.6645,
-    lng: 80.0195,
-    openHours: '10:00 AM - 05:00 PM',
-    status: 'Open Today',
-    availableMeals: 40,
-    mealType: 'Family Grocery Kits & Bakery Packs',
-    phone: '+94212217890',
-    coordinator: 'Sivapalan (Field Officer)',
-    tags: ['🍞 Bakery Packs', '🍚 Raw Groceries', '👶 Child Nutrition'],
-  },
-  {
-    id: 'hub-3',
-    name: 'Chunnakam Market Relief Station',
-    category: 'Farmers Welfare Hub',
-    address: 'KKS Road, Chunnakam Junction',
-    city: 'Chunnakam',
-    lat: 9.7464,
-    lng: 80.0245,
-    openHours: '08:30 AM - 04:30 PM',
-    status: 'Open Today',
-    availableMeals: 52,
-    mealType: 'Hot Veg Meals & Fresh Veg Parcels',
-    phone: '+94212241234',
-    coordinator: 'T. Krishnan (Operations)',
-    tags: ['🥗 Vegetarian Only', '🥦 Farm Fresh', '🚲 Bicycle Friendly'],
-  },
-  {
-    id: 'hub-4',
-    name: 'Kopay Welfare & Community Kitchen',
-    category: 'Charity Kitchen',
-    address: 'Main Street, Kopay South',
-    city: 'Kopay',
-    lat: 9.6892,
-    lng: 80.0574,
-    openHours: '11:00 AM - 04:00 PM',
-    status: 'Open Today',
-    availableMeals: 28,
-    mealType: 'Lunch Packets (Dhal, Rice, Curry)',
-    phone: '+94212235678',
-    coordinator: 'Selvi Anandan (Kitchen Lead)',
-    tags: ['🍲 Hot Meals', '👵 Senior Priority', '🥤 Clean Water'],
-  },
-  {
-    id: 'hub-5',
-    name: 'Chavakachcheri Relief & Supply Hub',
-    category: 'Community Kitchen',
-    address: 'Kandy Road, Chavakachcheri',
-    city: 'Chavakachcheri',
-    lat: 9.6558,
-    lng: 80.1558,
-    openHours: '09:00 AM - 03:00 PM',
-    status: 'Open Today',
-    availableMeals: 35,
-    mealType: 'Dry Rations & Fresh Buns',
-    phone: '+94212278901',
-    coordinator: 'M. Sathananthan (Supervisor)',
-    tags: ['📦 Family Packs', '🍞 Fresh Bread', '🅿️ Ample Parking'],
-  },
-  {
-    id: 'hub-6',
-    name: 'Point Pedro Coastal Relief Point',
-    category: 'Coastal Outreach',
-    address: 'Beach Road, Point Pedro Harbor',
-    city: 'Point Pedro',
-    lat: 9.8247,
-    lng: 80.2333,
-    openHours: '10:30 AM - 03:30 PM',
-    status: 'Upcoming',
-    availableMeals: 20,
-    mealType: 'Cooked Lunch Packs & Milk Powder',
-    phone: '+94212263456',
-    coordinator: 'A. Ravindran (Coast Coordinator)',
-    tags: ['🌊 Coastal Support', '🥛 Milk & Dry Food', '📦 Takeaway Only'],
-  },
-];
+export function ngoToHub(ngo: Ngo): HubItem | null {
+  const coordinates = ngo.address?.location?.coordinates;
+  if (!coordinates || coordinates.length < 2) return null;
+  return {
+    id: ngo.id,
+    name: ngo.name,
+    category: 'Partner organisation',
+    address: [ngo.address.line1, ngo.address.city].filter(Boolean).join(', '),
+    city: ngo.address.city || ngo.address.district || '',
+    lat: coordinates[1],
+    lng: coordinates[0],
+    openHours: ngo.isActive ? 'Active partner' : 'Inactive',
+    status: ngo.isActive ? 'Open Today' : 'Upcoming',
+    availableMeals: 0,
+    mealType: 'Surplus food distribution',
+    phone: ngo.contactPhone,
+    coordinator: ngo.name,
+    tags: [],
+  };
+}
 
 export default function HubMapScreen() {
   const { user } = useAuth();
@@ -147,15 +71,28 @@ export default function HubMapScreen() {
   const userLng = user?.address?.location?.coordinates?.[0] || 80.0167;
   const userGeoPoint: GeoPoint = useMemo(() => toGeoPoint(userLat, userLng), [userLat, userLng]);
 
+  const { data: ngoPage } = useQuery({
+    queryKey: ['ngos'],
+    queryFn: () => ngosApi.list(),
+  });
+  const liveHubs = useMemo(
+    () => (ngoPage?.items ?? []).map(ngoToHub).filter((hub): hub is HubItem => Boolean(hub)),
+    [ngoPage?.items],
+  );
+
   // Selected Hub & View State
-  const [selectedHubId, setSelectedHubId] = useState<string>(JAFFNA_HUBS[0]!.id);
+  const [selectedHubId, setSelectedHubId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'meals' | 'nearby'>('all');
 
+  useEffect(() => {
+    if (!selectedHubId && liveHubs[0]) setSelectedHubId(liveHubs[0].id);
+  }, [liveHubs, selectedHubId]);
+
   // Compute live distances for each hub
   const hubsWithDistance = useMemo(() => {
-    return JAFFNA_HUBS.map((hub) => {
+    return liveHubs.map((hub) => {
       const hubGeo: GeoPoint = toGeoPoint(hub.lat, hub.lng);
       const distKm = distanceKm(userGeoPoint, hubGeo);
       const distanceText =
@@ -166,7 +103,7 @@ export default function HubMapScreen() {
         distanceText,
       };
     }).sort((a, b) => a.distanceKm - b.distanceKm);
-  }, [userGeoPoint]);
+  }, [liveHubs, userGeoPoint]);
 
   // Filtered Hubs
   const filteredHubs = useMemo(() => {

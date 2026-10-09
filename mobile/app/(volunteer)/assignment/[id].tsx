@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -15,39 +15,76 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { assignmentsApi } from '@/api/assignments.api';
-import { donationsApi } from '@/api/donations.api';
+import { assignmentsApi, isOpenTask } from '@/api/assignments.api';
 import { logo } from '@/constants';
 import { cloudinaryService } from '@/services/cloudinary';
-import { getRouteTransitMapUrl } from '@/services/mapbox';
+import { getMapboxStaticMapUrl, getRouteTransitMapUrl } from '@/services/mapbox';
+import { toLatLng } from '@/utils/geo';
+import { etaMinutes, formatKm, nextStepHref } from '@/utils/tasks';
+
+const FOOD_LABEL: Record<string, string> = {
+  cooked: 'Hot Food',
+  raw: 'Fresh Produce',
+  packaged: 'Packaged',
+  bakery: 'Bakery',
+  dairy: 'Dairy',
+  beverage: 'Beverage',
+};
+
+const HANDLING_LABEL: Record<string, string> = {
+  keep_warm: 'Keep warm',
+  requires_refrigeration: 'Keep refrigerated',
+  individually_packed: 'Individually packed',
+  fragile_liquid: 'Fragile / liquid',
+};
+
+const formatClock = (iso?: string) =>
+  iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
 
 export default function AssignmentDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const queryClient = useQueryClient();
 
-  const mapboxRouteUrl = getRouteTransitMapUrl({
-    origin: { latitude: 9.6740, longitude: 80.0290 },
-    destination: { latitude: 9.6630, longitude: 80.0245 },
+  const [readinessPhotoUrl, setReadinessPhotoUrl] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const task = useQuery({
+    queryKey: ['task', id],
+    queryFn: () => assignmentsApi.details(id),
+    enabled: Boolean(id),
   });
 
-  const assignment = useQuery({
-    queryKey: ['assignment', id],
-    queryFn: () => assignmentsApi.byId(id),
-  });
-
-  const donation = useQuery({
-    queryKey: ['donation', assignment.data?.donationId],
-    queryFn: () => donationsApi.byId(assignment.data!.donationId),
-    enabled: Boolean(assignment.data?.donationId),
-  });
+  const refreshLists = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['volunteer.nearby'] }),
+      queryClient.invalidateQueries({ queryKey: ['volunteer.history'] }),
+    ]);
 
   const accept = useMutation({
     mutationFn: () => assignmentsApi.accept(id),
-    onSuccess: () => {
-      router.push(`/(volunteer)/pickup/${id}`);
+    async onSuccess(assignment) {
+      await refreshLists();
+      router.replace(`/(volunteer)/pickup/${assignment.id}`);
+    },
+    onError(error) {
+      Alert.alert('Could not accept task', (error as Error).message);
+      void task.refetch();
+      void refreshLists();
     },
   });
 
-  if (assignment.isPending || donation.isPending) {
+  const decline = useMutation({
+    mutationFn: () => assignmentsApi.decline(id),
+    async onSuccess() {
+      await refreshLists();
+      router.replace('/(volunteer)/dashboard');
+    },
+    onError(error) {
+      Alert.alert('Could not decline task', (error as Error).message);
+    },
+  });
+
+  if (task.isPending) {
     return (
       <SafeAreaView style={styles.centerContainer}>
         <ActivityIndicator color="#5A1626" size="large" />
@@ -56,20 +93,66 @@ export default function AssignmentDetail() {
     );
   }
 
-  // Get data or fallback
-  const donationData = donation.data;
+  if (task.isError || !task.data) {
+    return (
+      <SafeAreaView style={styles.centerContainer}>
+        <Ionicons name="alert-circle-outline" size={40} color="#5A1626" />
+        <Text style={styles.loadingText}>
+          {(task.error as Error | null)?.message ?? 'This task is no longer available.'}
+        </Text>
+        <TouchableOpacity style={styles.supportLink} onPress={() => router.back()}>
+          <Text style={styles.supportLinkText}>Go back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
-  const taskId = id === 'asgn-vol-402' ? 'VOL-402' : id.slice(-4).toUpperCase();
-  const title = donationData?.title?.includes('Biryani')
-    ? '25 Fresh Veg Biryani Packets'
-    : donationData?.title || '25 Fresh Veg Biryani Packets';
+  const view = task.data;
+  const { donation, assignment } = view;
+  const status = assignment.status;
+  const isOffered = status === 'offered';
+  const isAccepted = status === 'accepted';
+  const isCompleted = status === 'completed';
+  const pickedUp = donation.status === 'picked_up' || donation.status === 'in_transit';
+  const stepIndex = isCompleted || donation.status === 'delivered' ? 2 : pickedUp ? 1 : 0;
 
-  const pickupDonor = donationData?.pickupAddress?.line1 || 'Nallur Community Hall Kitchen';
+  const taskId = (isOpenTask(id) ? donation.id : assignment.id).slice(-6).toUpperCase();
+  const title = donation.title;
+  const foodBadge = FOOD_LABEL[donation.foodType] ?? donation.foodType;
+  const packaging =
+    donation.packagingType ||
+    (donation.handling ?? []).map((h) => HANDLING_LABEL[h] ?? h).join(' • ') ||
+    `${donation.servings} servings`;
+
+  const pickupName = donation.pickupAddress.line1;
+  const donorName = view.donor?.name ?? 'Shown after you accept';
+  const donorPhone = view.donor?.phone ?? null;
   const instructions =
-    donationData?.description || 'Side gate entrance, ask for Master Chef Murugan.';
+    donation.handoverInstructions || donation.description || 'No special handover instructions.';
 
-  const [readinessPhotoUrl, setReadinessPhotoUrl] = useState<string | null>(null);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const pickupCoords = toLatLng(donation.pickupAddress.location);
+  const drop = view.request?.dropAddress;
+  const dropCoords = drop ? toLatLng(drop.location) : null;
+  const totalKm = view.distanceKm + (view.routeKm ?? 0);
+  const mapboxRouteUrl = dropCoords
+    ? getRouteTransitMapUrl({ origin: pickupCoords, destination: dropCoords })
+    : getMapboxStaticMapUrl({
+        center: pickupCoords,
+        zoom: 14,
+        width: 600,
+        height: 440,
+        markers: [{ ...pickupCoords, label: 'a', color: '5A1626' }],
+      });
+
+  const statusLabel = isCompleted
+    ? 'Delivered & Verified'
+    : pickedUp
+      ? 'Picked Up • In Transit'
+      : isAccepted
+        ? 'Assigned to You'
+        : view.isOpen
+          ? 'Open • Available to Claim'
+          : 'Offered to You';
 
   async function handleCaptureReadinessPhoto(source: 'camera' | 'gallery') {
     try {
@@ -79,10 +162,7 @@ export default function AssignmentDetail() {
       setIsUploadingPhoto(true);
       const result = await cloudinaryService.uploadImage(uri, 'amuthinai/assignment-readiness');
       setReadinessPhotoUrl(result.url);
-      Alert.alert(
-        'Inspection Photo Stored in Cloudinary! ☁️',
-        'Pre-ride thermal bag and vehicle check photo saved securely to Cloudinary.'
-      );
+      Alert.alert('Inspection photo saved', 'Your bag and vehicle check photo was uploaded.');
     } catch (err: any) {
       Alert.alert('Upload Error', err?.message || 'Could not upload photo to Cloudinary.');
     } finally {
@@ -90,39 +170,53 @@ export default function AssignmentDetail() {
     }
   }
 
-  function handleStartRide() {
-    accept.mutate();
+  function handlePrimary() {
+    if (isOffered) {
+      accept.mutate();
+      return;
+    }
+    if (isAccepted) router.push(nextStepHref(view));
+  }
+
+  function handleDecline() {
+    Alert.alert('Decline this task?', 'It will be offered to other volunteers.', [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Decline', style: 'destructive', onPress: () => decline.mutate() },
+    ]);
   }
 
   function handleCallDonor() {
-    void Linking.openURL('tel:+94772345678');
+    if (!donorPhone) {
+      Alert.alert('Contact hidden', 'The donor’s phone number is shown once you accept the task.');
+      return;
+    }
+    void Linking.openURL(`tel:${donorPhone}`);
   }
 
   function handleChatDonor() {
-    Alert.alert('Donor Direct Chat', `Connected to ${pickupDonor}. Message sent: "I am en route for pickup."`);
+    if (!donorPhone) {
+      Alert.alert('Contact hidden', 'You can message the donor once you accept the task.');
+      return;
+    }
+    void Linking.openURL(`sms:${donorPhone}`);
   }
 
   function handleReportDelay() {
-    Alert.alert(
-      'Dispatch Support & Concern',
-      'Report a delay or roadblock to Amuthinai dispatch, or call directly:',
-      [
-        {
-          text: 'Raise Concern for This Order',
-          onPress: () =>
-            router.push({
-              pathname: '/(volunteer)/raise-concern',
-              params: { assignmentId: id },
-            }),
-        },
-        {
-          text: 'Call Dispatch Hotline',
-          onPress: () => void Linking.openURL('tel:+94212223456'),
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    router.push({
+      pathname: '/(volunteer)/raise-concern',
+      params: isOpenTask(id) ? { donationId: donation.id } : { assignmentId: assignment.id },
+    });
   }
+
+  const primaryLabel = isOffered
+    ? 'Accept Task & Start Ride →'
+    : isAccepted
+      ? pickedUp
+        ? 'Continue to Drop-off →'
+        : 'Start Ride to Pickup Point →'
+      : isCompleted
+        ? 'Delivery Completed ✓'
+        : 'Task Closed';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -140,7 +234,7 @@ export default function AssignmentDetail() {
 
         <View style={styles.headerCenter}>
           <Image source={logo} style={styles.headerLogo} resizeMode="contain" />
-          <Text style={styles.headerTitle}>ACTIVE ASSIGNMENT</Text>
+          <Text style={styles.headerTitle}>{isOffered ? 'TASK DETAILS' : 'ACTIVE ASSIGNMENT'}</Text>
           <Text style={styles.headerSubtitle}>Task #{taskId}</Text>
         </View>
 
@@ -161,7 +255,6 @@ export default function AssignmentDetail() {
         {/* ─── 3-STEP PROGRESS STEPPER ─── */}
         <View style={styles.stepperContainer}>
           <View style={styles.stepperLineRow}>
-            {/* Step 1: Route (Active - Maroon Paper Plane) */}
             <View style={styles.stepperItem}>
               <View style={styles.stepCircleActive}>
                 <Ionicons name="navigate" size={14} color="#FFFFFF" style={{ transform: [{ rotate: '45deg' }] }} />
@@ -169,26 +262,34 @@ export default function AssignmentDetail() {
               <Text style={styles.stepLabelActive}>Route</Text>
             </View>
 
-            {/* Connecting Line: Step 1 -> Step 2 */}
-            <View style={styles.stepLineMaroon} />
+            <View style={stepIndex >= 1 ? styles.stepLineMaroon : styles.stepLineGray} />
 
-            {/* Step 2: Pickup (Inactive) */}
             <View style={styles.stepperItem}>
-              <View style={styles.stepCircleInactive}>
-                <Text style={styles.stepNumInactive}>2</Text>
-              </View>
-              <Text style={styles.stepLabelInactive}>Pickup</Text>
+              {stepIndex >= 1 ? (
+                <View style={styles.stepCircleActive}>
+                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                </View>
+              ) : (
+                <View style={styles.stepCircleInactive}>
+                  <Text style={styles.stepNumInactive}>2</Text>
+                </View>
+              )}
+              <Text style={stepIndex >= 1 ? styles.stepLabelActive : styles.stepLabelInactive}>Pickup</Text>
             </View>
 
-            {/* Connecting Line: Step 2 -> Step 3 */}
-            <View style={styles.stepLineGray} />
+            <View style={stepIndex >= 2 ? styles.stepLineMaroon : styles.stepLineGray} />
 
-            {/* Step 3: Delivered (Inactive) */}
             <View style={styles.stepperItem}>
-              <View style={styles.stepCircleInactive}>
-                <Text style={styles.stepNumInactive}>3</Text>
-              </View>
-              <Text style={styles.stepLabelInactive}>Delivered</Text>
+              {stepIndex >= 2 ? (
+                <View style={styles.stepCircleActive}>
+                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                </View>
+              ) : (
+                <View style={styles.stepCircleInactive}>
+                  <Text style={styles.stepNumInactive}>3</Text>
+                </View>
+              )}
+              <Text style={stepIndex >= 2 ? styles.stepLabelActive : styles.stepLabelInactive}>Delivered</Text>
             </View>
           </View>
         </View>
@@ -197,17 +298,18 @@ export default function AssignmentDetail() {
         <View style={styles.statusBanner}>
           <View style={styles.statusLeft}>
             <View style={styles.greenStatusDot} />
-            <Text style={styles.statusAssignedText}>Assigned to You</Text>
+            <Text style={styles.statusAssignedText}>{statusLabel}</Text>
           </View>
           <View style={styles.statusRight}>
             <Ionicons name="time-outline" size={15} color="#1F2937" />
-            <Text style={styles.statusTimeText}>12:45 PM – 1:15 PM</Text>
+            <Text style={styles.statusTimeText}>
+              {formatClock(donation.readyFrom ?? donation.cookedAt)} – {formatClock(donation.expiresAt)}
+            </Text>
           </View>
         </View>
 
         {/* ─── FOOD DETAILS CARD ─── */}
         <View style={styles.card}>
-          {/* Top Food Row */}
           <View style={styles.foodRow}>
             <View style={styles.foodIconBox}>
               <Ionicons name="cube-outline" size={26} color="#701A2B" />
@@ -216,36 +318,37 @@ export default function AssignmentDetail() {
               <View style={styles.foodTitleRow}>
                 <Text style={styles.foodTitle}>{title}</Text>
                 <View style={styles.hotFoodBadge}>
-                  <Text style={styles.hotFoodText}>Hot Food</Text>
+                  <Text style={styles.hotFoodText}>{foodBadge}</Text>
                 </View>
               </View>
               <View style={styles.foodSubtitleRow}>
                 <Ionicons name="checkmark-circle" size={14} color="#059669" />
-                <Text style={styles.foodSubtitle}>Insulated Hot Thermal Boxes</Text>
+                <Text style={styles.foodSubtitle}>
+                  {donation.servings} servings • {packaging}
+                </Text>
               </View>
             </View>
           </View>
 
           <View style={styles.divider} />
 
-          {/* Pickup Donor Info */}
           <View style={styles.donorSection}>
             <View style={styles.donorInfoCol}>
               <Text style={styles.donorSubLabel}>PICKUP DONOR</Text>
-              <Text style={styles.donorName}>{pickupDonor}</Text>
+              <Text style={styles.donorName}>{donorName}</Text>
+              <Text style={styles.donorSubLabel}>{pickupName}</Text>
             </View>
 
-            {/* Call & Chat Circular Buttons */}
             <View style={styles.donorActionButtons}>
               <TouchableOpacity
-                style={styles.donorCallButton}
+                style={[styles.donorCallButton, !donorPhone && { opacity: 0.5 }]}
                 onPress={handleCallDonor}
                 activeOpacity={0.8}
               >
                 <Ionicons name="call" size={16} color="#FFFFFF" />
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.donorChatButton}
+                style={[styles.donorChatButton, !donorPhone && { opacity: 0.5 }]}
                 onPress={handleChatDonor}
                 activeOpacity={0.8}
               >
@@ -254,7 +357,6 @@ export default function AssignmentDetail() {
             </View>
           </View>
 
-          {/* Instructions Box */}
           <View style={styles.instructionsBox}>
             <Ionicons name="information-circle-outline" size={17} color="#701A2B" style={styles.infoIcon} />
             <Text style={styles.instructionsText}>
@@ -269,58 +371,72 @@ export default function AssignmentDetail() {
           <Text style={styles.transitTitle}>Transit Path</Text>
           <View style={styles.transitMetricRow}>
             <Ionicons name="location-sharp" size={13} color="#1F2937" />
-            <Text style={styles.transitMetricText}>3.8 km total • ~14 mins</Text>
+            <Text style={styles.transitMetricText}>
+              {formatKm(totalKm)} total • ~{etaMinutes(totalKm)} mins
+            </Text>
           </View>
         </View>
 
-        {/* Transit Route Map Card */}
         <View style={styles.mapCard}>
           <View style={styles.mapCanvas}>
-            {/* Background Mapbox transit route canvas */}
             <View style={styles.transitMapBg}>
               <Image
                 source={{ uri: mapboxRouteUrl }}
                 style={styles.mapboxRouteImage}
                 resizeMode="cover"
               />
-              <View style={styles.transitDashedPath} />
 
-              {/* Point A Marker & Callout */}
               <View style={styles.markerAPosition}>
                 <View style={styles.markerACircle}>
                   <Text style={styles.markerLetter}>A</Text>
                 </View>
                 <View style={styles.calloutBoxA}>
                   <Text style={styles.calloutSubLabel}>PICKUP POINT</Text>
-                  <Text style={styles.calloutTitle}>Nallur Temple Road</Text>
+                  <Text style={styles.calloutTitle} numberOfLines={1}>{pickupName}</Text>
                 </View>
               </View>
 
-              {/* Moving Scooter Icon */}
-              <View style={styles.scooterBadge}>
-                <Text style={styles.scooterEmoji}>🛵</Text>
-              </View>
-
-              {/* Point B Marker & Callout */}
               <View style={styles.markerBPosition}>
                 <View style={styles.calloutBoxB}>
-                  <Text style={styles.calloutSubLabel}>DROPOFF HUB</Text>
-                  <Text style={styles.calloutTitle}>St. John's Community Hub</Text>
+                  <Text style={styles.calloutSubLabel}>DROPOFF</Text>
+                  <Text style={styles.calloutTitle} numberOfLines={1}>
+                    {drop ? (view.recipient?.name ?? drop.line1) : 'Matched on acceptance'}
+                  </Text>
                 </View>
                 <View style={styles.markerBCircle}>
                   <Text style={styles.markerLetter}>B</Text>
                 </View>
               </View>
 
-              {/* Compass / Locate Button */}
-              <TouchableOpacity style={styles.compassButton} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.compassButton}
+                activeOpacity={0.8}
+                onPress={() => router.push('/(volunteer)/map')}
+              >
                 <Ionicons name="locate" size={16} color="#4B5563" />
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
+        {view.request && (
+          <View style={styles.instructionsBox}>
+            <Ionicons name="people-outline" size={17} color="#701A2B" style={styles.infoIcon} />
+            <Text style={styles.instructionsText}>
+              <Text style={styles.instructionsBold}>Recipient: </Text>
+              {view.request.servingsNeeded} servings needed
+              {view.request.familySize ? ` • family of ${view.request.familySize}` : ''}
+              {view.request.dietaryRequirements.length
+                ? ` • ${view.request.dietaryRequirements.join(', ')}`
+                : ''}
+              {view.request.notes ? `\n${view.request.notes}` : ''}
+              {view.recipient?.phone ? `\nContact: ${view.recipient.phone}` : ''}
+            </Text>
+          </View>
+        )}
+
         {/* ─── PRE-RIDE READINESS & GEAR PHOTO (CLOUDINARY) ─── */}
+        {!isCompleted && (
         <View style={styles.readinessCard}>
           <View style={styles.readinessHeaderRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -393,20 +509,34 @@ export default function AssignmentDetail() {
             </View>
           )}
         </View>
+        )}
 
         {/* ─── BOTTOM ACTION FOOTER ─── */}
         <TouchableOpacity
-          style={styles.startRideButton}
-          onPress={handleStartRide}
-          disabled={accept.isPending}
+          style={[styles.startRideButton, !(isOffered || isAccepted) && { opacity: 0.6 }]}
+          onPress={handlePrimary}
+          disabled={accept.isPending || !(isOffered || isAccepted)}
           activeOpacity={0.85}
         >
           {accept.isPending ? (
             <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
-            <Text style={styles.startRideButtonText}>Start Ride to Pickup Point →</Text>
+            <Text style={styles.startRideButtonText}>{primaryLabel}</Text>
           )}
         </TouchableOpacity>
+
+        {isOffered && (
+          <TouchableOpacity
+            style={styles.supportLink}
+            onPress={handleDecline}
+            disabled={decline.isPending}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.supportLinkText, { color: '#B91C1C' }]}>
+              {decline.isPending ? 'Declining…' : 'Decline this task'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={styles.supportLink}

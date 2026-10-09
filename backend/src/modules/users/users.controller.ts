@@ -5,6 +5,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/common/enums/role.enum';
 
+import { ChangeRoleDto, SetActiveDto } from './dto/admin-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateVolunteerProfileDto } from './dto/update-volunteer-profile.dto';
@@ -70,5 +71,27 @@ export class UsersController {
   @ApiOperation({ summary: 'Flag a volunteer for review' })
   flag(@Param('id') id: string, @Body('reason') reason?: string) {
     return this.usersService.flag(id, reason ?? 'Flagged by admin');
+  }
+
+  @Patch(':id/role')
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Change a user role (admin only)' })
+  changeRole(
+    @CurrentUser('id') adminId: string,
+    @Param('id') id: string,
+    @Body() dto: ChangeRoleDto,
+  ) {
+    return this.usersService.changeRole(id, dto.role, adminId);
+  }
+
+  @Patch(':id/status')
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Activate or deactivate a user account' })
+  setStatus(
+    @CurrentUser('id') adminId: string,
+    @Param('id') id: string,
+    @Body() dto: SetActiveDto,
+  ) {
+    return this.usersService.setActive(id, dto.isActive, adminId);
   }
 }

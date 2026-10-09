@@ -1,1 +1,6 @@
-export { CreateEnquiryDto, ResolveEnquiryDto } from './create-enquiry.dto';
+export {
+  CreateEnquiryDto,
+  QueryEnquiriesDto,
+  RespondEnquiryDto,
+  ResolveEnquiryDto,
+} from './create-enquiry.dto';

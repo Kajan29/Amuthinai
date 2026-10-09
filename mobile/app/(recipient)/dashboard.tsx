@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MapView, Marker, Polyline } from '@/utils/maps';
 
+import { notificationsApi } from '@/api/notifications.api';
 import { queryClient } from '@/api/queryClient';
 import { requestsApi, type CreateRequestPayload } from '@/api/requests.api';
 import { usersApi } from '@/api/users.api';
@@ -33,10 +34,7 @@ import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import type { FoodRequest } from '@/types';
 import {
   registerForPushNotifications,
-  getNotificationHistory,
   markNotificationsAsRead,
-  notifyVolunteerAssigned,
-  notifyTrackingStatusUpdate,
   notifyMealDonationRequested,
   type AppNotificationItem,
 } from '@/services/notifications';
@@ -56,48 +54,6 @@ interface DistributionItem {
   donorName?: string;
   servings?: number;
 }
-
-const DEFAULT_DISTRIBUTIONS: DistributionItem[] = [
-  {
-    id: 'dist-1',
-    foodType: 'Hot Meals',
-    title: 'Hot Meals',
-    subtitle: 'Rice & Curry parcel',
-    badge: '35 ready',
-    badgeBg: '#F59E0B',
-    actionText: 'Free Pick',
-    donorName: 'Nallur Community Kitchen',
-    servings: 35,
-    imageUrl:
-      'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'dist-2',
-    foodType: 'Groceries',
-    title: 'Groceries',
-    subtitle: 'Dhal, Rice & Veg',
-    badge: '14 kits',
-    badgeBg: '#16A34A',
-    actionText: 'Family Pack',
-    donorName: 'Jaffna Farmers Collective',
-    servings: 14,
-    imageUrl:
-      'https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'dist-3',
-    foodType: 'Bakery Food',
-    title: 'Bakery Food',
-    subtitle: 'Fresh loaf & buns',
-    badge: '20 packs',
-    badgeBg: '#B45309',
-    actionText: 'Evening kit',
-    donorName: 'Hospital Road Bakery',
-    servings: 20,
-    imageUrl:
-      'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=400&q=80',
-  },
-];
 
 export default function RecipientDashboard() {
   const { t } = useTranslation();
@@ -124,7 +80,7 @@ export default function RecipientDashboard() {
 
   const currentUser = profileUser || authUser;
   // Whoever logs in, their dynamic name is displayed!
-  const displayName = currentUser?.name || 'Selvi Ramanathan';
+  const displayName = currentUser?.name || 'Recipient';
   const hubCity = currentUser?.address?.city || 'Nallur';
   const hubDistrict = currentUser?.address?.district || 'Jaffna';
 
@@ -219,9 +175,18 @@ export default function RecipientDashboard() {
   }, []);
 
   const loadNotifications = async () => {
-    const list = await getNotificationHistory();
+    const page = await notificationsApi.list({ pageSize: 30 });
+    const list: AppNotificationItem[] = page.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      body: item.body,
+      type: 'system',
+      timestamp: item.createdAt,
+      read: item.read,
+      data: item.data,
+    }));
     setNotificationsList(list);
-    setUnreadNotifCount(list.filter((n) => !n.read).length);
+    setUnreadNotifCount(page.unread);
   };
 
   const toggleSidebar = () => {
@@ -231,28 +196,22 @@ export default function RecipientDashboard() {
   const handleNotifications = async () => {
     await loadNotifications();
     setNotificationsModalVisible(true);
-    await markNotificationsAsRead();
+    await notificationsApi.markAllRead().catch(() => markNotificationsAsRead());
     setUnreadNotifCount(0);
   };
 
   // Combine real backend distributions with UI cards
-  const displayDistributions: DistributionItem[] =
-    distributions?.items && distributions.items.length > 0
-      ? distributions.items.map((item, idx) => ({
-          id: item.id,
-          foodType: item.title,
-          title: item.title,
-          subtitle: `${item.servings} Servings Available`,
-          badge: `${item.servings} ready`,
-          badgeBg: idx % 2 === 0 ? '#F59E0B' : '#16A34A',
-          actionText: 'Free Pick',
-          donorName: 'Community Donor',
-          servings: item.servings,
-          imageUrl:
-            item.photoUrls?.[0] ||
-            DEFAULT_DISTRIBUTIONS[idx % DEFAULT_DISTRIBUTIONS.length]!.imageUrl,
-        }))
-      : DEFAULT_DISTRIBUTIONS;
+  const displayDistributions: DistributionItem[] = (distributions?.items ?? []).map((item, idx) => ({
+    id: item.id,
+    foodType: item.title,
+    title: item.title,
+    subtitle: `${item.servings} Servings Available`,
+    badge: `${item.servings} ready`,
+    badgeBg: idx % 2 === 0 ? '#F59E0B' : '#16A34A',
+    actionText: 'Request',
+    servings: item.servings,
+    imageUrl: item.photoUrls?.[0] || '',
+  }));
 
   // Dynamic Mapbox Tracking URL centered on real pinned coordinates
   const dropLng = currentTargetRequest?.dropAddress?.location?.coordinates?.[0] || 80.0167;
@@ -712,6 +671,9 @@ export default function RecipientDashboard() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.distributionCardsScroll}
           >
+            {displayDistributions.length === 0 ? (
+              <Text style={styles.sectionSubheading}>No approved donations are available right now.</Text>
+            ) : null}
             {displayDistributions.map((dist) => (
               <TouchableOpacity
                 key={dist.id}
@@ -720,7 +682,11 @@ export default function RecipientDashboard() {
                 onPress={() => setSelectedDistribution(dist)}
               >
                 <View style={styles.distImageWrapper}>
-                  <Image source={{ uri: dist.imageUrl }} style={styles.distImage} />
+                  {dist.imageUrl ? (
+                    <Image source={{ uri: dist.imageUrl }} style={styles.distImage} />
+                  ) : (
+                    <View style={[styles.distImage, { backgroundColor: '#F3E8E2' }]} />
+                  )}
                   <View style={[styles.distBadge, { backgroundColor: dist.badgeBg }]}>
                     <Text style={styles.distBadgeText}>{dist.badge}</Text>
                   </View>
@@ -825,7 +791,7 @@ export default function RecipientDashboard() {
                   <Text style={styles.distributionStatusSub}>
                     {isTargetCurrentActive
                       ? currentTargetRequest?.status === 'matched'
-                        ? 'Verified courier Ramesh Kumar is en route with your meal package.'
+                        ? `${liveTrackingData?.volunteer?.name || 'Your volunteer'} is on the way with your meal.`
                         : 'Your meal request is being matched with the closest available relief hub.'
                       : 'This food delivery was successfully completed to your doorstep.'}
                   </Text>
@@ -894,17 +860,30 @@ export default function RecipientDashboard() {
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Hub Name:</Text>
-                  <Text style={styles.infoValue}>Nallur Community Relief Hub</Text>
+                  <Text style={styles.infoValue}>
+                    {liveTrackingData?.donation?.pickupAddress?.city ||
+                      currentTargetRequest?.dropAddress?.city ||
+                      'Pickup pending'}
+                  </Text>
                 </View>
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Hub Address:</Text>
-                  <Text style={styles.infoValue}>Point Pedro Road, Nallur, Jaffna</Text>
+                  <Text style={styles.infoValue}>
+                    {[
+                      liveTrackingData?.donation?.pickupAddress?.city,
+                      liveTrackingData?.donation?.pickupAddress?.district,
+                    ]
+                      .filter(Boolean)
+                      .join(', ') || 'Address shared after assignment'}
+                  </Text>
                 </View>
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Hub Coordinator:</Text>
-                  <Text style={styles.infoValue}>Ramesh Kumar (Volunteer Lead)</Text>
+                  <Text style={styles.infoValue}>
+                    {liveTrackingData?.volunteer?.name || 'Assigned after matching'}
+                  </Text>
                 </View>
 
                 <View style={styles.infoRow}>
@@ -942,8 +921,7 @@ export default function RecipientDashboard() {
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={styles.volunteerName}>
-                        {liveTrackingData?.volunteer?.name ||
-                          (isTargetCurrentActive ? 'Ramesh Kumar' : 'Verified Relief Courier')}
+                        {liveTrackingData?.volunteer?.name || 'Waiting for a volunteer'}
                       </Text>
                       <View style={styles.verifiedBadge}>
                         <Ionicons name="checkmark-circle" size={12} color="#0F7B4F" />
@@ -951,8 +929,10 @@ export default function RecipientDashboard() {
                       </View>
                     </View>
                     <Text style={styles.volunteerVehicle}>
-                      {liveTrackingData?.volunteer?.vehicleType || 'Motorbike (WP BE-4821)'} • Rating: ★{' '}
-                      {liveTrackingData?.volunteer?.rating || '4.9'}
+                      {liveTrackingData?.volunteer?.vehicleType || 'Vehicle not set'}
+                      {liveTrackingData?.volunteer?.completedDeliveries
+                        ? ` • ${liveTrackingData.volunteer.completedDeliveries} deliveries`
+                        : ''}
                     </Text>
                   </View>
 
@@ -960,7 +940,7 @@ export default function RecipientDashboard() {
                     style={styles.callVolunteerBtn}
                     onPress={() =>
                       Linking.openURL(
-                        `tel:${liveTrackingData?.volunteer?.phone || '+94771234567'}`,
+                        `tel:${liveTrackingData?.volunteer?.phone || ''}`,
                       )
                     }
                   >
@@ -1175,7 +1155,7 @@ export default function RecipientDashboard() {
                     {isTargetCurrentActive && (
                       <Marker
                         coordinate={{ latitude: volunteerLat, longitude: volunteerLng }}
-                        title={`Volunteer: ${liveTrackingData?.volunteer?.name || 'Ramesh Kumar'}`}
+                        title={`Volunteer: ${liveTrackingData?.volunteer?.name || 'Waiting'}`}
                         description="Courier In Transit (~15 mins away)"
                       >
                         <View style={styles.mapMarkerVolunteer}>
@@ -1248,11 +1228,9 @@ export default function RecipientDashboard() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={styles.volunteerName}>
                       {liveTrackingData?.volunteer?.name ||
-                        (isTargetCurrentActive
-                          ? currentTargetRequest?.status === 'matched'
-                            ? 'Ramesh Kumar'
-                            : 'Matching Volunteer...'
-                          : 'Verified Relief Courier')}
+                        (currentTargetRequest?.status === 'matched'
+                          ? 'Volunteer assigned'
+                          : 'Matching a volunteer...')}
                     </Text>
                     <View style={styles.verifiedBadge}>
                       <Ionicons name="checkmark-circle" size={14} color="#0F7B4F" />
@@ -1260,8 +1238,10 @@ export default function RecipientDashboard() {
                     </View>
                   </View>
                   <Text style={styles.volunteerVehicle}>
-                    {liveTrackingData?.volunteer?.vehicleType || 'Motorbike (WP BE-4821)'} • Rating: ★{' '}
-                    {liveTrackingData?.volunteer?.rating || '4.9'}
+                    {liveTrackingData?.volunteer?.vehicleType || 'Vehicle not set'}
+                    {liveTrackingData?.volunteer?.completedDeliveries
+                      ? ` • ${liveTrackingData.volunteer.completedDeliveries} deliveries`
+                      : ''}
                   </Text>
                 </View>
 
@@ -1269,7 +1249,7 @@ export default function RecipientDashboard() {
                   style={styles.callVolunteerBtn}
                   onPress={() =>
                     Linking.openURL(
-                      `tel:${liveTrackingData?.volunteer?.phone || '+94771234567'}`,
+                      `tel:${liveTrackingData?.volunteer?.phone || ''}`,
                     )
                   }
                 >
@@ -1532,74 +1512,6 @@ export default function RecipientDashboard() {
                   })}
                 </View>
               )}
-
-              {/* Notification Simulator for User Test */}
-              <View style={styles.testNotifSection}>
-                <Text style={styles.testNotifSectionTitle}>
-                  🧪 Test Instant Phone Notifications
-                </Text>
-                <Text style={styles.testNotifSectionSubtitle}>
-                  Tap below to test real phone pop-up alerts:
-                </Text>
-
-                <View style={styles.testBtnGrid}>
-                  <TouchableOpacity
-                    style={[styles.testActionBtn, { backgroundColor: '#EBF5FF' }]}
-                    onPress={async () => {
-                      await notifyVolunteerAssigned(
-                        'Ramesh Kumar',
-                        'Motorbike WP BE-4821',
-                        `${currentUser?.address?.line1 || 'Hospital Rd'}, ${hubCity}`,
-                      );
-                      await loadNotifications();
-                    }}
-                  >
-                    <Ionicons name="bicycle" size={15} color="#0284C7" />
-                    <Text style={[styles.testActionBtnText, { color: '#0284C7' }]}>
-                      Volunteer Assigned
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.testActionBtn, { backgroundColor: '#FEF3C7' }]}
-                    onPress={async () => {
-                      await notifyTrackingStatusUpdate('PICKED_UP', 'Ramesh Kumar');
-                      await loadNotifications();
-                    }}
-                  >
-                    <Ionicons name="restaurant" size={15} color="#D97706" />
-                    <Text style={[styles.testActionBtnText, { color: '#D97706' }]}>
-                      Food Picked Up
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.testActionBtn, { backgroundColor: '#ECFDF5' }]}
-                    onPress={async () => {
-                      await notifyTrackingStatusUpdate('IN_TRANSIT', 'Ramesh Kumar');
-                      await loadNotifications();
-                    }}
-                  >
-                    <Ionicons name="navigate" size={15} color="#059669" />
-                    <Text style={[styles.testActionBtnText, { color: '#059669' }]}>
-                      In Transit
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.testActionBtn, { backgroundColor: '#FDF2F8' }]}
-                    onPress={async () => {
-                      await notifyTrackingStatusUpdate('DELIVERED', 'Ramesh Kumar');
-                      await loadNotifications();
-                    }}
-                  >
-                    <Ionicons name="checkmark-done" size={15} color="#DB2777" />
-                    <Text style={[styles.testActionBtnText, { color: '#DB2777' }]}>
-                      Delivered
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
 
               <TouchableOpacity
                 style={styles.doneTrackingBtn}

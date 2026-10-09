@@ -45,6 +45,19 @@ export class NgosService {
     return ngo.save();
   }
 
+  countActive(): Promise<number> {
+    return this.model.countDocuments({ isActive: true }).exec();
+  }
+
+  countActiveNear(coordinates: [number, number], radiusKm: number): Promise<number> {
+    return this.model
+      .countDocuments({
+        isActive: true,
+        'address.location': { $geoWithin: { $centerSphere: [coordinates, radiusKm / 6371] } },
+      })
+      .exec();
+  }
+
   /** Partner organisations that could absorb a surplus donation nearby. */
   findNear(coordinates: [number, number], radiusKm: number) {
     return this.model

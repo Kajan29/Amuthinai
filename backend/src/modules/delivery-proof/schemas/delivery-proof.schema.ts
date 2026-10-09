@@ -42,6 +42,14 @@ export class DeliveryProof {
   @Prop({ default: false })
   pinVerified!: boolean;
 
+  @ApiProperty({ required: false })
+  @Prop({ min: 0 })
+  quantityConfirmed?: number;
+
+  @ApiProperty({ required: false })
+  @Prop({ trim: true })
+  note?: string;
+
   @ApiProperty()
   capturedAt!: Date;
 }

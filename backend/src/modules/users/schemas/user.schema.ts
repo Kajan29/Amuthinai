@@ -70,6 +70,16 @@ export class User {
   @Prop({ min: 1, max: 50 })
   travelRadiusKm?: number;
 
+  /** FR7 — "Ready for deliveries" toggle; unavailable volunteers get no new offers. */
+  @ApiProperty({ default: true })
+  @Prop({ default: true })
+  isAvailable!: boolean;
+
+  /** Admin can deactivate an account; deactivated users cannot sign in. */
+  @ApiProperty({ default: true })
+  @Prop({ default: true, index: true })
+  isActive!: boolean;
+
   @ApiPropertyOptional({ type: Address })
   @Prop({ type: AddressSchema })
   address?: Address;

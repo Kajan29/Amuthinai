@@ -6,6 +6,7 @@ export interface UpdateUserPayload {
   name?: string;
   phone?: string;
   language?: 'en' | 'ta' | 'si';
+  pushToken?: string;
 }
 
 export const usersApi = {

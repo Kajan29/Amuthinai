@@ -13,17 +13,94 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useQuery } from '@tanstack/react-query';
+
 import { assignmentsApi } from '@/api/assignments.api';
 import { pointsApi } from '@/api/points.api';
+import { usersApi } from '@/api/users.api';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui';
 import { TRAVEL_RADIUS_OPTIONS_KM, VEHICLE_TYPES } from '@/constants';
-import { MOCK_VOLUNTEER_ACHIEVEMENTS, type VolunteerAchievementItem } from '@/constants/mockVolunteerData';
 import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
+import { useAuthStore } from '@/store/auth.store';
 import { radius, typography } from '@/theme';
 import { volunteerColors, getTier, KARMA_TIERS } from '@/theme/volunteer';
-import type { VehicleType } from '@/types';
+import { initials } from '@/utils/tasks';
+import type { TaskView, VehicleType } from '@/types';
+
+interface VolunteerAchievementItem {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  earned: boolean;
+  progressLabel: string;
+  earnedDate?: string;
+}
+
+/** Milestones derived from the volunteer's real delivery history and karma. */
+function buildAchievements(
+  completed: TaskView[],
+  deliveries: number,
+  balance: number,
+): VolunteerAchievementItem[] {
+  const servings = completed.reduce((sum, task) => sum + task.donation.servings, 0);
+  const firstDone = [...completed]
+    .map((task) => task.assignment.completedAt)
+    .filter(Boolean)
+    .sort()[0];
+  const rapid = completed.some((task) => {
+    const { acceptedAt, completedAt } = task.assignment;
+    return acceptedAt && completedAt
+      ? new Date(completedAt).getTime() - new Date(acceptedAt).getTime() <= 20 * 60_000
+      : false;
+  });
+
+  return [
+    {
+      id: 'first',
+      title: 'First Mile Hero',
+      description: 'Completed your first verified food rescue',
+      icon: '🛡️',
+      earned: deliveries >= 1,
+      progressLabel: `${Math.min(deliveries, 1)}/1`,
+      earnedDate: firstDone ? new Date(firstDone).toLocaleDateString() : undefined,
+    },
+    {
+      id: 'rapid',
+      title: 'Rapid Responder',
+      description: 'Delivered within 20 minutes of accepting a task',
+      icon: '⚡',
+      earned: rapid,
+      progressLabel: rapid ? 'Done' : 'Pending',
+    },
+    {
+      id: 'champion',
+      title: 'Community Champion',
+      description: 'Delivered 250 servings to families and shelters',
+      icon: '❤️',
+      earned: servings >= 250,
+      progressLabel: `${Math.min(servings, 250)}/250`,
+    },
+    {
+      id: 'century',
+      title: 'Century Rescuer',
+      description: 'Complete 100 verified rescue missions',
+      icon: '🏆',
+      earned: deliveries >= 100,
+      progressLabel: `${Math.min(deliveries, 100)}/100`,
+    },
+    {
+      id: 'legend',
+      title: 'Zero Waste Legend',
+      description: 'Reach 2,500 Karma Points',
+      icon: '👑',
+      earned: balance >= 2500,
+      progressLabel: `${Math.min(balance, 2500)}/2500`,
+    },
+  ];
+}
 
 /**
  * Volunteer profile — personal info, Karma Points balance, delivery count,
@@ -35,16 +112,26 @@ export default function VolunteerProfile() {
   const insets = useSafeAreaInsets();
   const { user, confirmLogout } = useAuth();
 
+  const setUser = useAuthStore((state) => state.setUser);
   const pointsSummary = useOfflineQuery('volunteer.points', () => pointsApi.summary());
-  const balance = pointsSummary.data?.balance ?? user?.karmaPoints ?? 680;
+  const history = useQuery({
+    queryKey: ['volunteer.history', 'all'],
+    queryFn: () => assignmentsApi.history({ pageSize: 100 }),
+  });
+  const balance = pointsSummary.data?.balance ?? user?.karmaPoints ?? 0;
   const tier = getTier(balance);
-  const deliveryCount = Math.floor(balance / 24) || 28;
+  const completed = (history.data?.items ?? []).filter((task) => task.assignment.status === 'completed');
+  const deliveryCount = user?.completedDeliveriesCount ?? completed.length;
+  const achievements = buildAchievements(completed, deliveryCount, balance);
 
   const [vehicleType, setVehicleType] = useState<VehicleType>(user?.vehicleType ?? 'motorbike');
   const [travelRadiusKm, setTravelRadiusKm] = useState(user?.travelRadiusKm ?? 5);
 
   const save = useMutation({
     mutationFn: () => assignmentsApi.updateProfile({ vehicleType, travelRadiusKm }),
+    async onSuccess() {
+      setUser(await usersApi.me());
+    },
   });
 
   // Vehicle icons
@@ -74,19 +161,22 @@ export default function VolunteerProfile() {
       {/* Main Profile & Karma Card */}
       <View style={styles.profileCard}>
         <View style={styles.avatarLarge}>
-          <Text style={styles.avatarLargeText}>
-            {user?.name?.charAt(0)?.toUpperCase() ?? 'K'}
-            {user?.name?.split(' ')[1]?.charAt(0)?.toUpperCase() ?? 'S'}
-          </Text>
+          <Text style={styles.avatarLargeText}>{initials(user?.name)}</Text>
         </View>
-        <Text style={styles.profileName}>{user?.name ?? 'Kajan Selvarajah'}</Text>
-        <Text style={styles.profileEmail}>{user?.email ?? 'kajan.volunteer@amuthinai.org'}</Text>
+        <Text style={styles.profileName}>{user?.name ?? ''}</Text>
+        <Text style={styles.profileEmail}>{user?.email ?? ''}</Text>
 
         {/* Verification badge */}
         <View style={styles.verificationRow}>
           <View style={styles.verifiedBadge}>
-            <Ionicons name="checkmark-circle" size={16} color={volunteerColors.green} />
-            <Text style={styles.verifiedText}>Verified Community Volunteer</Text>
+            <Ionicons
+              name={user?.isVerified ? 'checkmark-circle' : 'time-outline'}
+              size={16}
+              color={user?.isVerified ? volunteerColors.green : volunteerColors.orange}
+            />
+            <Text style={styles.verifiedText}>
+              {user?.isVerified ? 'Verified Community Volunteer' : 'Verification pending admin review'}
+            </Text>
           </View>
         </View>
 
@@ -228,7 +318,7 @@ export default function VolunteerProfile() {
         </View>
 
         <View style={styles.achievementsGrid}>
-          {MOCK_VOLUNTEER_ACHIEVEMENTS.map((ach: VolunteerAchievementItem) => (
+          {achievements.map((ach) => (
             <View
               key={ach.id}
               style={[styles.achievementCard, !ach.earned && styles.achievementCardLocked]}
@@ -243,11 +333,12 @@ export default function VolunteerProfile() {
                   </Text>
                   {ach.earned ? (
                     <View style={styles.achEarnedPill}>
-                      <Text style={styles.achEarnedText}>+{ach.pointsReward} KP</Text>
+                      <Text style={styles.achEarnedText}>Unlocked</Text>
                     </View>
                   ) : (
                     <View style={styles.achLockedPill}>
                       <Ionicons name="lock-closed" size={10} color={volunteerColors.muted} />
+                      <Text style={styles.achievementDesc}> {ach.progressLabel}</Text>
                     </View>
                   )}
                 </View>

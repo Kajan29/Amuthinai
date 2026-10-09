@@ -1,18 +1,30 @@
 import { client, request } from './client';
 
 import type {
+  Address,
   Assignment,
+  ChatMessage,
   DeliveryProof,
   Donation,
   Enquiry,
+  EnquiryStatus,
   FoodRequest,
+  Ngo,
   Paginated,
+  Role,
+  StatusEvent,
+  TaskRequestInfo,
+  TaskView,
   User,
 } from '@/types';
+
+import type { AdminDonation } from './donations.api';
 
 export interface AdminKpis {
   pendingApprovals: number;
   activeDeliveries: number;
+  activePickups: number;
+  activeAssignments: number;
   servingsToday: number;
   wasteAvertedKg: number;
   openDisputes: number;
@@ -23,7 +35,8 @@ export interface AdminKpis {
   totalDonations: number;
   completedDistributions: number;
   openRecipientRequests: number;
-  pendingKarmaClaims: number;
+  unmetServings: number;
+  expiredDonations: number;
   foodHubsCount: number;
 }
 
@@ -35,6 +48,14 @@ export interface DemandCell {
   servingsNeeded: number;
 }
 
+export interface UnfulfilledArea {
+  area: string;
+  open: number;
+  matched: number;
+  overdue: number;
+  servingsNeeded: number;
+}
+
 export interface VolunteerSuggestion {
   volunteer: User;
   distanceKm: number;
@@ -42,156 +63,81 @@ export interface VolunteerSuggestion {
   score: number;
 }
 
+export interface AssignmentOptions {
+  donation: Donation;
+  volunteers: VolunteerSuggestion[];
+  requests: (TaskRequestInfo & { distanceKm: number })[];
+  ngos: { id: string; name: string; contactPhone: string; address: Address; distanceKm: number }[];
+  currentAssignment: Assignment | null;
+}
+
+export interface MonitoredTask extends TaskView {
+  volunteer: { id: string; name: string; phone: string | null; vehicleType: string | null } | null;
+  alerts: string[];
+  isDelayed: boolean;
+}
+
+export interface EnquiryEvidence {
+  enquiry: Enquiry;
+  raiser: { id: string; name: string; role: Role; phone: string | null; email: string } | null;
+  donation: Donation | null;
+  request: FoodRequest | null;
+  assignment: Assignment | null;
+  volunteer: { id: string; name: string; phone: string | null; vehicleType: string | null } | null;
+  proofs: DeliveryProof[];
+  timeline: StatusEvent[];
+  messages: ChatMessage[];
+}
+
+/** Populated rows from `GET /assignments`. */
+export interface AdminAssignmentRow
+  extends Omit<Assignment, 'donationId' | 'volunteerId' | 'requestId' | 'ngoId'> {
+  donationId: Donation | null;
+  volunteerId: User | null;
+  requestId: FoodRequest | null;
+  ngoId?: { id: string; name: string; contactPhone: string } | null;
+}
+
 export interface AdminReportData {
   kpis: AdminKpis;
   demand: DemandCell[];
+  unfulfilledByArea: UnfulfilledArea[];
   foodTypeBreakdown: { label: string; percentage: number; count: number }[];
   monthlyTrends: { month: string; deliveries: number; servings: number; wasteKg: number }[];
   topVolunteers: {
+    id: string;
     name: string;
     vehicle: string;
     deliveries: number;
     karma: number;
-    rating: number;
   }[];
   communityImpact: {
     totalMealsDistributed: number;
+    totalDeliveries: number;
     householdsSupported: number;
+    wasteAvertedKg: number;
     carbonOffsetKg: number;
     activeReliefCentres: number;
   };
 }
 
-// Fallback seed data matching the UI mockups for seamless offline/initial experience
-export const FALLBACK_KPIS: AdminKpis = {
-  pendingApprovals: 14,
-  activeDeliveries: 38,
-  totalVolunteers: 52,
-  urgentDonations: 3,
-  servingsToday: 240,
-  wasteAvertedKg: 96,
-  openDisputes: 2,
-  verifiedVolunteers: 46,
-  pendingVolunteerKyc: 6,
-  totalDonations: 86,
-  completedDistributions: 68,
-  openRecipientRequests: 7,
-  pendingKarmaClaims: 3,
-  foodHubsCount: 4,
-};
-
-export const FALLBACK_DEMAND: DemandCell[] = [
-  {
-    district: 'Jaffna Town',
-    latitude: 9.6615,
-    longitude: 80.0167,
-    openRequests: 12,
-    servingsNeeded: 450,
-  },
-  {
-    district: 'Nallur',
-    latitude: 9.6744,
-    longitude: 80.0286,
-    openRequests: 8,
-    servingsNeeded: 320,
-  },
-  {
-    district: 'Chavakachcheri',
-    latitude: 9.6542,
-    longitude: 80.1582,
-    openRequests: 5,
-    servingsNeeded: 210,
-  },
-  {
-    district: 'Kopay',
-    latitude: 9.6924,
-    longitude: 80.0528,
-    openRequests: 4,
-    servingsNeeded: 180,
-  },
-  {
-    district: 'Point Pedro',
-    latitude: 9.8248,
-    longitude: 80.2335,
-    openRequests: 3,
-    servingsNeeded: 140,
-  },
-];
-
 export const adminApi = {
-  kpis: async (): Promise<AdminKpis> => {
-    try {
-      const data = await request<AdminKpis>(client.get('/analytics/kpis'));
-      return {
-        ...FALLBACK_KPIS,
-        ...data,
-      };
-    } catch {
-      return FALLBACK_KPIS;
-    }
-  },
+  kpis: () => request<AdminKpis>(client.get('/analytics/kpis')),
 
-  demandHeatmap: async (): Promise<DemandCell[]> => {
-    try {
-      const data = await request<DemandCell[]>(client.get('/analytics/demand'));
-      return data?.length ? data : FALLBACK_DEMAND;
-    } catch {
-      return FALLBACK_DEMAND;
-    }
-  },
+  demandHeatmap: () => request<DemandCell[]>(client.get('/analytics/demand')),
 
-  reports: async (): Promise<AdminReportData> => {
-    try {
-      return await request<AdminReportData>(client.get('/analytics/reports'));
-    } catch {
-      return {
-        kpis: FALLBACK_KPIS,
-        demand: FALLBACK_DEMAND,
-        foodTypeBreakdown: [
-          { label: 'Hot Cooked Meals', percentage: 48, count: 284 },
-          { label: 'Fresh Bakery Items', percentage: 24, count: 142 },
-          { label: 'Raw Vegetables & Fruits', percentage: 18, count: 106 },
-          { label: 'Dry Groceries & Rations', percentage: 10, count: 59 },
-        ],
-        monthlyTrends: [
-          { month: 'May', deliveries: 185, servings: 4200, wasteKg: 1680 },
-          { month: 'Jun', deliveries: 230, servings: 5100, wasteKg: 2040 },
-          { month: 'Jul', deliveries: 310, servings: 6800, wasteKg: 2720 },
-          { month: 'Aug', deliveries: 420, servings: 9400, wasteKg: 3760 },
-          { month: 'Sep', deliveries: 510, servings: 11200, wasteKg: 4480 },
-          { month: 'Oct', deliveries: 580, servings: 12850, wasteKg: 5140 },
-        ],
-        topVolunteers: [
-          { name: 'Kajan S.', vehicle: 'Motorbike', deliveries: 48, karma: 1440, rating: 4.95 },
-          { name: 'Priya T.', vehicle: 'Bicycle', deliveries: 36, karma: 1080, rating: 4.9 },
-          { name: 'Murugan R.', vehicle: 'Van', deliveries: 31, karma: 930, rating: 4.88 },
-          {
-            name: 'Sivaranjan K.',
-            vehicle: 'Three-Wheeler',
-            deliveries: 27,
-            karma: 810,
-            rating: 4.85,
-          },
-          { name: 'Shalini K.', vehicle: 'Foot', deliveries: 19, karma: 570, rating: 4.92 },
-        ],
-        communityImpact: {
-          totalMealsDistributed: 42600,
-          householdsSupported: 1840,
-          carbonOffsetKg: 17040,
-          activeReliefCentres: 4,
-        },
-      };
-    }
-  },
+  reports: () => request<AdminReportData>(client.get('/analytics/reports')),
 
   /** FR4 — pending donations awaiting review */
   pendingDonations: () =>
-    request<Paginated<Donation>>(
+    request<Paginated<AdminDonation>>(
       client.get('/donations', { params: { status: 'pending_approval' } }),
     ),
 
   allDonations: (params?: { status?: string; page?: number; pageSize?: number }) =>
-    request<Paginated<Donation>>(client.get('/donations', { params })),
+    request<Paginated<AdminDonation>>(client.get('/donations', { params })),
+
+  donation: (id: string) => request<AdminDonation>(client.get(`/donations/${id}`)),
 
   approveDonation: (id: string) => request<Donation>(client.post(`/donations/${id}/approve`)),
 
@@ -214,6 +160,21 @@ export const adminApi = {
   }) =>
     request<Paginated<User>>(client.get('/users', { params: { role: 'volunteer', ...params } })),
 
+  /** User management across every role. */
+  users: (params?: {
+    role?: Role;
+    isActive?: boolean;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => request<Paginated<User>>(client.get('/users', { params })),
+
+  changeRole: (id: string, role: Role) =>
+    request<User>(client.patch(`/users/${id}/role`, { role })),
+
+  setActive: (id: string, isActive: boolean) =>
+    request<User>(client.patch(`/users/${id}/status`, { isActive })),
+
   verifyVolunteer: (id: string) => request<User>(client.post(`/users/${id}/verify`)),
 
   batchVerifyVolunteers: (userIds: string[]) =>
@@ -226,11 +187,33 @@ export const adminApi = {
   suggestVolunteers: (donationId: string) =>
     request<VolunteerSuggestion[]>(client.get(`/assignments/suggestions/${donationId}`)),
 
+  /** Volunteers, nearby open requests and partner NGOs for the assign screen. */
+  assignmentOptions: (donationId: string) =>
+    request<AssignmentOptions>(client.get(`/assignments/options/${donationId}`)),
+
   assignVolunteer: (donationId: string, volunteerId: string, requestId?: string) =>
     request<Assignment>(client.post('/assignments', { donationId, volunteerId, requestId })),
 
+  reassign: (assignmentId: string, volunteerId: string, reason?: string) =>
+    request<Assignment>(
+      client.post(`/assignments/${assignmentId}/reassign`, { volunteerId, reason }),
+    ),
+
+  /** NGO fallback when no volunteer is available. */
+  assignToNgo: (donationId: string, ngoId: string, requestId?: string) =>
+    request<Assignment>(client.post('/assignments/ngo', { donationId, ngoId, requestId })),
+
+  completeNgo: (assignmentId: string) =>
+    request<Assignment>(client.post(`/assignments/${assignmentId}/ngo-complete`)),
+
   assignments: (params?: { status?: string; page?: number; pageSize?: number }) =>
-    request<Paginated<Assignment>>(client.get('/assignments', { params })),
+    request<Paginated<AdminAssignmentRow>>(client.get('/assignments', { params })),
+
+  /** Live deliveries with delay and urgency alerts. */
+  monitor: () => request<MonitoredTask[]>(client.get('/assignments/monitor')),
+
+  taskDetails: (assignmentId: string) =>
+    request<TaskView>(client.get(`/assignments/${assignmentId}/details`)),
 
   foodRequests: (params?: { status?: string; page?: number; pageSize?: number }) =>
     request<Paginated<FoodRequest>>(client.get('/food-requests', { params })),
@@ -238,9 +221,21 @@ export const adminApi = {
   deliveryProof: (assignmentId: string) =>
     request<DeliveryProof[]>(client.get(`/delivery-proof/${assignmentId}`)),
 
-  disputes: (params?: { page?: number; pageSize?: number }) =>
+  disputes: (params?: { status?: EnquiryStatus; page?: number; pageSize?: number }) =>
     request<Paginated<Enquiry>>(client.get('/enquiries', { params })),
+
+  disputeEvidence: (id: string) =>
+    request<EnquiryEvidence>(client.get(`/enquiries/${id}/evidence`)),
+
+  respondDispute: (id: string, message: string) =>
+    request<Enquiry>(client.post(`/enquiries/${id}/responses`, { message })),
+
+  setDisputeStatus: (id: string, status: EnquiryStatus) =>
+    request<Enquiry>(client.patch(`/enquiries/${id}/status`, { status })),
 
   resolveDispute: (id: string, resolution: string) =>
     request<Enquiry>(client.patch(`/enquiries/${id}/resolve`, { resolution })),
+
+  ngos: (params?: { page?: number; pageSize?: number }) =>
+    request<Paginated<Ngo>>(client.get('/ngos', { params })),
 };

@@ -4,6 +4,8 @@ export { authApi } from './auth.api';
 export { ApiError, client } from './client';
 export { donationsApi } from './donations.api';
 export { enquiriesApi } from './enquiries.api';
+export { ngosApi } from './ngos.api';
+export { notificationsApi } from './notifications.api';
 export { pointsApi } from './points.api';
 export { requestsApi } from './requests.api';
 export { uploadsApi } from './uploads.api';

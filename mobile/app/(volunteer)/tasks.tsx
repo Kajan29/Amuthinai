@@ -12,30 +12,41 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
+import type { NearbyTask } from '@/api/assignments.api';
 import { UrgentCountdown } from '@/components/UrgentCountdown';
 import { Badge } from '@/components/ui';
 import { URGENT_THRESHOLD_MINUTES } from '@/constants';
-import { MOCK_DROP_OFFS } from '@/constants/mockVolunteerData';
-import { useOfflineQuery } from '@/hooks/useOfflineQuery';
+import { useVolunteerTasks } from '@/hooks/useVolunteerTasks';
 import { radius, typography } from '@/theme';
 import { volunteerColors } from '@/theme/volunteer';
+import {
+  dropOffLabel,
+  etaMinutes,
+  formatKm,
+  KARMA_PER_DELIVERY,
+  nextStepHref,
+  pickupLabel,
+} from '@/utils/tasks';
 
 type TabFilter = 'all' | 'urgent' | 'active' | 'completed';
+
+const isUrgentTask = (task: NearbyTask) =>
+  task.assignment.status !== 'completed' &&
+  (task.isUrgent || task.minutesLeft <= URGENT_THRESHOLD_MINUTES);
 
 /** Tasks tab — filterable list of all volunteer tasks */
 export default function VolunteerTasks() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabFilter>('all');
 
-  const tasks = useOfflineQuery('volunteer.nearby', () => assignmentsApi.nearby());
-  const items = tasks.data ?? [];
+  const tasks = useVolunteerTasks({ withHistory: true });
+  const items = tasks.tasks;
 
   // Filter logic
   const filtered = items.filter((task) => {
     switch (activeTab) {
       case 'urgent':
-        return task.minutesLeft <= URGENT_THRESHOLD_MINUTES;
+        return isUrgentTask(task);
       case 'active':
         return task.assignment.status === 'accepted';
       case 'completed':
@@ -45,10 +56,11 @@ export default function VolunteerTasks() {
     }
   });
 
-  // Sort: urgent first, then by distance
+  // Sort: active first, then urgent, then by distance; completed last
   const sorted = [...filtered].sort((a, b) => {
-    if (a.minutesLeft <= URGENT_THRESHOLD_MINUTES && b.minutesLeft > URGENT_THRESHOLD_MINUTES) return -1;
-    if (b.minutesLeft <= URGENT_THRESHOLD_MINUTES && a.minutesLeft > URGENT_THRESHOLD_MINUTES) return 1;
+    const rank = (task: NearbyTask) =>
+      task.assignment.status === 'completed' ? 3 : task.assignment.status === 'accepted' ? 0 : isUrgentTask(task) ? 1 : 2;
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
     return a.distanceKm - b.distanceKm;
   });
 
@@ -57,7 +69,7 @@ export default function VolunteerTasks() {
     {
       key: 'urgent',
       label: 'Urgent',
-      count: items.filter((t) => t.minutesLeft <= URGENT_THRESHOLD_MINUTES).length,
+      count: items.filter(isUrgentTask).length,
     },
     {
       key: 'active',
@@ -135,26 +147,35 @@ export default function VolunteerTasks() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons
-              name={activeTab === 'completed' ? 'checkmark-done-circle-outline' : 'search-outline'}
+              name={
+                tasks.error
+                  ? 'cloud-offline-outline'
+                  : activeTab === 'completed'
+                    ? 'checkmark-done-circle-outline'
+                    : 'search-outline'
+              }
               size={48}
               color={volunteerColors.muted}
             />
             <Text style={styles.emptyTitle}>
-              {activeTab === 'completed' ? 'No completed tasks yet' : 'No tasks found'}
+              {tasks.isLoading
+                ? 'Loading tasks…'
+                : tasks.error
+                  ? 'Could not load tasks'
+                  : activeTab === 'completed'
+                    ? 'No completed tasks yet'
+                    : 'No tasks found'}
             </Text>
             <Text style={styles.emptySubtext}>
-              {activeTab === 'urgent'
-                ? 'No urgent tasks nearby right now'
-                : 'Pull down to refresh'}
+              {tasks.error
+                ? (tasks.error as Error).message
+                : activeTab === 'urgent'
+                  ? 'No urgent tasks nearby right now'
+                  : 'Pull down to refresh'}
             </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <DetailedTaskCard
-            task={item}
-            isUrgent={item.minutesLeft <= URGENT_THRESHOLD_MINUTES}
-          />
-        )}
+        renderItem={({ item }) => <DetailedTaskCard task={item} isUrgent={isUrgentTask(item)} />}
       />
     </View>
   );
@@ -162,10 +183,8 @@ export default function VolunteerTasks() {
 
 /** Detailed task card for the Tasks tab with full information */
 function DetailedTaskCard({ task, isUrgent }: { task: NearbyTask; isUrgent: boolean }) {
-  const pickup = task.donation.pickupAddress;
-  const estTime = Math.round(task.distanceKm * 4);
-  const karmaPoints = Math.round(task.distanceKm * 20 + task.donation.servings * 2);
-  const dropOff = task.assignment.requestId ? MOCK_DROP_OFFS[task.assignment.requestId] : null;
+  const estTime = etaMinutes(task.distanceKm + (task.routeKm ?? 0));
+  const karmaPoints = KARMA_PER_DELIVERY;
 
   const foodIcons: Record<string, string> = {
     cooked: 'restaurant',
@@ -226,7 +245,7 @@ function DetailedTaskCard({ task, isUrgent }: { task: NearbyTask; isUrgent: bool
           <View style={styles.routeStepInfo}>
             <Text style={styles.routeStepLabel}>PICKUP</Text>
             <Text style={styles.routeStepAddress} numberOfLines={1}>
-              {pickup.line1}, {pickup.city}
+              {pickupLabel(task)}
             </Text>
           </View>
         </View>
@@ -236,7 +255,7 @@ function DetailedTaskCard({ task, isUrgent }: { task: NearbyTask; isUrgent: bool
           <View style={styles.routeStepInfo}>
             <Text style={styles.routeStepLabel}>DROP-OFF DESTINATION</Text>
             <Text style={styles.routeStepAddress} numberOfLines={1}>
-              {dropOff ? `${dropOff.name} · ${dropOff.address}` : `Community Hub · ${pickup.city}`}
+              {dropOffLabel(task)}
             </Text>
           </View>
         </View>
@@ -246,7 +265,7 @@ function DetailedTaskCard({ task, isUrgent }: { task: NearbyTask; isUrgent: bool
       <View style={styles.detailStatsRow}>
         <View style={styles.detailStat}>
           <Ionicons name="navigate-outline" size={14} color={volunteerColors.green} />
-          <Text style={styles.detailStatText}>{task.distanceKm} km</Text>
+          <Text style={styles.detailStatText}>{formatKm(task.distanceKm)}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.detailStat}>
@@ -280,7 +299,7 @@ function DetailedTaskCard({ task, isUrgent }: { task: NearbyTask; isUrgent: bool
         {isActive && (
           <TouchableOpacity
             style={[styles.acceptBtn, styles.continueBtn]}
-            onPress={() => router.push(`/(volunteer)/pickup/${task.assignment.id}`)}
+            onPress={() => router.push(nextStepHref(task))}
           >
             <Text style={styles.acceptBtnText}>Continue Delivery</Text>
             <Ionicons name="arrow-forward" size={16} color="#FFF" />

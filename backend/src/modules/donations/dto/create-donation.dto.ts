@@ -103,6 +103,24 @@ export class CreateDonationDto {
   @MaxLength(150)
   handoverInstructions?: string;
 
+  @ApiPropertyOptional({ description: 'Packaging condition, e.g. "Sealed containers"' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  packagingType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  contactPersonName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  contactPersonPhone?: string;
+
   @ApiProperty({ description: 'FR3 — when the food was cooked, ISO 8601' })
   @IsDateString()
   cookedAt!: string;

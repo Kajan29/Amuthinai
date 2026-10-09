@@ -1,7 +1,7 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { Role } from 'src/common/enums/role.enum';
+import { Role, SELF_SERVICE_ROLES } from 'src/common/enums/role.enum';
 
 export class GoogleAuthDto {
   @ApiProperty({ description: 'Google ID token from the mobile app' })
@@ -9,7 +9,8 @@ export class GoogleAuthDto {
   @IsNotEmpty()
   idToken!: string;
 
-  @ApiPropertyOptional({ description: 'Optional role for new users', enum: Role })
+  @ApiPropertyOptional({ description: 'Optional role for new users', enum: SELF_SERVICE_ROLES })
   @IsOptional()
-  role?: Role;
+  @IsIn([...SELF_SERVICE_ROLES])
+  role?: Exclude<Role, Role.Admin>;
 }

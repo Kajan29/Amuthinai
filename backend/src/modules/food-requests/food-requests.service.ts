@@ -190,6 +190,15 @@ export class FoodRequestsService {
     return request.save();
   }
 
+  /** Open requests a donor can still answer, soonest deadline first. */
+  listOpenForDonors(): Promise<FoodRequestDocument[]> {
+    return this.model
+      .find({ status: RequestStatus.Open, neededBy: { $gt: new Date() } })
+      .sort({ neededBy: 1 })
+      .limit(30)
+      .exec();
+  }
+
   /** FR6 — open requests near a donation's pickup point, soonest deadline first. */
   findOpenNear(coordinates: [number, number], radiusKm: number) {
     return this.model

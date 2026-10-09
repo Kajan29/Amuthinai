@@ -8,6 +8,7 @@ import { FoodType } from '../common/enums/food-type.enum';
 import { Role } from '../common/enums/role.enum';
 import { VehicleType } from '../common/enums/vehicle-type.enum';
 import { DonationsService } from '../modules/donations/donations.service';
+import { FoodRequestsService } from '../modules/food-requests/food-requests.service';
 import { NgosService } from '../modules/ngos/ngos.service';
 import { UsersService } from '../modules/users/users.service';
 
@@ -20,6 +21,9 @@ import { UsersService } from '../modules/users/users.service';
 
 const COLOMBO: [number, number] = [79.8612, 6.9271];
 const DEHIWALA: [number, number] = [79.8656, 6.8511];
+const NALLUR: [number, number] = [80.0298, 9.674];
+const TEMPLE: [number, number] = [80.0255, 9.6615];
+const PALALY: [number, number] = [80.017, 9.748];
 
 const PASSWORD = 'amuthinai123';
 
@@ -30,6 +34,7 @@ async function seed() {
 
   const usersService = app.get(UsersService);
   const donationsService = app.get(DonationsService);
+  const foodRequestsService = app.get(FoodRequestsService);
   const ngosService = app.get(NgosService);
 
   const accounts = [
@@ -90,24 +95,100 @@ async function seed() {
 
   const donorId = created[Role.Donor];
   if (donorId) {
-    const cookedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const alreadyPosted = await donationsService.listForDonor(donorId);
+    if (alreadyPosted.length > 0) {
+      logger.log('Sample donation already exists');
+    } else {
+      const cookedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-    await donationsService.create(donorId, {
-      title: 'Rice and curry, 30 portions',
-      foodType: FoodType.Cooked,
-      servings: 30,
-      description: 'Vegetarian, packed in sealed containers. Ask for the kitchen entrance.',
-      photoUrls: [],
-      cookedAt,
-      safeForHours: 6,
-      pickupAddress: {
-        line1: '12 Union Place',
-        city: 'Colombo',
-        district: 'Colombo',
-        location: { type: 'Point', coordinates: COLOMBO },
-      },
-    });
-    logger.log('Created a sample donation awaiting approval');
+      await donationsService.create(donorId, {
+        title: 'Rice and curry, 30 portions',
+        foodType: FoodType.Cooked,
+        servings: 30,
+        description: 'Vegetarian, packed in sealed containers. Ask for the kitchen entrance.',
+        photoUrls: [],
+        cookedAt,
+        safeForHours: 6,
+        pickupAddress: {
+          line1: '12 Union Place',
+          city: 'Colombo',
+          district: 'Colombo',
+          location: { type: 'Point', coordinates: COLOMBO },
+        },
+      });
+      logger.log('Created a sample donation awaiting approval');
+    }
+  }
+
+  const sampleRequests = [
+    {
+      name: 'Hope Children Home',
+      email: 'recipient@amuthinai.lk',
+      phone: '0770000004',
+      servingsNeeded: 40,
+      hoursAhead: 4,
+      notes: 'Dinner for the children. Vegetarian if possible.',
+      line1: '42 Temple Road, Nallur',
+      city: 'Jaffna',
+      district: 'Nallur',
+      coordinates: NALLUR,
+    },
+    {
+      name: 'Jaffna Elders Home',
+      email: 'elders@amuthinai.lk',
+      phone: '0770000005',
+      servingsNeeded: 18,
+      hoursAhead: 6,
+      notes: 'Soft rice meals. Call at the side gate.',
+      line1: '15 Kovil Road',
+      city: 'Jaffna',
+      district: 'Nallur',
+      coordinates: TEMPLE,
+    },
+    {
+      name: 'University Hostel',
+      email: 'students@amuthinai.lk',
+      phone: '0770000006',
+      servingsNeeded: 25,
+      hoursAhead: 20,
+      notes: 'Lunch packs for students staying over the weekend.',
+      line1: '8 Palaly Road',
+      city: 'Jaffna',
+      district: 'Kopay',
+      coordinates: PALALY,
+    },
+  ];
+
+  for (const sample of sampleRequests) {
+    let recipient = await usersService.findByEmailWithPassword(sample.email);
+    if (!recipient) {
+      recipient = await usersService.create({
+        name: sample.name,
+        email: sample.email,
+        phone: sample.phone,
+        password: PASSWORD,
+        language: 'en',
+      });
+      await usersService.assignRole(recipient.id as string, Role.Recipient);
+      logger.log(`Created recipient ${sample.email}`);
+    }
+
+    try {
+      await foodRequestsService.create(recipient.id as string, {
+        servingsNeeded: sample.servingsNeeded,
+        neededBy: new Date(Date.now() + sample.hoursAhead * 60 * 60 * 1000).toISOString(),
+        notes: sample.notes,
+        dropAddress: {
+          line1: sample.line1,
+          city: sample.city,
+          district: sample.district,
+          location: { type: 'Point', coordinates: sample.coordinates },
+        },
+      });
+      logger.log(`Created request from ${sample.name}`);
+    } catch (error) {
+      logger.log(`Skipped request for ${sample.name}: ${(error as Error).message}`);
+    }
   }
 
   // Seed Jaffna Volunteers and Donors

@@ -139,7 +139,10 @@ export default function Step2Timing() {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+      >
         <View style={styles.topBar}>
           <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="chevron-back" size={22} color={donorColors.ink} />
@@ -234,7 +237,7 @@ export default function Step2Timing() {
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>{t('donor.freshnessWindow')}</Text>
-          {minutesLeft <= 360 ? <Text style={styles.urgent}>{t('donor.urgentWindow')}</Text> : null}
+          {minutesLeft <= 120 ? <Text style={styles.urgent}>{t('donor.urgentWindow')}</Text> : null}
         </View>
         <View style={styles.windowCard}>
           <View style={styles.windowRow}>
@@ -248,14 +251,22 @@ export default function Step2Timing() {
               label={t('donor.consumeBefore')}
               day={dayLabel(consumeBefore, t('donor.today'))}
               time={clockLabel(consumeBefore)}
-              warn
+              warn={minutesLeft <= 120 || !windowOk}
               onPress={() => openClock('consume')}
             />
           </View>
-          <Text style={styles.windowNote}>
-            {t('donor.windowRemaining', { time: formatDuration(minutesLeft) })}
-          </Text>
-          {!windowOk ? <Text style={styles.error}>{t('donor.windowInvalid')}</Text> : null}
+          <View style={[styles.windowNoteRow, !windowOk && styles.windowNoteBad]}>
+            <Ionicons
+              name={windowOk ? 'time-outline' : 'alert-circle'}
+              size={16}
+              color={windowOk ? donorColors.green : donorColors.alert}
+            />
+            <Text style={[styles.windowNote, !windowOk && styles.windowNoteTextBad]}>
+              {windowOk
+                ? t('donor.windowRemaining', { time: formatDuration(minutesLeft) })
+                : t('donor.windowInvalid')}
+            </Text>
+          </View>
         </View>
 
         <Text style={styles.sectionTitle}>{t('donor.storageTitle')}</Text>
@@ -410,14 +421,19 @@ function TimeCard({
   warn?: boolean;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Pressable onPress={onPress} style={styles.timeCard}>
-      <Text style={styles.timeLabel}>{label}</Text>
+      <View style={styles.timeTop}>
+        <Text style={styles.timeLabel}>{label}</Text>
+        <Ionicons name="create-outline" size={14} color={donorColors.muted} />
+      </View>
       <Text style={styles.timeDay}>{day}</Text>
       <View style={styles.timeValueRow}>
-        <Text style={styles.timeValue}>{time}</Text>
+        <Text style={[styles.timeValue, warn && styles.timeValueWarn]}>{time}</Text>
         {warn ? <Ionicons name="warning" size={14} color={donorColors.orange} /> : null}
       </View>
+      <Text style={styles.tapHint}>{t('donor.tapToChange')}</Text>
     </Pressable>
   );
 }
@@ -504,6 +520,7 @@ function formatDuration(minutes: number): string {
 
 const styles = StyleSheet.create({
   root: { backgroundColor: donorColors.background, flex: 1 },
+  scroll: { flex: 1 },
   content: { gap: 12, paddingBottom: 28, paddingHorizontal: 16 },
   topBar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   iconBtn: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
@@ -589,14 +606,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     flex: 1,
     gap: 2,
-    padding: 10,
+    padding: 12,
   },
+  timeTop: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   timeLabel: { color: donorColors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
   timeDay: { color: donorColors.ink, fontSize: 12 },
   timeValueRow: { alignItems: 'center', flexDirection: 'row', gap: 4 },
-  timeValue: { color: donorColors.ink, fontSize: 16, fontWeight: '800' },
-  windowNote: { color: donorColors.muted, fontSize: 12, lineHeight: 17 },
-  error: { color: donorColors.alert, fontSize: 12 },
+  timeValue: { color: donorColors.ink, fontSize: 18, fontWeight: '800' },
+  timeValueWarn: { color: donorColors.orange },
+  tapHint: { color: donorColors.plum, fontSize: 11, fontWeight: '700', marginTop: 4 },
+  windowNoteRow: {
+    alignItems: 'center',
+    backgroundColor: donorColors.greenSoft,
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  windowNoteBad: { backgroundColor: '#FDECEC' },
+  windowNote: { color: donorColors.green, flex: 1, fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  windowNoteTextBad: { color: donorColors.alert },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   handle: {
     alignItems: 'center',

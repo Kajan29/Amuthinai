@@ -36,7 +36,7 @@ import { TestEmailController } from './test-email.controller';
       isGlobal: true,
       load: [configuration],
       validationSchema: envValidationSchema,
-      validationOptions: { abortEarly: false },
+      validationOptions: { abortEarly: false, allowUnknown: true },
     }),
     MongooseModule.forRootAsync({
       inject: [ConfigService],

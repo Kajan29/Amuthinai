@@ -51,6 +51,8 @@ export interface DonationAssignmentInfo {
   pickupPin: string | null;
   volunteer: { name: string; phone: string | null; vehicleType: string | null } | null;
   proofs: DeliveryProof[];
+  /** Open recipient request this donation fulfills. */
+  foodRequestId?: string;
 }
 
 export interface DonationQuery {
@@ -81,6 +83,15 @@ export interface DonorDashboardDonation {
   karmaEarned: number | null;
 }
 
+export interface DonorOpenRequest {
+  id: string;
+  recipientName: string;
+  servingsNeeded: number;
+  neededBy: string;
+  notes: string | null;
+  locationLabel: string;
+}
+
 export interface DonorDashboard {
   donor: {
     firstName: string;
@@ -95,6 +106,7 @@ export interface DonorDashboard {
     karmaPoints: number;
   };
   donations: DonorDashboardDonation[];
+  openRequests: DonorOpenRequest[];
 }
 
 export const donationsApi = {

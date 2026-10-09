@@ -22,6 +22,7 @@ import { donorColors } from '@/theme/donor';
 import type { DietaryTag, FoodType, QuantityUnit } from '@/types';
 
 const DESCRIPTION_LIMIT = 300;
+const QUICK_AMOUNTS = [10, 20, 30, 50];
 
 const CATEGORIES: {
   type: FoodType;
@@ -79,7 +80,8 @@ export default function Step1Food() {
   const tags = draft.dietaryTags ?? [];
   const photos = draft.photoUrls ?? [];
   const description = draft.description ?? '';
-  const canContinue = (draft.title?.trim().length ?? 0) >= 3 && servings > 0;
+  const titleOk = (draft.title?.trim().length ?? 0) >= 3;
+  const canContinue = titleOk && servings > 0;
 
   function toggleTag(id: DietaryTag) {
     const next = tags.includes(id) ? tags.filter((tag) => tag !== id) : [...tags, id];
@@ -142,6 +144,15 @@ export default function Step1Food() {
           <Step n={3} label={t('donor.stepReview')} />
         </View>
 
+        {draft.foodRequestId ? (
+          <View style={styles.requestBanner}>
+            <Ionicons name="people" size={16} color={donorColors.plum} />
+            <Text style={styles.requestBannerText}>
+              {t('donor.fulfillingRequest', { count: servings })}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>{t('donor.selectCategory')}</Text>
           <Text style={styles.sectionHint}>{t('donor.pickBestFit')}</Text>
@@ -155,12 +166,18 @@ export default function Step1Food() {
                 onPress={() => update({ foodType: category.type })}
                 style={[styles.category, selected && styles.categorySelected]}
               >
-                {selected ? <Text style={styles.selectedBadge}>{t('donor.selected')}</Text> : null}
-                <Ionicons
-                  name={category.icon}
-                  size={22}
-                  color={selected ? donorColors.plum : donorColors.muted}
-                />
+                {selected ? (
+                  <View style={styles.selectedMark}>
+                    <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                  </View>
+                ) : null}
+                <View style={[styles.catIcon, selected && styles.catIconOn]}>
+                  <Ionicons
+                    name={category.icon}
+                    size={20}
+                    color={selected ? donorColors.plum : donorColors.muted}
+                  />
+                </View>
                 <Text style={[styles.categoryTitle, selected && styles.categoryTitleSelected]}>
                   {t(category.titleKey)}
                 </Text>
@@ -171,45 +188,63 @@ export default function Step1Food() {
         </View>
 
         <Text style={styles.fieldLabel}>{t('donor.donationTitle')}</Text>
-        <View style={styles.inputRow}>
-          <Ionicons name="fast-food-outline" size={18} color={donorColors.muted} />
+        <View style={[styles.inputRow, titleOk && styles.inputRowOk]}>
+          <Ionicons name="fast-food-outline" size={18} color={titleOk ? donorColors.plum : donorColors.muted} />
           <TextInput
             value={draft.title ?? ''}
             onChangeText={(title) => update({ title })}
-            placeholder={t('donor.titlePlaceholder')}
-            placeholderTextColor="#B3AAA3"
+            placeholder={t('donor.titleShort')}
+            placeholderTextColor="#C4B8B0"
             style={styles.input}
           />
+          {titleOk ? <Ionicons name="checkmark-circle" size={18} color={donorColors.green} /> : null}
         </View>
-        <Text style={styles.help}>{t('donor.titleHint')}</Text>
+        <Text style={styles.help}>{titleOk ? t('donor.titleHint') : t('donor.needTitle')}</Text>
 
-        <View style={styles.split}>
-          <View style={styles.splitCol}>
-            <Text style={styles.fieldLabel}>{t('donor.quantityAmount')}</Text>
-            <View style={styles.stepper}>
-              <Pressable
-                onPress={() => update({ servings: Math.max(1, servings - 1) })}
-                style={styles.stepBtn}
-              >
-                <Ionicons name="remove" size={18} color={donorColors.ink} />
-              </Pressable>
-              <Text style={styles.stepValue}>{servings}</Text>
-              <Pressable
-                onPress={() => update({ servings: Math.min(5000, servings + 1) })}
-                style={styles.stepBtn}
-              >
-                <Ionicons name="add" size={18} color={donorColors.ink} />
+        <View style={styles.amountCard}>
+          <View style={styles.split}>
+            <View style={styles.splitCol}>
+              <Text style={styles.fieldLabel}>{t('donor.quantityAmount')}</Text>
+              <View style={styles.stepper}>
+                <Pressable
+                  onPress={() => update({ servings: Math.max(1, servings - 1) })}
+                  style={styles.stepBtn}
+                >
+                  <Ionicons name="remove" size={18} color={donorColors.ink} />
+                </Pressable>
+                <Text style={styles.stepValue}>{servings}</Text>
+                <Pressable
+                  onPress={() => update({ servings: Math.min(5000, servings + 1) })}
+                  style={styles.stepBtn}
+                >
+                  <Ionicons name="add" size={18} color={donorColors.ink} />
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.splitCol}>
+              <Text style={styles.fieldLabel}>{t('donor.unitType')}</Text>
+              <Pressable onPress={() => setUnitOpen(true)} style={styles.dropdown}>
+                <Text style={styles.dropdownText} numberOfLines={1}>
+                  {t(UNITS.find((unit) => unit.value === quantityUnit)?.labelKey ?? 'donor.unitPackets')}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={donorColors.muted} />
               </Pressable>
             </View>
           </View>
-          <View style={styles.splitCol}>
-            <Text style={styles.fieldLabel}>{t('donor.unitType')}</Text>
-            <Pressable onPress={() => setUnitOpen(true)} style={styles.dropdown}>
-              <Text style={styles.dropdownText} numberOfLines={1}>
-                {t(UNITS.find((unit) => unit.value === quantityUnit)?.labelKey ?? 'donor.unitPackets')}
-              </Text>
-              <Ionicons name="chevron-down" size={16} color={donorColors.muted} />
-            </Pressable>
+          <Text style={styles.quickLabel}>{t('donor.quickAmount')}</Text>
+          <View style={styles.quickRow}>
+            {QUICK_AMOUNTS.map((amount) => {
+              const on = servings === amount;
+              return (
+                <Pressable
+                  key={amount}
+                  onPress={() => update({ servings: amount })}
+                  style={[styles.quick, on && styles.quickOn]}
+                >
+                  <Text style={[styles.quickText, on && styles.quickTextOn]}>{amount}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -361,7 +396,7 @@ function fileName(url: string): string {
 
 const styles = StyleSheet.create({
   root: { backgroundColor: donorColors.background, flex: 1 },
-  content: { gap: 14, paddingBottom: 24, paddingHorizontal: 16 },
+  content: { gap: 14, paddingBottom: 36, paddingHorizontal: 16 },
   topBar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   back: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
   brandBlock: { alignItems: 'center', gap: 2 },
@@ -409,16 +444,27 @@ const styles = StyleSheet.create({
     minHeight: 108,
     padding: 12,
   },
-  categorySelected: { borderColor: donorColors.plum, borderWidth: 1.5 },
-  selectedBadge: {
-    color: donorColors.plum,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+  categorySelected: { backgroundColor: '#FBF6F8', borderColor: donorColors.plum, borderWidth: 1.5 },
+  selectedMark: {
+    alignItems: 'center',
+    backgroundColor: donorColors.plum,
+    borderRadius: 9,
+    height: 18,
+    justifyContent: 'center',
     position: 'absolute',
     right: 8,
     top: 8,
+    width: 18,
   },
+  catIcon: {
+    alignItems: 'center',
+    backgroundColor: donorColors.iconWell,
+    borderRadius: 16,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  catIconOn: { backgroundColor: '#F8E8EE' },
   categoryTitle: { color: donorColors.ink, fontSize: 12, fontWeight: '700', marginTop: 6 },
   categoryTitleSelected: { color: donorColors.plum },
   categoryHint: { color: donorColors.muted, fontSize: 10 },
@@ -438,33 +484,57 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
   },
+  inputRowOk: { borderColor: donorColors.green },
+  amountCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EFEAE4',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
   input: { color: donorColors.ink, flex: 1, fontSize: 14, paddingVertical: 14 },
   help: { color: donorColors.muted, fontSize: 12, marginTop: -6 },
   split: { flexDirection: 'row', gap: 10 },
   splitCol: { flex: 1, gap: 8 },
   stepper: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EFEAE4',
+    backgroundColor: donorColors.background,
     borderRadius: 14,
-    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 6,
   },
-  stepBtn: { padding: 8 },
-  stepValue: { color: donorColors.ink, fontSize: 16, fontWeight: '700' },
+  stepBtn: {
+    alignItems: 'center',
+    backgroundColor: donorColors.iconWell,
+    borderRadius: 10,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  stepValue: { color: donorColors.ink, fontSize: 22, fontWeight: '800' },
+  quickLabel: { color: donorColors.muted, fontSize: 12, marginTop: -4 },
+  quickRow: { flexDirection: 'row', gap: 8 },
+  quick: {
+    alignItems: 'center',
+    backgroundColor: donorColors.background,
+    borderRadius: 12,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  quickOn: { backgroundColor: donorColors.plum, borderColor: donorColors.plum },
+  quickText: { color: donorColors.ink, fontSize: 14, fontWeight: '700' },
+  quickTextOn: { color: '#FFFFFF' },
   dropdown: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EFEAE4',
+    backgroundColor: donorColors.background,
     borderRadius: 14,
-    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    minHeight: 48,
     paddingHorizontal: 12,
-    paddingVertical: 14,
   },
   dropdownText: { color: donorColors.ink, flex: 1, fontSize: 13 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

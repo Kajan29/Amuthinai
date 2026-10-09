@@ -13,7 +13,10 @@ import { Donation, DonationSchema } from './schemas/donation.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Donation.name, schema: DonationSchema }]),
+    MongooseModule.forFeature([
+      { name: Donation.name, schema: DonationSchema },
+      { name: FoodRequest.name, schema: FoodRequestSchema },
+    ]),
     StatusHistoryModule,
     ChatModule,
     PointsModule,

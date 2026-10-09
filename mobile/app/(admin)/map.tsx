@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -14,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminApi } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
+import { getAdminDashboardMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing } from '@/theme';
 import { Circle, MapView, Marker, Polyline } from '@/utils/maps';
 
@@ -119,6 +122,11 @@ export default function CentralLiveMap() {
   const [activeLayer, setActiveLayer] = useState<'all' | 'hubs' | 'donations' | 'routes' | 'demand'>('all');
   const [selectedEntity, setSelectedEntity] = useState<any>(null);
 
+  const mapboxUrl = useMemo(
+    () => getAdminDashboardMapUrl({ layer: activeLayer, width: 800, height: 600, zoom: 12.6 }),
+    [activeLayer],
+  );
+
   const { data: demandCells } = useQuery({
     queryKey: ['admin.demand'],
     queryFn: () => adminApi.demandHeatmap(),
@@ -164,25 +172,97 @@ export default function CentralLiveMap() {
         {/* Map View */}
         <View style={styles.mapFrame}>
           {Platform.OS === 'web' || !MapView ? (
-            <View style={styles.webFallback}>
-              <Ionicons name="map" size={48} color={colors.adminMaroon} />
-              <Text style={styles.webFallbackTitle}>Jaffna Peninsula Field Network</Text>
-              <Text style={styles.webFallbackDesc}>
-                4 Food Hubs · 3 Approved Surplus Spots · 2 Active Courier Routes
-              </Text>
-              <View style={styles.webStatsRow}>
-                <View style={styles.webStatItem}>
-                  <Text style={styles.webStatVal}>120</Text>
-                  <Text style={styles.webStatLbl}>Meals In Transit</Text>
-                </View>
-                <View style={styles.webStatItem}>
-                  <Text style={styles.webStatVal}>46</Text>
-                  <Text style={styles.webStatLbl}>Active Riders</Text>
-                </View>
-                <View style={styles.webStatItem}>
-                  <Text style={styles.webStatVal}>950</Text>
-                  <Text style={styles.webStatLbl}>Demand Servings</Text>
-                </View>
+            <View style={styles.mapboxWebFrame}>
+              <Image
+                source={{ uri: mapboxUrl }}
+                style={styles.mapboxWebImage}
+                resizeMode="cover"
+              />
+              <View style={styles.mapboxWebFloatBadge}>
+                <View style={styles.pulseDot} />
+                <Text style={styles.mapboxWebFloatText}>Mapbox Streets API • Live Grid</Text>
+              </View>
+
+              {/* Quick entity selectors */}
+              <View style={styles.mapboxWebEntitiesRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.mapboxEntitiesScroll}
+                >
+                  {HUBS.map((hub) => (
+                    <TouchableOpacity
+                      key={hub.id}
+                      style={[
+                        styles.quickEntityChip,
+                        selectedEntity?.id === hub.id && styles.quickEntityChipActive,
+                      ]}
+                      onPress={() => setSelectedEntity({ ...hub, entityType: 'hub' })}
+                    >
+                      <Ionicons
+                        name="business"
+                        size={12}
+                        color={selectedEntity?.id === hub.id ? '#FFFFFF' : '#1E3A4B'}
+                      />
+                      <Text
+                        style={[
+                          styles.quickEntityChipText,
+                          selectedEntity?.id === hub.id && styles.quickEntityChipTextActive,
+                        ]}
+                      >
+                        {hub.name.split(' ')[0]} Hub
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {APPROVED_DONATIONS.map((don) => (
+                    <TouchableOpacity
+                      key={don.id}
+                      style={[
+                        styles.quickEntityChip,
+                        selectedEntity?.id === don.id && styles.quickEntityChipActive,
+                      ]}
+                      onPress={() => setSelectedEntity({ ...don, entityType: 'donation' })}
+                    >
+                      <Ionicons
+                        name="restaurant"
+                        size={12}
+                        color={selectedEntity?.id === don.id ? '#FFFFFF' : '#0F766E'}
+                      />
+                      <Text
+                        style={[
+                          styles.quickEntityChipText,
+                          selectedEntity?.id === don.id && styles.quickEntityChipTextActive,
+                        ]}
+                      >
+                        {don.title.split(' ')[0]} ({don.servings})
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {ACTIVE_ROUTES.map((route) => (
+                    <TouchableOpacity
+                      key={route.id}
+                      style={[
+                        styles.quickEntityChip,
+                        selectedEntity?.id === route.id && styles.quickEntityChipActive,
+                      ]}
+                      onPress={() => setSelectedEntity({ ...route, entityType: 'route' })}
+                    >
+                      <Ionicons
+                        name="bicycle"
+                        size={12}
+                        color={selectedEntity?.id === route.id ? '#FFFFFF' : colors.adminMaroon}
+                      />
+                      <Text
+                        style={[
+                          styles.quickEntityChipText,
+                          selectedEntity?.id === route.id && styles.quickEntityChipTextActive,
+                        ]}
+                      >
+                        {route.courier.split(' ')[0]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
             </View>
           ) : (
@@ -351,6 +431,80 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+  },
+  mapboxWebFrame: {
+    flex: 1,
+    position: 'relative',
+    backgroundColor: '#F3EFEA',
+  },
+  mapboxWebImage: {
+    width: '100%',
+    height: '100%',
+  },
+  mapboxWebFloatBadge: {
+    position: 'absolute',
+    top: 54,
+    left: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0F766E',
+  },
+  mapboxWebFloatText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  mapboxWebEntitiesRow: {
+    position: 'absolute',
+    top: 92,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 12,
+  },
+  mapboxEntitiesScroll: {
+    gap: 8,
+    paddingRight: 20,
+  },
+  quickEntityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  quickEntityChipActive: {
+    backgroundColor: colors.adminMaroon,
+    borderColor: colors.adminMaroon,
+  },
+  quickEntityChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  quickEntityChipTextActive: {
+    color: '#FFFFFF',
   },
   webFallback: {
     flex: 1,

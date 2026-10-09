@@ -155,3 +155,66 @@ export async function getMapboxDirections(
   }
   return null;
 }
+
+/**
+ * Admin Dashboard & Operations Map URL with layer-based markers (Hubs, Pickups, Dropoffs, Demand)
+ */
+export function getAdminDashboardMapUrl(params?: {
+  layer?: 'all' | 'hubs' | 'donations' | 'routes' | 'demand';
+  zoom?: number;
+  width?: number;
+  height?: number;
+}): string {
+  const layer = params?.layer ?? 'all';
+  const width = params?.width ?? 680;
+  const height = params?.height ?? 380;
+  const zoom = params?.zoom ?? 12.8;
+
+  const markers: MapboxMarker[] = [];
+
+  // Hubs (Navy / Blue - 'h')
+  if (layer === 'all' || layer === 'hubs') {
+    markers.push(
+      { latitude: 9.6615, longitude: 80.0167, label: 'h', color: '1E3A4B', size: 's' },
+      { latitude: 9.6744, longitude: 80.0286, label: 'h', color: '1E3A4B', size: 's' },
+      { latitude: 9.6542, longitude: 80.1582, label: 'h', color: '1E3A4B', size: 's' },
+      { latitude: 9.6924, longitude: 80.0528, label: 'h', color: '1E3A4B', size: 's' },
+    );
+  }
+
+  // Approved Donations (Teal / Green - '1', '2', '3')
+  if (layer === 'all' || layer === 'donations') {
+    markers.push(
+      { latitude: 9.6744, longitude: 80.0286, label: '1', color: '0F766E', size: 's' },
+      { latitude: 9.6610, longitude: 80.0195, label: '2', color: '0F766E', size: 's' },
+      { latitude: 9.6910, longitude: 80.0510, label: '3', color: '0F766E', size: 's' },
+    );
+  }
+
+  // Active Deliveries / Routes (Maroon / Orange - 'd')
+  if (layer === 'all' || layer === 'routes') {
+    markers.push(
+      { latitude: 9.6520, longitude: 80.0380, label: 'd', color: '5A1626', size: 's' },
+      { latitude: 9.6710, longitude: 80.0240, label: 'd', color: 'D97706', size: 's' },
+      { latitude: 9.6580, longitude: 80.1520, label: 'd', color: '5A1626', size: 's' },
+    );
+  }
+
+  // Demand Heat-Zones (Urgent Red - '!')
+  if (layer === 'all' || layer === 'demand') {
+    markers.push(
+      { latitude: 9.6660, longitude: 80.0210, label: '!', color: 'E53E3E', size: 's' },
+      { latitude: 9.6500, longitude: 80.0350, label: '!', color: 'E53E3E', size: 's' },
+    );
+  }
+
+  return getMapboxStaticMapUrl({
+    center: { latitude: 9.6680, longitude: 80.0280 },
+    zoom,
+    width,
+    height,
+    retina: true,
+    style: 'streets-v12',
+    markers,
+  });
+}

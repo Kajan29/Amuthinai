@@ -1,10 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Image,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -17,59 +16,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminApi, FALLBACK_KPIS } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
+import { getAdminDashboardMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing } from '@/theme';
-import { Circle, MapView, Marker, Polyline } from '@/utils/maps';
-
-// Central Jaffna coordinates for the Live Operations Map
-const JAFFNA_REGION = {
-  latitude: 9.6615,
-  longitude: 80.0167,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
-};
-
-const FOOD_HUBS = [
-  {
-    id: 'hub-1',
-    name: 'Jaffna Central Hub • Operations',
-    address: 'Hospital Road, Jaffna',
-    latitude: 9.6615,
-    longitude: 80.0167,
-    type: 'central',
-  },
-  {
-    id: 'hub-2',
-    name: 'Nallur Community Relief Depot',
-    address: 'Point Pedro Road, Nallur',
-    latitude: 9.6744,
-    longitude: 80.0286,
-    type: 'depot',
-  },
-  {
-    id: 'hub-3',
-    name: 'Chavakachcheri Aid Centre',
-    address: 'Kandy Road, Chavakachcheri',
-    latitude: 9.6542,
-    longitude: 80.1582,
-    type: 'satellite',
-  },
-];
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'all' | 'donations' | 'volunteers' | 'recipients' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [mapFilter, setMapFilter] = useState<'all' | 'hubs' | 'donations' | 'routes' | 'demand'>('all');
 
+  // Live Mapbox Streets API static satellite/streets URL
+  const mapboxUrl = useMemo(
+    () => getAdminDashboardMapUrl({ layer: mapFilter, width: 700, height: 380, zoom: 12.8 }),
+    [mapFilter],
+  );
+
   // Backend queries with fallback
   const { data: kpis, refetch: refetchKpis, isRefetching } = useQuery({
     queryKey: ['admin.kpis'],
     queryFn: () => adminApi.kpis(),
     initialData: FALLBACK_KPIS,
-  });
-
-  const { data: demandCells } = useQuery({
-    queryKey: ['admin.demand'],
-    queryFn: () => adminApi.demandHeatmap(),
   });
 
   const onRefresh = () => {
@@ -361,18 +326,25 @@ export default function AdminDashboard() {
           ))}
         </View>
 
-        {/* Central Live Operations Map (Idea Paragraph Implementation) */}
+        {/* Central Live Operations Map (Mapbox Streets API) */}
         <View style={styles.mapCard}>
           <View style={styles.mapCardHeader}>
             <View>
-              <Text style={styles.mapCardTitle}>Jaffna Live Operations Map</Text>
+              <View style={styles.mapTitleRow}>
+                <Text style={styles.mapCardTitle}>Jaffna Live Operations Map</Text>
+                <View style={styles.mapboxBadge}>
+                  <View style={styles.livePulseDot} />
+                  <Text style={styles.mapboxBadgeText}>Mapbox Live</Text>
+                </View>
+              </View>
               <Text style={styles.mapCardSubtitle}>
-                Approved donations, active delivery routes & demand heat-zones
+                Live surplus pickups, courier routes & field hubs via Mapbox API
               </Text>
             </View>
             <TouchableOpacity
               style={styles.mapFullscreenBtn}
               onPress={() => router.push('/(admin)/map' as any)}
+              accessibilityLabel="Open Full Operations Map"
             >
               <Ionicons name="expand-outline" size={18} color={colors.adminMaroon} />
             </TouchableOpacity>
@@ -401,74 +373,45 @@ export default function AdminDashboard() {
             ))}
           </View>
 
-          {/* Map Container */}
-          <View style={styles.mapContainer}>
-            {Platform.OS === 'web' || !MapView ? (
-              <View style={styles.webMapFallback}>
-                <Ionicons name="map-outline" size={38} color={colors.adminMaroon} />
-                <Text style={styles.webMapFallbackTitle}>Northern Sri Lanka Field Network</Text>
-                <Text style={styles.webMapFallbackDesc}>
-                  4 Hubs · 38 Active Deliveries · 5 High-Demand Wards
-                </Text>
-                <TouchableOpacity
-                  style={styles.openMapBtn}
-                  onPress={() => router.push('/(admin)/map' as any)}
-                >
-                  <Text style={styles.openMapBtnText}>Open Full Operations Map</Text>
-                </TouchableOpacity>
+          {/* Mapbox Live Canvas */}
+          <TouchableOpacity
+            style={styles.mapContainer}
+            activeOpacity={0.92}
+            onPress={() => router.push('/(admin)/map' as any)}
+          >
+            <Image
+              source={{ uri: mapboxUrl }}
+              style={styles.mapboxMapImage}
+              resizeMode="cover"
+            />
+
+            {/* Floating Top Indicators */}
+            <View style={styles.mapFloatingHeader}>
+              <View style={styles.mapChip}>
+                <Ionicons name="location-sharp" size={12} color="#0D9488" />
+                <Text style={styles.mapChipText}>Jaffna Field Network</Text>
               </View>
-            ) : (
-              <MapView style={styles.map} initialRegion={JAFFNA_REGION}>
-                {/* Food Hub Markers */}
-                {(mapFilter === 'all' || mapFilter === 'hubs') &&
-                  FOOD_HUBS.map((hub) => (
-                    <Marker
-                      key={hub.id}
-                      coordinate={{ latitude: hub.latitude, longitude: hub.longitude }}
-                      title={hub.name}
-                      description={hub.address}
-                      pinColor="#2B6CB0"
-                    />
-                  ))}
+              <View style={styles.mapChipStats}>
+                <Text style={styles.mapChipStatsText}>
+                  {mapFilter === 'hubs'
+                    ? '4 Operational Hubs'
+                    : mapFilter === 'donations'
+                    ? '3 Verified Pickups'
+                    : mapFilter === 'routes'
+                    ? '3 Active Deliveries'
+                    : mapFilter === 'demand'
+                    ? '2 High-Demand Zones'
+                    : '12 Active Coordinates'}
+                </Text>
+              </View>
+            </View>
 
-                {/* Approved Donation Marker */}
-                {(mapFilter === 'all' || mapFilter === 'donations') && (
-                  <Marker
-                    coordinate={{ latitude: 9.6744, longitude: 80.0286 }}
-                    title="Nallur Temple Kitchen (50 Meals)"
-                    description="Safety Passed 72°C · Fresh Hot"
-                    pinColor="#0F7B4F"
-                  />
-                )}
-
-                {/* Active Delivery Route Polyline */}
-                {(mapFilter === 'all' || mapFilter === 'routes') && (
-                  <Polyline
-                    coordinates={[
-                      { latitude: 9.6744, longitude: 80.0286 },
-                      { latitude: 9.668, longitude: 80.023 },
-                      { latitude: 9.6615, longitude: 80.0167 },
-                    ]}
-                    strokeColor={colors.adminMaroon}
-                    strokeWidth={4}
-                  />
-                )}
-
-                {/* Demand Heat-Zones */}
-                {(mapFilter === 'all' || mapFilter === 'demand') &&
-                  (demandCells ?? []).map((cell) => (
-                    <Circle
-                      key={cell.district}
-                      center={{ latitude: cell.latitude, longitude: cell.longitude }}
-                      radius={1200}
-                      fillColor="rgba(229, 62, 62, 0.22)"
-                      strokeColor={colors.urgentRed}
-                      strokeWidth={1}
-                    />
-                  ))}
-              </MapView>
-            )}
-          </View>
+            {/* Bottom Overlay Link */}
+            <View style={styles.mapTapOverlay}>
+              <Text style={styles.mapTapOverlayText}>Tap to open full GPS dispatch map</Text>
+              <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
 
           {/* Map Legend */}
           <View style={styles.mapLegend}>
@@ -776,10 +719,35 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: spacing.sm,
   },
+  mapTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   mapCardTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  mapboxBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E6F4EA',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  livePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0F766E',
+  },
+  mapboxBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0F766E',
   },
   mapCardSubtitle: {
     fontSize: 11,
@@ -814,41 +782,71 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   mapContainer: {
-    height: 220,
+    height: 230,
     borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: '#F3EFEA',
+    position: 'relative',
   },
-  map: {
-    flex: 1,
+  mapboxMapImage: {
+    width: '100%',
+    height: '100%',
   },
-  webMapFallback: {
-    flex: 1,
+  mapFloatingHeader: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    gap: 6,
   },
-  webMapFallbackTitle: {
-    fontSize: 14,
+  mapChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  mapChipText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: colors.text,
+    color: '#1F2937',
   },
-  webMapFallbackDesc: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  openMapBtn: {
-    marginTop: spacing.xs,
-    backgroundColor: colors.adminMaroon,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  mapChipStats: {
+    backgroundColor: 'rgba(90, 22, 38, 0.92)',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: radius.pill,
   },
-  openMapBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
+  mapChipStatsText: {
+    fontSize: 10,
     fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  mapTapOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  mapTapOverlayText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   mapLegend: {
     flexDirection: 'row',

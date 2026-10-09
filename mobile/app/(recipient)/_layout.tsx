@@ -26,6 +26,7 @@ function TabLabelWithDot({ focused, label }: { focused: boolean; label: string }
 
 export default function RecipientLayout() {
   const insets = useSafeAreaInsets();
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : 8;
 
   return (
     <RoleGuard role="recipient">
@@ -37,10 +38,15 @@ export default function RecipientLayout() {
           tabBarStyle: [
             styles.tabBar,
             {
-              height: 56 + Math.max(insets.bottom, 8),
-              paddingBottom: Math.max(insets.bottom, 8),
+              height: 68 + bottomPadding,
+              paddingTop: 6,
+              paddingBottom: bottomPadding,
             },
           ],
+          tabBarItemStyle: {
+            paddingVertical: 2,
+            justifyContent: 'center',
+          },
         }}
       >
         <Tabs.Screen

@@ -9,6 +9,7 @@ import { donorColors } from '@/theme/donor';
 export default function DonorLayout() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : 8;
 
   return (
     <RoleGuard role="donor">
@@ -20,9 +21,13 @@ export default function DonorLayout() {
           tabBarStyle: {
             backgroundColor: '#FFFFFF',
             borderTopColor: donorColors.line,
-            height: 56 + Math.max(insets.bottom, 8),
-            paddingBottom: Math.max(insets.bottom, 8),
+            height: 68 + bottomPadding,
             paddingTop: 6,
+            paddingBottom: bottomPadding,
+          },
+          tabBarItemStyle: {
+            paddingVertical: 2,
+            justifyContent: 'center',
           },
           tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         }}

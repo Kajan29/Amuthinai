@@ -8,6 +8,7 @@ import { colors } from '@/theme';
 
 export default function AdminLayout() {
   const insets = useSafeAreaInsets();
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : 8;
 
   return (
     <RoleGuard role="admin">
@@ -20,14 +21,18 @@ export default function AdminLayout() {
             backgroundColor: '#FFFFFF',
             borderTopColor: colors.cardBorder,
             borderTopWidth: 1,
-            height: 58 + Math.max(insets.bottom, 8),
-            paddingTop: 8,
-            paddingBottom: Math.max(insets.bottom, 8),
+            height: 68 + bottomPadding,
+            paddingTop: 6,
+            paddingBottom: bottomPadding,
             elevation: 8,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: -2 },
             shadowOpacity: 0.05,
             shadowRadius: 6,
+          },
+          tabBarItemStyle: {
+            paddingVertical: 2,
+            justifyContent: 'center',
           },
           tabBarLabelStyle: {
             fontSize: 11,
@@ -43,7 +48,7 @@ export default function AdminLayout() {
             tabBarIcon: ({ color, focused }) => (
               <View style={styles.tabIconWrap}>
                 <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={22} />
-                {focused && <View style={styles.activeDot} />}
+                {focused ? <View style={styles.activeDot} /> : <View style={styles.dotPlaceholder} />}
               </View>
             ),
           }}
@@ -60,7 +65,7 @@ export default function AdminLayout() {
                   color={color}
                   size={22}
                 />
-                {focused && <View style={styles.activeDot} />}
+                {focused ? <View style={styles.activeDot} /> : <View style={styles.dotPlaceholder} />}
               </View>
             ),
           }}
@@ -73,7 +78,7 @@ export default function AdminLayout() {
             tabBarIcon: ({ color, focused }) => (
               <View style={styles.tabIconWrap}>
                 <Ionicons name={focused ? 'cube' : 'cube-outline'} color={color} size={22} />
-                {focused && <View style={styles.activeDot} />}
+                {focused ? <View style={styles.activeDot} /> : <View style={styles.dotPlaceholder} />}
               </View>
             ),
           }}
@@ -90,7 +95,7 @@ export default function AdminLayout() {
                   color={color}
                   size={22}
                 />
-                {focused && <View style={styles.activeDot} />}
+                {focused ? <View style={styles.activeDot} /> : <View style={styles.dotPlaceholder} />}
               </View>
             ),
           }}
@@ -107,7 +112,7 @@ export default function AdminLayout() {
                   color={color}
                   size={22}
                 />
-                {focused && <View style={styles.activeDot} />}
+                {focused ? <View style={styles.activeDot} /> : <View style={styles.dotPlaceholder} />}
               </View>
             ),
           }}
@@ -139,6 +144,7 @@ const styles = StyleSheet.create({
   tabIconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    height: 26,
   },
   activeDot: {
     width: 4,
@@ -147,4 +153,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.adminMaroon,
     marginTop: 2,
   },
+  dotPlaceholder: {
+    width: 4,
+    height: 4,
+    marginTop: 2,
+  },
 });
+

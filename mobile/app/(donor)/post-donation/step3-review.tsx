@@ -98,6 +98,7 @@ export default function Step3Review() {
   });
 
   const canPost = isComplete() && pledged && !submit.isPending;
+  const missingDetails = !isComplete();
 
   async function addPhoto() {
     if (photos.length >= 3 || uploading) return;
@@ -127,7 +128,10 @@ export default function Step3Review() {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+      >
         <View style={styles.topBar}>
           <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="chevron-back" size={22} color={donorColors.ink} />
@@ -164,7 +168,7 @@ export default function Step3Review() {
           <Text style={styles.sectionTitle}>
             {t('donor.attachedPhotos', { count: photos.length })}
           </Text>
-          <Text style={styles.link}>{t('donor.photoPreviewHint')}</Text>
+          {photos.length > 0 ? <Text style={styles.link}>{t('donor.photoPreviewHint')}</Text> : null}
         </View>
         <View style={styles.photos}>
           {photos.map((url) => (
@@ -198,10 +202,21 @@ export default function Step3Review() {
           <View style={styles.impactCopy}>
             <Text style={styles.impactTitle}>{t('donor.estimatedImpact')}</Text>
             <Text style={styles.impactBody}>
-              {t('donor.impactLine', { people, co2: co2Kg })}
+              {people > 0 ? t('donor.impactLine', { people, co2: co2Kg }) : t('donor.impactEmpty')}
             </Text>
           </View>
         </View>
+
+        {missingDetails ? (
+          <Pressable
+            onPress={() => router.push('/(donor)/post-donation/step1-food')}
+            style={styles.missing}
+          >
+            <Ionicons name="alert-circle" size={18} color={donorColors.orange} />
+            <Text style={styles.missingText}>{t('donor.missingDetails')}</Text>
+            <Text style={styles.missingAction}>{t('donor.edit')}</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.summary}>
           <View style={styles.summaryHead}>
@@ -219,16 +234,16 @@ export default function Step3Review() {
           </View>
 
           <SummaryRow icon="restaurant-outline" label={t('donor.foodQuantity')}>
-            <Text style={styles.value}>
+            <Text style={[styles.value, !draft.title && styles.missingValue]}>
               {draft.servings ? `${draft.servings} ` : ''}
-              {draft.title || '—'}
+              {draft.title || t('donor.notAdded')}
             </Text>
-            <Text style={styles.sub}>{draft.foodType ? t(FOOD_KEYS[draft.foodType]) : '—'}</Text>
+            <Text style={styles.sub}>{draft.foodType ? t(FOOD_KEYS[draft.foodType]) : t('donor.notAdded')}</Text>
           </SummaryRow>
 
           <SummaryRow icon="pricetags-outline" label={t('donor.dietaryBadges')}>
             <View style={styles.badges}>
-              {tags.length === 0 ? <Text style={styles.sub}>—</Text> : null}
+              {tags.length === 0 ? <Text style={styles.sub}>{t('donor.noBadges')}</Text> : null}
               {tags.map((tag) => (
                 <View key={tag} style={[styles.badge, BADGE_STYLE[tag]]}>
                   <Text style={[styles.badgeText, BADGE_TEXT[tag]]}>{t(TAG_KEYS[tag])}</Text>
@@ -247,10 +262,14 @@ export default function Step3Review() {
 
           <View style={styles.pair}>
             <SummaryRow icon="time-outline" label={t('donor.preparedAt')}>
-              <Text style={styles.value}>{prepared ? whenLabel(prepared, t('donor.today')) : '—'}</Text>
+              <Text style={[styles.value, !prepared && styles.missingValue]}>
+                {prepared ? whenLabel(prepared, t('donor.today')) : t('donor.notAdded')}
+              </Text>
             </SummaryRow>
             <SummaryRow icon="hourglass-outline" label={t('donor.expiryWindow')}>
-              <Text style={[styles.value, styles.expiry]}>{expiry ? leftLabel(expiry) : '—'}</Text>
+              <Text style={[styles.value, expiry ? styles.expiry : styles.missingValue]}>
+                {expiry ? leftLabel(expiry) : t('donor.notAdded')}
+              </Text>
             </SummaryRow>
           </View>
 
@@ -258,7 +277,7 @@ export default function Step3Review() {
             <Text style={styles.value}>
               {draft.pickupAddress
                 ? `${draft.pickupAddress.line1}, ${draft.pickupAddress.city}`
-                : '—'}
+                : t('donor.notAdded')}
             </Text>
             {note ? <Text style={styles.sub}>{t('donor.locationNote', { note })}</Text> : null}
           </SummaryRow>
@@ -286,6 +305,11 @@ export default function Step3Review() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        {!canPost && !submit.isPending ? (
+          <Text style={styles.postHint}>
+            {missingDetails ? t('donor.missingDetails') : t('donor.tickPledge')}
+          </Text>
+        ) : null}
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backLabel}>{t('donor.backStep')}</Text>
         </Pressable>
@@ -375,6 +399,7 @@ function leftLabel(iso: string): string {
 
 const styles = StyleSheet.create({
   root: { backgroundColor: donorColors.background, flex: 1 },
+  scroll: { flex: 1 },
   content: { gap: 12, paddingBottom: 24, paddingHorizontal: 16 },
   topBar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   iconBtn: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
@@ -460,6 +485,17 @@ const styles = StyleSheet.create({
   summaryCopy: { flex: 1, gap: 2 },
   rowLabel: { color: donorColors.muted, fontSize: 11 },
   value: { color: donorColors.ink, fontSize: 14, fontWeight: '700' },
+  missingValue: { color: donorColors.muted, fontWeight: '600' },
+  missing: {
+    alignItems: 'center',
+    backgroundColor: donorColors.orangeSoft,
+    borderRadius: 14,
+    flexDirection: 'row',
+    gap: 8,
+    padding: 12,
+  },
+  missingText: { color: donorColors.ink, flex: 1, fontSize: 13, fontWeight: '600' },
+  missingAction: { color: donorColors.plum, fontSize: 13, fontWeight: '800' },
   sub: { color: donorColors.muted, fontSize: 12 },
   expiry: { color: donorColors.orange },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -489,10 +525,12 @@ const styles = StyleSheet.create({
     borderTopColor: donorColors.line,
     borderTopWidth: 1,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     paddingHorizontal: 16,
     paddingTop: 12,
   },
+  postHint: { color: donorColors.muted, fontSize: 12, width: '100%' },
   backBtn: {
     alignItems: 'center',
     borderColor: '#E4DDD6',

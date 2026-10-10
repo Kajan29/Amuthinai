@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
+import { getConnectionToken } from '@nestjs/mongoose';
 import { Connection, Model } from 'mongoose';
 
 import { AppModule } from '../app.module';
@@ -108,8 +108,8 @@ async function seed() {
   });
 
   const connection = app.get<Connection>(getConnectionToken());
-  const userModel = app.get<Model<User>>(getModelToken(User.name));
-  const assignmentModel = app.get<Model<Assignment>>(getModelToken(Assignment.name));
+  const userModel = connection.model<User>(User.name);
+  const assignmentModel = connection.model<Assignment>(Assignment.name);
 
   const usersService = app.get(UsersService);
   const donationsService = app.get(DonationsService);
@@ -527,13 +527,13 @@ async function seed() {
     dropAddress: PLACE.palaly,
   });
 
-  const extraRecipient = await ensureRecipient(
+  const cancelledOwner = await ensureRecipient(
     usersService,
-    'grace.elderly@amuthinai.lk',
-    'Grace Care Elderly Home',
-    '0212223344',
+    'demo.cancelled@amuthinai.lk',
+    'Chunnakam Family Kitchen',
+    '0770000007',
   );
-  const cancelledRequest = await foodRequestsService.create(extraRecipient.id as string, {
+  const cancelledRequest = await foodRequestsService.create(cancelledOwner.id as string, {
     servingsNeeded: 12,
     familySize: 12,
     neededBy: hoursAhead(8),
@@ -541,7 +541,7 @@ async function seed() {
     foodCategory: 'cooked meals',
     dropAddress: PLACE.chunnakam,
   });
-  await foodRequestsService.cancel(cancelledRequest.id as string, extraRecipient.id as string);
+  await foodRequestsService.cancel(cancelledRequest.id as string, cancelledOwner.id as string);
 
   // 8. Enquiries in every status
   logger.log('Seeding enquiries');

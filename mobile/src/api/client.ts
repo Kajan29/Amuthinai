@@ -27,9 +27,19 @@ export const client: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+function isFormDataBody(data: unknown): boolean {
+  return typeof FormData !== 'undefined' && data instanceof FormData;
+}
+
 client.interceptors.request.use(async (config) => {
   const token = await secureStorage.getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  // Default JSON Content-Type breaks multipart uploads — the runtime must set the boundary.
+  if (isFormDataBody(config.data) && config.headers) {
+    delete config.headers['Content-Type'];
+    delete config.headers['content-type'];
+  }
   return config;
 });
 

@@ -52,7 +52,11 @@ export interface DonationAssignmentInfo {
   volunteer: { name: string; phone: string | null; vehicleType: string | null } | null;
   proofs: DeliveryProof[];
   /** Open recipient request this donation fulfills. */
-  foodRequestId?: string;
+  foodRequestId?: string | null;
+  pickupAddress?: Address | null;
+  dropAddress?: Address | null;
+  routeKm?: number | null;
+  etaMinutes?: number | null;
 }
 
 export interface DonationQuery {

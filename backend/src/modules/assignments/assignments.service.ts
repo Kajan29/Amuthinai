@@ -960,7 +960,39 @@ export class AssignmentsService {
       .sort({ offeredAt: -1 })
       .select('+pickupPin')
       .exec();
-    if (!assignment) return { assignment: null, volunteer: null, proofs: [], pickupPin: null };
+
+    let requestDoc: FoodRequestDocument | null = null;
+    if (assignment?.requestId) {
+      requestDoc = await this.foodRequestsService.findById(assignment.requestId.toString()).catch(() => null);
+    }
+    if (!requestDoc && donation.foodRequestId) {
+      requestDoc = await this.foodRequestsService
+        .findById(donation.foodRequestId.toString())
+        .catch(() => null);
+    }
+    if (!requestDoc) {
+      const matched = await this.foodRequestsService.findByDonationIds([donationId]);
+      requestDoc = matched[0] ?? null;
+    }
+
+    const pickupCoords = donation.pickupAddress?.location?.coordinates;
+    const dropCoords = requestDoc?.dropAddress?.location?.coordinates;
+    const routeKm =
+      pickupCoords && dropCoords ? distanceKm(pickupCoords, dropCoords) : null;
+
+    if (!assignment) {
+      return {
+        assignment: null,
+        volunteer: null,
+        proofs: [],
+        pickupPin: null,
+        foodRequestId: requestDoc?.id ?? donation.foodRequestId?.toString() ?? null,
+        pickupAddress: donation.pickupAddress,
+        dropAddress: requestDoc?.dropAddress ?? null,
+        routeKm,
+        etaMinutes: routeKm !== null ? estimateMinutes(routeKm) : null,
+      };
+    }
 
     const [volunteer, proofs, ngo] = await Promise.all([
       assignment.ngoId ? null : this.usersService.findById(assignment.volunteerId.toString()).catch(() => null),
@@ -987,6 +1019,11 @@ export class AssignmentsService {
           ? { name: volunteer.name, phone: volunteer.phone ?? null, vehicleType: volunteer.vehicleType ?? null }
           : null,
       proofs,
+      foodRequestId: requestDoc?.id ?? donation.foodRequestId?.toString() ?? null,
+      pickupAddress: donation.pickupAddress,
+      dropAddress: requestDoc?.dropAddress ?? null,
+      routeKm,
+      etaMinutes: routeKm !== null ? estimateMinutes(routeKm) : null,
     };
   }
 

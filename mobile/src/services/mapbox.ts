@@ -13,6 +13,13 @@ export interface MapboxMarker {
   size?: 's' | 'm' | 'l'; // default 's'
 }
 
+export interface MapboxPath {
+  coordinates: LatLng[];
+  strokeColor?: string;
+  strokeWidth?: number;
+  strokeOpacity?: number;
+}
+
 const JAFFNA: LatLng = { latitude: 9.6645, longitude: 80.02 };
 /** Static Images API raster limit is 1280px on each side, including @2x. */
 const MAX_STATIC_PX = 1280;
@@ -52,6 +59,28 @@ function clampStaticSize(width: number, height: number, retina: boolean): { widt
   };
 }
 
+export function latDeltaToZoom(latitudeDelta: number): number {
+  return Math.max(1, Math.min(17, Math.log2(360 / Math.max(latitudeDelta, 0.002))));
+}
+
+function hexColor(color?: string): string {
+  if (!color) return '5A1626';
+  return color.replace('#', '').replace(/^0x/i, '');
+}
+
+function encodePath(path: MapboxPath): string | null {
+  const coords = path.coordinates.filter(isValidLatLng);
+  if (coords.length < 2) return null;
+  const width = Math.max(1, Math.min(10, Math.round(path.strokeWidth ?? 4)));
+  const color = hexColor(path.strokeColor);
+  const opacity = Math.max(0.2, Math.min(1, path.strokeOpacity ?? 1));
+  const points = coords
+    .slice(0, 80)
+    .map((c) => `${c.longitude.toFixed(5)},${c.latitude.toFixed(5)}`)
+    .join(',');
+  return encodeOverlay(`path-${width}+${color}-${opacity}(${points})`);
+}
+
 /**
  * Generates a Mapbox Static Map API URL
  */
@@ -62,6 +91,7 @@ export function getMapboxStaticMapUrl(params: {
   height?: number;
   retina?: boolean;
   markers?: MapboxMarker[];
+  paths?: MapboxPath[];
   style?: 'streets-v12' | 'outdoors-v12' | 'light-v11' | 'navigation-day-v1';
   auto?: boolean; // if true, fits all markers automatically
 }): string {
@@ -73,6 +103,7 @@ export function getMapboxStaticMapUrl(params: {
     height: rawHeight = 340,
     retina = true,
     markers = [],
+    paths = [],
     style = 'streets-v12',
     auto = false,
   } = params;
@@ -84,14 +115,16 @@ export function getMapboxStaticMapUrl(params: {
   const markerStrings = validMarkers.map((m) => {
     const size = m.size || 's';
     const label = sanitizeLabel(m.label);
-    const color = m.color ? `+${m.color.replace('#', '')}` : '+5A1626';
+    const color = m.color ? `+${hexColor(m.color)}` : '+5A1626';
     return encodeOverlay(
       `pin-${size}${label}${color}(${m.longitude.toFixed(5)},${m.latitude.toFixed(5)})`,
     );
   });
 
-  const overlayPart = markerStrings.length > 0 ? `${markerStrings.join(',')}/` : '';
-  const useAuto = auto && markerStrings.length > 0;
+  const pathStrings = paths.map(encodePath).filter((value): value is string => Boolean(value));
+  const overlays = [...pathStrings, ...markerStrings];
+  const overlayPart = overlays.length > 0 ? `${overlays.join(',')}/` : '';
+  const useAuto = auto && overlays.length > 0;
   const positionPart = useAuto
     ? 'auto'
     : `${center.longitude.toFixed(5)},${center.latitude.toFixed(5)},${zoom},0`;

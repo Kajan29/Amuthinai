@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -89,24 +88,27 @@ export default function Step1Food() {
     update({ dietaryTags: next });
   }
 
-  async function addPhoto() {
+  function addPhoto() {
     if (photos.length >= 3 || uploading) return;
     setPhotoError(null);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setPhotoError(t('donor.photoDenied'));
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
-    const asset = result.canceled ? null : result.assets[0];
-    if (!asset) return;
+    Alert.alert(t('donor.addPhoto'), t('donor.choosePhoto'), [
+      { text: t('donor.useCamera'), onPress: () => void capturePhoto('camera') },
+      { text: t('donor.useGallery'), onPress: () => void capturePhoto('gallery') },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  }
 
+  async function capturePhoto(source: 'camera' | 'gallery') {
+    if (photos.length >= 3 || uploading) return;
+    setPhotoError(null);
     setUploading(true);
     try {
-      const uploaded = await cloudinaryService.uploadImage(asset.uri, 'amuthinai/donations');
+      const uri = await cloudinaryService.pickOrCapture(source);
+      if (!uri) return;
+      const uploaded = await cloudinaryService.uploadImage(uri, 'amuthinai/donations');
       update({ photoUrls: [...photos, uploaded.url] });
-    } catch {
-      setPhotoError(t('donor.photoFailed'));
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : t('donor.photoFailed'));
     } finally {
       setUploading(false);
     }

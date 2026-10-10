@@ -2,22 +2,28 @@ import Constants from 'expo-constants';
 
 import type { DonationStatus, FoodType, Language, Role, VehicleType } from '@/types';
 
+function publicEnv(name: string): string {
+  const fromProcess = process.env[name];
+  if (fromProcess) return fromProcess;
+  const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
+  return extra?.[name] ?? '';
+}
+
 export const API_URL: string =
-  process.env.EXPO_PUBLIC_API_URL ||
+  publicEnv('EXPO_PUBLIC_API_URL') ||
   (Constants.expoConfig?.hostUri
     ? `http://${Constants.expoConfig.hostUri.split(':')[0]}:3000/api/v1`
     : 'http://localhost:3000/api/v1');
 
 export const APP_VERSION: string = Constants.expoConfig?.version ?? '0.0.0';
 
-export const MAPBOX_ACCESS_TOKEN: string = 
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
+export const MAPBOX_ACCESS_TOKEN: string = publicEnv('EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN');
 
 export const CLOUDINARY_CLOUD_NAME: string =
-  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || 'rrotphpj';
+  publicEnv('EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME') || 'rrotphpj';
 
 export const CLOUDINARY_UPLOAD_PRESET: string =
-  process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'amuthinai_unsigned';
+  publicEnv('EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET') || 'amuthinai_unsigned';
 
 export const ROLES: Role[] = ['donor', 'volunteer', 'recipient', 'admin'];
 

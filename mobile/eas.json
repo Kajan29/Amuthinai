@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://amuthinai.onrender.com/api/v1",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "261285591096-m57bl2i3vq5ju422qmudc6c2uaqsrn2p.apps.googleusercontent.com",
+        "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN": "pk.eyJ1Ijoia2FqYW4yOSIsImEiOiJjbXV3N3pnMGswMDlsMnlwZzFycnA4bjQzIn0.H6zku5C47W-6JaFnkijHDQ",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "rrotphpj",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "amuthinai_unsigned"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://amuthinai.onrender.com/api/v1",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "261285591096-m57bl2i3vq5ju422qmudc6c2uaqsrn2p.apps.googleusercontent.com",
+        "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN": "pk.eyJ1Ijoia2FqYW4yOSIsImEiOiJjbXV3N3pnMGswMDlsMnlwZzFycnA4bjQzIn0.H6zku5C47W-6JaFnkijHDQ",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "rrotphpj",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "amuthinai_unsigned"
+      }
+    }
+  }
+}

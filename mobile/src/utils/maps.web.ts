@@ -10,5 +10,6 @@ export const Polyline = null;
 
 export type MapPressEvent = any;
 export type Region = any;
+export type MapViewRef = any;
 
 export default MapView;

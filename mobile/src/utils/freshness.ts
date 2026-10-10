@@ -1,5 +1,28 @@
-import { URGENT_THRESHOLD_MINUTES } from '@/constants';
-import type { Donation } from '@/types';
+import { DEFAULT_SAFE_HOURS, MAX_SAFE_HOURS, URGENT_THRESHOLD_MINUTES } from '@/constants';
+import type { Donation, FoodType } from '@/types';
+
+export type PrepareTimeIssue = 'missing' | 'invalid' | 'future' | 'too_old';
+
+export function prepareWindowHours(foodType: FoodType = 'cooked'): number {
+  return foodType === 'cooked' ? DEFAULT_SAFE_HOURS : MAX_SAFE_HOURS[foodType];
+}
+
+/** FR3 — cooked food may be posted only if it was prepared within the last 6 hours. */
+export function validatePrepareTime(
+  cookedAt: string | undefined,
+  foodType: FoodType = 'cooked',
+  now: Date = new Date(),
+): { ok: true; maxHours: number } | { ok: false; issue: PrepareTimeIssue; maxHours: number } {
+  const maxHours = prepareWindowHours(foodType);
+  if (!cookedAt) return { ok: false, issue: 'missing', maxHours };
+  const cooked = new Date(cookedAt).getTime();
+  if (Number.isNaN(cooked)) return { ok: false, issue: 'invalid', maxHours };
+  if (cooked > now.getTime() + 60_000) return { ok: false, issue: 'future', maxHours };
+  if (now.getTime() - cooked > maxHours * 60 * 60 * 1000) {
+    return { ok: false, issue: 'too_old', maxHours };
+  }
+  return { ok: true, maxHours };
+}
 
 export type FreshnessLevel = 'fresh' | 'urgent' | 'expired';
 

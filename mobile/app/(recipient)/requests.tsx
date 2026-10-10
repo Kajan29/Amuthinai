@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Linking,
   Modal,
   Platform,
@@ -23,8 +22,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { queryClient } from '@/api/queryClient';
 import { requestsApi } from '@/api/requests.api';
 import { DeliveryPinCard } from '@/components/DeliveryPinCard';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { Badge, Card, EmptyState } from '@/components/ui';
-import { MAPBOX_ACCESS_TOKEN } from '@/constants';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { FoodRequest } from '@/types';
 import { formatDateTime } from '@/utils/date';
@@ -174,7 +174,17 @@ export default function RecipientRequestsScreen() {
   const volunteerLng = (dropLng + hubLng) / 2 + 0.002;
   const volunteerLat = (dropLat + hubLat) / 2 - 0.001;
 
-  const mapboxTrackingUrl = `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s-restaurant+5A1626(${hubLng},${hubLat}),pin-s-bicycle+0F7B4F(${volunteerLng},${volunteerLat}),pin-s-home+F59E0B(${dropLng},${dropLat})/${dropLng},${dropLat},13.5,0/600x420@2x?access_token=${MAPBOX_ACCESS_TOKEN}`;
+  const mapboxTrackingUrl = getMapboxStaticMapUrl({
+    center: { latitude: dropLat, longitude: dropLng },
+    zoom: 13.5,
+    width: 600,
+    height: 420,
+    markers: [
+      { latitude: hubLat, longitude: hubLng, label: 'restaurant', color: '5A1626' },
+      { latitude: volunteerLat, longitude: volunteerLng, label: 'bicycle', color: '0F7B4F' },
+      { latitude: dropLat, longitude: dropLng, label: 'home', color: 'F59E0B' },
+    ],
+  });
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -738,7 +748,7 @@ export default function RecipientRequestsScreen() {
                     )}
                   </MapView>
                 ) : (
-                  <Image source={{ uri: mapboxTrackingUrl }} style={styles.trackingMapImage} />
+                  <MapboxStaticImage uri={mapboxTrackingUrl} style={styles.trackingMapImage} />
                 )}
 
                 {/* Floating Live ETA Banner */}

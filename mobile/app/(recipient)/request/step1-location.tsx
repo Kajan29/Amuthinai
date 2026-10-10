@@ -20,7 +20,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ngosApi } from '@/api/ngos.api';
 import { requestsApi } from '@/api/requests.api';
-import { MAPBOX_ACCESS_TOKEN } from '@/constants';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { useRequestDraft } from '@/store/requestDraft.store';
 import type { GeoPoint } from '@/types';
 import { distanceKm, toGeoPoint } from '@/utils/geo';
@@ -394,12 +395,26 @@ export default function Step1LocationScreen() {
       )
     : [];
 
-  // Mapbox static map background URL fallback
-  const mapboxStaticUrl = `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s-restaurant+5A1626(${selectedHub.lng},${selectedHub.lat}),pin-s-circle+F59E0B(${pinLocation.longitude},${pinLocation.latitude})${
-    previousReqCoords
-      ? `,pin-s-time+3B82F6(${previousReqCoords.longitude},${previousReqCoords.latitude})`
-      : ''
-  }/${pinLocation.longitude},${pinLocation.latitude},13.2,0/600x420@2x?access_token=${MAPBOX_ACCESS_TOKEN}`;
+  const mapboxStaticUrl = getMapboxStaticMapUrl({
+    center: { latitude: pinLocation.latitude, longitude: pinLocation.longitude },
+    zoom: 13.2,
+    width: 600,
+    height: 420,
+    markers: [
+      { latitude: selectedHub.lat, longitude: selectedHub.lng, label: 'restaurant', color: '5A1626' },
+      { latitude: pinLocation.latitude, longitude: pinLocation.longitude, label: 'home', color: 'F59E0B' },
+      ...(previousReqCoords
+        ? [
+            {
+              latitude: previousReqCoords.latitude,
+              longitude: previousReqCoords.longitude,
+              label: 'star',
+              color: '3B82F6',
+            },
+          ]
+        : []),
+    ],
+  });
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -687,11 +702,7 @@ export default function Step1LocationScreen() {
                 )}
               </MapView>
             ) : (
-              <Image
-                source={{ uri: mapboxStaticUrl }}
-                style={styles.mapImage}
-                resizeMode="cover"
-              />
+              <MapboxStaticImage uri={mapboxStaticUrl} style={styles.mapImage} />
             )}
 
             {/* Google Maps Style Fixed Center Aim Pin */}

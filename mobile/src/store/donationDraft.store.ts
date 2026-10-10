@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { CreateDonationPayload } from '@/api/donations.api';
 import { DEFAULT_SAFE_HOURS } from '@/constants';
+import { validatePrepareTime } from '@/utils/freshness';
 
 export type DonationDraft = Partial<CreateDonationPayload> & { foodRequestId?: string };
 
@@ -39,7 +40,10 @@ export const useDonationDraft = create<DonationDraftState>()(
 
       isComplete() {
         const { title, foodType, servings, cookedAt, safeForHours, pickupAddress } = get().draft;
-        return Boolean(title && foodType && servings && cookedAt && safeForHours && pickupAddress);
+        if (!title || !foodType || !servings || !cookedAt || !safeForHours || !pickupAddress) {
+          return false;
+        }
+        return validatePrepareTime(cookedAt, foodType).ok;
       },
 
       hasSavedProgress() {

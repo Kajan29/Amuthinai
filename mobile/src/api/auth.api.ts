@@ -42,6 +42,11 @@ export interface VerifyEmailPayload {
   otp: string;
 }
 
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
 /** FR1 — registration, login and role selection. */
 export const authApi = {
   register: (payload: RegisterPayload) =>
@@ -77,4 +82,7 @@ export const authApi = {
 
   verifyEmail: (payload: VerifyEmailPayload) =>
     request<{ message: string }>(client.post('/auth/verify-email', payload)),
+
+  changePassword: (payload: ChangePasswordPayload) =>
+    request<{ message: string }>(client.patch('/auth/change-password', payload)),
 };

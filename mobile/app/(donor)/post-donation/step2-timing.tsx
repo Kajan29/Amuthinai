@@ -5,10 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
 import { MAX_SAFE_HOURS } from '@/constants';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
 import type { Address, DeliveryMethod, FoodType, HandlingInstruction, PickupSource } from '@/types';
+import { validatePrepareTime } from '@/utils/freshness';
 
 const NOTE_LIMIT = 150;
 
@@ -80,8 +82,16 @@ export default function Step2Timing() {
   const windowOk =
     new Date(consumeBefore).getTime() > Math.max(Date.now(), new Date(readyFrom).getTime()) &&
     new Date(consumeBefore).getTime() > new Date(cookedAt).getTime();
+  const prepare = validatePrepareTime(draft.cookedAt ?? cookedAt, foodType);
   const customOk = customLine.trim().length >= 3 && customCity.trim().length >= 2;
-  const canContinue = windowOk && (source === 'registered' || customOk);
+  const canContinue = prepare.ok && windowOk && (source === 'registered' || customOk);
+
+  function prepareErrorMessage(): string {
+    if (prepare.ok) return '';
+    if (prepare.issue === 'future') return t('donor.prepareFuture');
+    if (prepare.issue === 'missing' || prepare.issue === 'invalid') return t('donor.prepareRequired');
+    return t('donor.prepareTooOld', { hours: prepare.maxHours });
+  }
   const minutesLeft = Math.max(
     0,
     Math.round((new Date(consumeBefore).getTime() - Date.now()) / 60_000),
@@ -117,6 +127,16 @@ export default function Step2Timing() {
   function applyClock() {
     if (picking === 'cooked') {
       const next = writeClock(cookedAt, clock);
+      const check = validatePrepareTime(next, foodType);
+      if (!check.ok) {
+        Alert.alert(
+          t('donor.cookedAtLabel'),
+          check.issue === 'future'
+            ? t('donor.prepareFuture')
+            : t('donor.prepareTooOld', { hours: check.maxHours }),
+        );
+        return;
+      }
       const maxHours = MAX_SAFE_HOURS[foodType];
       const deadline = new Date(new Date(next).getTime() + maxHours * 60 * 60 * 1000).toISOString();
       update({
@@ -140,6 +160,10 @@ export default function Step2Timing() {
   }
 
   function continueNext() {
+    if (!prepare.ok) {
+      Alert.alert(t('donor.cookedAtLabel'), prepareErrorMessage());
+      return;
+    }
     const pickupAddress: Address =
       source === 'registered'
         ? REGISTERED_ADDRESS
@@ -168,39 +192,17 @@ export default function Step2Timing() {
     router.push('/(donor)/post-donation/step3-review');
   }
 
-  function saveDraft() {
-    Alert.alert(t('donor.draftSaved'), t('donor.draftSavedBody'), [
-      { text: t('common.ok'), onPress: () => router.replace('/(donor)/dashboard') },
-    ]);
-  }
-
   return (
     <View style={styles.root}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       >
-        <View style={styles.topBar}>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.iconBtn}>
-            <Ionicons name="chevron-back" size={22} color={donorColors.ink} />
-          </Pressable>
-          <View style={styles.brandBlock}>
-            <View style={styles.brandRow}>
-              <Ionicons name="restaurant" size={14} color={donorColors.orange} />
-              <Text style={styles.brand}>
-                Jaffna <Text style={styles.brandAccent}>Connect</Text>
-              </Text>
-            </View>
-            <Text style={styles.kicker}>{t('donor.logisticsKicker')}</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.replace('/(donor)/dashboard')}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="close" size={22} color={donorColors.ink} />
-          </Pressable>
-        </View>
+        <DonorWizardHeader
+          onBack={() => router.back()}
+          onClose={() => router.replace('/(donor)/dashboard')}
+          subtitle={t('donor.logisticsKicker')}
+        />
 
         <View style={styles.steps}>
           <Step n="✓" label={t('donor.stepDetails')} done />
@@ -278,12 +280,19 @@ export default function Step2Timing() {
         </View>
         <View style={styles.windowCard}>
           <TimeCard
-            label={t('donor.cookedAtLabel')}
+            label={`${t('donor.cookedAtLabel')} *`}
             day={dayLabel(cookedAt, t('donor.today'))}
             time={clockLabel(cookedAt)}
+            warn={!prepare.ok}
             onPress={() => openClock('cooked')}
           />
           {isCooked ? <Text style={styles.cookedHint}>{t('donor.cookedDeadlineHint')}</Text> : null}
+          {!prepare.ok ? (
+            <View style={[styles.windowNoteRow, styles.windowNoteBad]}>
+              <Ionicons name="alert-circle" size={16} color={donorColors.alert} />
+              <Text style={[styles.windowNote, styles.windowNoteTextBad]}>{prepareErrorMessage()}</Text>
+            </View>
+          ) : null}
           <View style={styles.windowRow}>
             <TimeCard
               label={t('donor.readyFrom')}
@@ -387,8 +396,8 @@ export default function Step2Timing() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        <Pressable onPress={saveDraft} style={styles.backBtn}>
-          <Text style={styles.backLabel}>{t('donor.saveDraft')}</Text>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backLabel}>{t('donor.backStep')}</Text>
         </Pressable>
         <Pressable
           disabled={!canContinue}

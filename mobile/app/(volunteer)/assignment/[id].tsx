@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { assignmentsApi, isOpenTask } from '@/api/assignments.api';
 import { logo } from '@/constants';
 import { cloudinaryService } from '@/services/cloudinary';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { getMapboxStaticMapUrl, getRouteTransitMapUrl } from '@/services/mapbox';
 import { toLatLng } from '@/utils/geo';
 import { etaMinutes, formatKm, nextStepHref } from '@/utils/tasks';
@@ -380,11 +381,7 @@ export default function AssignmentDetail() {
         <View style={styles.mapCard}>
           <View style={styles.mapCanvas}>
             <View style={styles.transitMapBg}>
-              <Image
-                source={{ uri: mapboxRouteUrl }}
-                style={styles.mapboxRouteImage}
-                resizeMode="cover"
-              />
+              <MapboxStaticImage uri={mapboxRouteUrl} style={styles.mapboxRouteImage} />
 
               <View style={styles.markerAPosition}>
                 <View style={styles.markerACircle}>

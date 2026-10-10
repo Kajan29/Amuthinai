@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
-  Image,
   Linking,
   Platform,
   ScrollView,
@@ -17,7 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ngosApi } from '@/api/ngos.api';
-import { MAPBOX_ACCESS_TOKEN } from '@/constants';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { useAuth } from '@/hooks/useAuth';
 import type { GeoPoint, Ngo } from '@/types';
 import { distanceKm, toGeoPoint } from '@/utils/geo';
@@ -199,18 +199,25 @@ export default function HubMapScreen() {
     });
   };
 
-  // Construct fallback Mapbox static URL with all pins
-  const mapboxStaticUrl = useMemo(() => {
-    const hubPins = filteredHubs
-      .slice(0, 6)
-      .map(
-        (h) =>
-          `pin-s-${h.id === selectedHubId ? 'star+5A1626' : 'restaurant+0F7B4F'}(${h.lng},${h.lat})`,
-      )
-      .join(',');
-    const userPin = `pin-s-home+F59E0B(${userLng},${userLat})`;
-    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${userPin},${hubPins}/${selectedHub.lng},${selectedHub.lat},12.5,0/650x450@2x?access_token=${MAPBOX_ACCESS_TOKEN}`;
-  }, [filteredHubs, selectedHubId, selectedHub, userLng, userLat]);
+  const mapboxStaticUrl = useMemo(
+    () =>
+      getMapboxStaticMapUrl({
+        center: { latitude: selectedHub.lat, longitude: selectedHub.lng },
+        zoom: 12.5,
+        width: 650,
+        height: 450,
+        markers: [
+          { latitude: userLat, longitude: userLng, label: 'home', color: 'F59E0B' },
+          ...filteredHubs.slice(0, 6).map((h) => ({
+            latitude: h.lat,
+            longitude: h.lng,
+            label: h.id === selectedHubId ? 'star' : 'restaurant',
+            color: h.id === selectedHubId ? '5A1626' : '0F7B4F',
+          })),
+        ],
+      }),
+    [filteredHubs, selectedHubId, selectedHub, userLng, userLat],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -434,11 +441,7 @@ export default function HubMapScreen() {
             ) : (
               /* Fallback for Web: Mapbox Static Map with clickable hub overlays */
               <View style={styles.fallbackMapWrapper}>
-                <Image
-                  source={{ uri: mapboxStaticUrl }}
-                  style={styles.fallbackMapImage}
-                  resizeMode="cover"
-                />
+                <MapboxStaticImage uri={mapboxStaticUrl} style={styles.fallbackMapImage} />
                 <View style={styles.fallbackOverlayNotice}>
                   <Ionicons name="information-circle" size={16} color="#0F7B4F" />
                   <Text style={styles.fallbackOverlayText}>

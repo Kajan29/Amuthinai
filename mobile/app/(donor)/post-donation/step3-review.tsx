@@ -6,7 +6,6 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -18,11 +17,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { donationsApi, type CreateDonationPayload } from '@/api/donations.api';
+import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
 import { queryClient } from '@/api/queryClient';
 import { cloudinaryService } from '@/services/cloudinary';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
 import type { DietaryTag, FoodType, HandlingInstruction } from '@/types';
+import { validatePrepareTime } from '@/utils/freshness';
 
 const BADGE_STYLE: Record<DietaryTag, { backgroundColor: string }> = {
   pure_vegetarian: { backgroundColor: '#E7F6EE' },
@@ -98,8 +99,9 @@ export default function Step3Review() {
     },
   });
 
-  const canPost = isComplete() && pledged && !submit.isPending;
-  const missingDetails = !isComplete();
+  const prepare = validatePrepareTime(draft.cookedAt, draft.foodType ?? 'cooked');
+  const canPost = isComplete() && prepare.ok && pledged && !submit.isPending;
+  const missingDetails = !isComplete() || !prepare.ok;
 
   async function addPhoto() {
     if (photos.length >= 3 || uploading) return;
@@ -133,26 +135,10 @@ export default function Step3Review() {
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       >
-        <View style={styles.topBar}>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.iconBtn}>
-            <Ionicons name="chevron-back" size={22} color={donorColors.ink} />
-          </Pressable>
-          <View style={styles.brandBlock}>
-            <View style={styles.brandRow}>
-              <Ionicons name="restaurant" size={14} color={donorColors.orange} />
-              <Text style={styles.brand}>
-                Jaffna <Text style={styles.brandAccent}>Connect</Text>
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.replace('/(donor)/dashboard')}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="close" size={22} color={donorColors.ink} />
-          </Pressable>
-        </View>
+        <DonorWizardHeader
+          onBack={() => router.back()}
+          onClose={() => router.replace('/(donor)/dashboard')}
+        />
 
         <View style={styles.steps}>
           <Step n="✓" label={t('donor.stepDetails')} done />
@@ -210,11 +196,25 @@ export default function Step3Review() {
 
         {missingDetails ? (
           <Pressable
-            onPress={() => router.push('/(donor)/post-donation/step1-food')}
+            onPress={() =>
+              router.push(
+                !prepare.ok
+                  ? '/(donor)/post-donation/step2-timing'
+                  : '/(donor)/post-donation/step1-food',
+              )
+            }
             style={styles.missing}
           >
             <Ionicons name="alert-circle" size={18} color={donorColors.orange} />
-            <Text style={styles.missingText}>{t('donor.missingDetails')}</Text>
+            <Text style={styles.missingText}>
+              {!prepare.ok
+                ? prepare.issue === 'future'
+                  ? t('donor.prepareFuture')
+                  : prepare.issue === 'missing' || prepare.issue === 'invalid'
+                    ? t('donor.prepareRequired')
+                    : t('donor.prepareTooOld', { hours: prepare.maxHours })
+                : t('donor.missingDetails')}
+            </Text>
             <Text style={styles.missingAction}>{t('donor.edit')}</Text>
           </Pressable>
         ) : null}
@@ -306,15 +306,8 @@ export default function Step3Review() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        <Pressable
-          onPress={() => {
-            Alert.alert(t('donor.draftSaved'), t('donor.draftSavedBody'), [
-              { text: t('common.ok'), onPress: () => router.replace('/(donor)/dashboard') },
-            ]);
-          }}
-          style={styles.backBtn}
-        >
-          <Text style={styles.backLabel}>{t('donor.saveDraft')}</Text>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backLabel}>{t('donor.backStep')}</Text>
         </Pressable>
         <Pressable
           disabled={!canPost}

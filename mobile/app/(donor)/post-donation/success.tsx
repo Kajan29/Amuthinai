@@ -6,6 +6,7 @@ import { ActivityIndicator, Linking, Pressable, ScrollView, Share, StyleSheet, T
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { donationsApi } from '@/api/donations.api';
+import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
 import { useDonorDashboard } from '@/hooks/useDonorDashboard';
 import { useAuth } from '@/hooks/useAuth';
 import { donorColors } from '@/theme/donor';
@@ -69,18 +70,7 @@ export default function PostDonationSuccess() {
           { paddingTop: Math.max(insets.top + 8, 16), paddingBottom: Math.max(insets.bottom + 24, 36) },
         ]}
       >
-        <View style={styles.topBar}>
-          <Pressable accessibilityRole="button" onPress={goHome} style={styles.iconBtn}>
-            <Ionicons name="close" size={22} color={donorColors.ink} />
-          </Pressable>
-          <View style={styles.brandRow}>
-            <Ionicons name="restaurant" size={14} color={donorColors.orange} />
-            <Text style={styles.brand}>
-              Jaffna <Text style={styles.brandAccent}>Connect</Text>
-            </Text>
-          </View>
-          <View style={styles.iconBtn} />
-        </View>
+        <DonorWizardHeader onBack={goHome} onClose={goHome} />
 
         <View style={styles.steps}>
           <Step n="✓" label={t('donor.stepDetails')} done />

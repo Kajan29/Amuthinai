@@ -21,6 +21,16 @@ export const CLOUDINARY_UPLOAD_PRESET: string =
 
 export const ROLES: Role[] = ['donor', 'volunteer', 'recipient', 'admin'];
 
+/** Seed accounts from `backend` `npm run seed` — used by Advanced Login. */
+export const DEMO_PASSWORD = 'amuthinai123';
+
+export const DEMO_ACCOUNTS: Record<Role, { email: string; name: string }> = {
+  donor: { email: 'donor@amuthinai.lk', name: 'Donor' },
+  volunteer: { email: 'volunteer@amuthinai.lk', name: 'Volunteer' },
+  recipient: { email: 'recipient@amuthinai.lk', name: 'Recipient' },
+  admin: { email: 'admin@amuthinai.lk', name: 'Admin' },
+};
+
 export const FOOD_TYPES: FoodType[] = ['cooked', 'raw', 'packaged', 'bakery', 'dairy', 'beverage'];
 
 export const VEHICLE_TYPES: VehicleType[] = [

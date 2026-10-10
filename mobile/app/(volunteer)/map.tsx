@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -15,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NearbyTask } from '@/api/assignments.api';
 import { Badge } from '@/components/ui';
 import { URGENT_THRESHOLD_MINUTES } from '@/constants';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { useLocation } from '@/hooks/useLocation';
 import { useVolunteerTasks } from '@/hooks/useVolunteerTasks';
@@ -54,12 +54,12 @@ export default function VolunteerMap() {
     width: 600,
     height: 700,
     retina: true,
-    markers: items.map((t, idx) => ({
+    markers: items.slice(0, 9).map((t, idx) => ({
       latitude: t.donation.pickupAddress.location.coordinates[1],
       longitude: t.donation.pickupAddress.location.coordinates[0],
       label: String(idx + 1),
       color: t.minutesLeft <= URGENT_THRESHOLD_MINUTES ? 'D97706' : '0F766E',
-      size: 's',
+      size: 's' as const,
     })),
   });
 
@@ -111,11 +111,7 @@ export default function VolunteerMap() {
         </MapView>
       ) : (
         <View style={styles.mapboxMapContainer}>
-          <Image
-            source={{ uri: mapboxFullMapUrl }}
-            style={styles.mapboxFullMapImage}
-            resizeMode="cover"
-          />
+          <MapboxStaticImage uri={mapboxFullMapUrl} style={styles.mapboxFullMapImage} />
         </View>
       )}
 

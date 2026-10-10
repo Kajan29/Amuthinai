@@ -28,7 +28,8 @@ import { notificationsApi } from '@/api/notifications.api';
 import { queryClient } from '@/api/queryClient';
 import { requestsApi, type CreateRequestPayload } from '@/api/requests.api';
 import { usersApi } from '@/api/users.api';
-import { MAPBOX_ACCESS_TOKEN } from '@/constants';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import type { FoodRequest } from '@/types';
@@ -226,9 +227,19 @@ export default function RecipientDashboard() {
   const hubLng = dropLng + 0.0169;
   const hubLat = dropLat + 0.0123;
 
-  const mapboxTrackingUrl = isTargetCurrentActive
-    ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s-restaurant+5A1626(${hubLng},${hubLat}),pin-s-bicycle+0F7B4F(${volunteerLng},${volunteerLat}),pin-s-home+F59E0B(${dropLng},${dropLat})/${dropLng},${dropLat},13.5,0/600x420@2x?access_token=${MAPBOX_ACCESS_TOKEN}`
-    : `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s-home+0F7B4F(${dropLng},${dropLat})/${dropLng},${dropLat},14,0/600x420@2x?access_token=${MAPBOX_ACCESS_TOKEN}`;
+  const mapboxTrackingUrl = getMapboxStaticMapUrl({
+    center: { latitude: dropLat, longitude: dropLng },
+    zoom: isTargetCurrentActive ? 13.5 : 14,
+    width: 600,
+    height: 420,
+    markers: isTargetCurrentActive
+      ? [
+          { latitude: hubLat, longitude: hubLng, label: 'restaurant', color: '5A1626' },
+          { latitude: volunteerLat, longitude: volunteerLng, label: 'bicycle', color: '0F7B4F' },
+          { latitude: dropLat, longitude: dropLng, label: 'home', color: 'F59E0B' },
+        ]
+      : [{ latitude: dropLat, longitude: dropLng, label: 'home', color: '0F7B4F' }],
+  });
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -1196,11 +1207,7 @@ export default function RecipientDashboard() {
                     )}
                   </MapView>
                 ) : (
-                  <Image
-                    source={{ uri: mapboxTrackingUrl }}
-                    style={styles.mapboxImage}
-                    resizeMode="cover"
-                  />
+                  <MapboxStaticImage uri={mapboxTrackingUrl} style={styles.mapboxImage} />
                 )}
 
                 {/* Floating Live ETA Banner on Map */}

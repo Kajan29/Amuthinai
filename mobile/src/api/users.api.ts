@@ -1,12 +1,13 @@
 import { client, request } from './client';
 
-import type { User } from '@/types';
+import type { Address, User } from '@/types';
 
 export interface UpdateUserPayload {
   name?: string;
   phone?: string;
   language?: 'en' | 'ta' | 'si';
   pushToken?: string;
+  address?: Address;
 }
 
 export const usersApi = {

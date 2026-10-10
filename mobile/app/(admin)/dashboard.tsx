@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { adminApi } from '@/api/admin.api';
 import type { AdminDonation } from '@/api/donations.api';
 import { AdminHeader } from '@/components/AdminHeader';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { getAdminDashboardMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing } from '@/theme';
 import {
@@ -525,11 +526,7 @@ export default function AdminDashboard() {
             activeOpacity={0.92}
             onPress={() => router.push('/(admin)/map' as any)}
           >
-            <Image
-              source={{ uri: mapboxUrl }}
-              style={styles.mapboxMapImage}
-              resizeMode="cover"
-            />
+            <MapboxStaticImage uri={mapboxUrl} style={styles.mapboxMapImage} />
 
             {/* Floating Top Indicators */}
             <View style={styles.mapFloatingHeader}>

@@ -2,7 +2,6 @@ import axios, { AxiosError, type AxiosInstance } from 'axios';
 
 import { API_URL } from '@/constants';
 import { secureStorage } from '@/services/secureStorage';
-import { useAuthStore } from '@/store/auth.store';
 
 export interface ApiErrorBody {
   statusCode: number;
@@ -44,7 +43,11 @@ client.interceptors.response.use(
     const { status, data } = error.response;
 
     // The token is gone or stale — drop it so the router sends the user back to login.
-    if (status === 401) await useAuthStore.getState().signOut();
+    // Lazy import avoids the auth.api → client → auth.store → auth.api require cycle.
+    if (status === 401) {
+      const { useAuthStore } = await import('@/store/auth.store');
+      await useAuthStore.getState().signOut();
+    }
 
     const messages = Array.isArray(data?.message) ? data.message : [data?.message ?? error.message];
 

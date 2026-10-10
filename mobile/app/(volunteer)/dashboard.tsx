@@ -31,6 +31,7 @@ import { useVolunteerTasks } from '@/hooks/useVolunteerTasks';
 import { useAuthStore } from '@/store/auth.store';
 import { colors, spacing } from '@/theme';
 import { volunteerColors } from '@/theme/volunteer';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { getVolunteerDashboardMapUrl } from '@/services/mapbox';
 import { toLatLng } from '@/utils/geo';
 import {
@@ -324,11 +325,7 @@ export default function VolunteerDashboard() {
           <View style={styles.mapCard}>
             {/* Visual Map Background with real Mapbox Streets API */}
             <View style={styles.mapCanvas}>
-              <Image
-                source={{ uri: mapboxUrl }}
-                style={styles.mapboxImage}
-                resizeMode="cover"
-              />
+              <MapboxStaticImage uri={mapboxUrl} style={styles.mapboxImage} />
 
               {/* Floating Pill: Ready for Deliveries & Switch */}
               <View style={styles.readyFloatingPill}>

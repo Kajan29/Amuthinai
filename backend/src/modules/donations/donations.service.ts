@@ -15,7 +15,7 @@ import {
 } from 'src/common/enums/donation-status.enum';
 import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { Role } from 'src/common/enums/role.enum';
-import { clampSafeHours, expiresAt } from 'src/common/utils/freshness.util';
+import { assertPrepareTimeForPost, clampSafeHours, expiresAt } from 'src/common/utils/freshness.util';
 import { nearSphere } from 'src/common/utils/geo.util';
 import { FoodRequest } from 'src/modules/food-requests/schemas/food-request.schema';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
@@ -43,9 +43,7 @@ export class DonationsService {
   /** FR2, FR3 */
   async create(donorId: string, dto: CreateDonationDto): Promise<DonationDocument> {
     const cookedAt = new Date(dto.cookedAt);
-    if (cookedAt.getTime() > Date.now()) {
-      throw new BadRequestException('Cooked time cannot be in the future');
-    }
+    assertPrepareTimeForPost(dto.foodType, cookedAt);
 
     // FR3 — the declared window is capped by the food type, and must not already be over.
     const safeForHours = clampSafeHours(dto.foodType, dto.safeForHours);

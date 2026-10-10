@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   Alert,
-  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -16,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminApi } from '@/api/admin.api';
 import { AdminHeader } from '@/components/AdminHeader';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { getAdminDashboardMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing } from '@/theme';
 import { coordsOf, formatAddress, remainingLabel } from '@/utils/format';
@@ -172,11 +172,7 @@ export default function CentralLiveMap() {
         <View style={styles.mapFrame}>
           {Platform.OS === 'web' || !MapView ? (
             <View style={styles.mapboxWebFrame}>
-              <Image
-                source={{ uri: mapboxUrl }}
-                style={styles.mapboxWebImage}
-                resizeMode="cover"
-              />
+              <MapboxStaticImage uri={mapboxUrl} style={styles.mapboxWebImage} />
               <View style={styles.mapboxWebFloatBadge}>
                 <View style={styles.pulseDot} />
                 <Text style={styles.mapboxWebFloatText}>Mapbox Streets API • Live Grid</Text>

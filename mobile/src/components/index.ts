@@ -3,6 +3,7 @@ export { DeliveryPinCard } from './DeliveryPinCard';
 export { DonationCard } from './DonationCard';
 export { LanguageSwitcher } from './LanguageSwitcher';
 export { ProfileScreen } from './ProfileScreen';
+export { MapboxStaticImage } from './MapboxStaticImage';
 export { MapPicker } from './MapPicker';
 export { PhotoCapture } from './PhotoCapture';
 export { RoleGuard } from './RoleGuard';

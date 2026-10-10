@@ -6,3 +6,4 @@ export { ForgotPasswordDto } from './forgot-password.dto';
 export { VerifyOtpDto } from './verify-otp.dto';
 export { ResetPasswordDto } from './reset-password.dto';
 export { ResendVerificationDto } from './resend-verification.dto';
+export { ChangePasswordDto } from './change-password.dto';

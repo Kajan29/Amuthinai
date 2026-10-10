@@ -77,6 +77,18 @@ export class UsersService {
     return user;
   }
 
+  async findByIdWithPassword(id: string): Promise<UserDocument> {
+    const user = await this.userModel.findById(id).select('+passwordHash').exec();
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  async setPassword(id: string, password: string): Promise<void> {
+    const user = await this.findByIdWithPassword(id);
+    user.passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    await user.save();
+  }
+
   findManyByIds(ids: string[]): Promise<UserDocument[]> {
     if (ids.length === 0) return Promise.resolve([]);
     return this.userModel.find({ _id: { $in: ids } }).exec();

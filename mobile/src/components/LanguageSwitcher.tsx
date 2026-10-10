@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-  chipActive: { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+  chipActive: { backgroundColor: '#FDF2F4', borderColor: '#5A1626' },
   label: { ...typography.caption, color: colors.textMuted },
-  labelActive: { color: colors.primaryDark, fontWeight: '600' },
+  labelActive: { color: '#5A1626', fontWeight: '700' },
 });

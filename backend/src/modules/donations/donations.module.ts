@@ -7,6 +7,8 @@ import { PointsModule } from 'src/modules/points/points.module';
 import { StatusHistoryModule } from 'src/modules/status-history/status-history.module';
 import { UsersModule } from 'src/modules/users/users.module';
 
+import { FoodRequest, FoodRequestSchema } from 'src/modules/food-requests/schemas/food-request.schema';
+
 import { DonationsController } from './donations.controller';
 import { DonationsService } from './donations.service';
 import { Donation, DonationSchema } from './schemas/donation.schema';

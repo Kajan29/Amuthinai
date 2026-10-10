@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -337,7 +338,14 @@ export default function Step1Food() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <Pressable onPress={() => router.back()} style={styles.draftBtn}>
+        <Pressable
+          onPress={() => {
+            Alert.alert(t('donor.draftSaved'), t('donor.draftSavedBody'), [
+              { text: t('common.ok'), onPress: () => router.replace('/(donor)/dashboard') },
+            ]);
+          }}
+          style={styles.draftBtn}
+        >
           <Text style={styles.draftLabel}>{t('donor.saveDraft')}</Text>
         </Pressable>
         <Pressable

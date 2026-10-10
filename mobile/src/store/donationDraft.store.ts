@@ -1,9 +1,11 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { CreateDonationPayload } from '@/api/donations.api';
 import { DEFAULT_SAFE_HOURS } from '@/constants';
 
-export type DonationDraft = Partial<CreateDonationPayload>;
+export type DonationDraft = Partial<CreateDonationPayload> & { foodRequestId?: string };
 
 interface DonationDraftState {
   draft: DonationDraft;
@@ -11,27 +13,43 @@ interface DonationDraftState {
   reset: () => void;
   /** True once every field the API requires has been filled in. */
   isComplete: () => boolean;
+  hasSavedProgress: () => boolean;
 }
 
 const EMPTY: DonationDraft = { photoUrls: [], safeForHours: DEFAULT_SAFE_HOURS };
 
+const STORAGE_KEY = 'amuthinai:donation-draft';
+
 /**
- * Holds the donation being composed across the three wizard steps (FR2, FR3). Kept out of
- * route params so a step can be revisited without re-entering earlier answers.
+ * Holds the donation being composed across the three wizard steps (FR2, FR3).
+ * Persisted so Save Draft survives app restarts.
  */
-export const useDonationDraft = create<DonationDraftState>((set, get) => ({
-  draft: EMPTY,
+export const useDonationDraft = create<DonationDraftState>()(
+  persist(
+    (set, get) => ({
+      draft: EMPTY,
 
-  update(patch) {
-    set((state) => ({ draft: { ...state.draft, ...patch } }));
-  },
+      update(patch) {
+        set((state) => ({ draft: { ...state.draft, ...patch } }));
+      },
 
-  reset() {
-    set({ draft: EMPTY });
-  },
+      reset() {
+        set({ draft: { ...EMPTY, photoUrls: [] } });
+      },
 
-  isComplete() {
-    const { title, foodType, servings, cookedAt, safeForHours, pickupAddress } = get().draft;
-    return Boolean(title && foodType && servings && cookedAt && safeForHours && pickupAddress);
-  },
-}));
+      isComplete() {
+        const { title, foodType, servings, cookedAt, safeForHours, pickupAddress } = get().draft;
+        return Boolean(title && foodType && servings && cookedAt && safeForHours && pickupAddress);
+      },
+
+      hasSavedProgress() {
+        const { title, photoUrls, cookedAt, pickupAddress } = get().draft;
+        return Boolean(title?.trim() || photoUrls?.length || cookedAt || pickupAddress);
+      },
+    }),
+    {
+      name: STORAGE_KEY,
+      storage: createJSONStorage(() => AsyncStorage),
+    },
+  ),
+);

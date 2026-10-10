@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -45,6 +46,7 @@ const formatClock = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 export default function VolunteerDashboard() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { user, confirmLogout } = useAuth();
   const setUser = useAuthStore((state) => state.setUser);
@@ -174,7 +176,7 @@ export default function VolunteerDashboard() {
               }}
             >
               <Ionicons name="clipboard-outline" size={22} color="#374151" />
-              <Text style={styles.sidebarItemText}>Available Tasks</Text>
+              <Text style={styles.sidebarItemText}>{t('volunteer.availableTasks')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -333,12 +335,12 @@ export default function VolunteerDashboard() {
                 <View style={styles.readyTextGroup}>
                   <View style={styles.readyTitleRow}>
                     <View style={styles.greenLiveDot} />
-                    <Text style={styles.readyTitleText}>Ready for Deliveries</Text>
+                    <Text style={styles.readyTitleText}>{t('volunteer.readyForDeliveries')}</Text>
                   </View>
                   <Text style={styles.readySubText}>
                     {isReady
-                      ? `${openTasks.length} ${openTasks.length === 1 ? 'Task' : 'Tasks'} Available Nearby`
-                      : 'Paused — not receiving new tasks'}
+                      ? t('volunteer.tasksNearby', { count: openTasks.length })
+                      : t('volunteer.turnOnReady')}
                   </Text>
                 </View>
                 <Switch
@@ -489,7 +491,7 @@ export default function VolunteerDashboard() {
                       {tasks.error
                         ? (tasks.error as Error).message
                         : !isReady
-                          ? 'Turn on "Ready for Deliveries" to receive tasks.'
+                          ? t('volunteer.turnOnReady')
                           : 'New approved donations in your travel radius will appear here.'}
                     </Text>
                   </View>

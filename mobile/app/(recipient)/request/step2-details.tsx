@@ -13,6 +13,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequestDraft } from '@/store/requestDraft.store';
+import type { ContactPreference, RequestDeliveryMethod } from '@/types';
 
 const logoImage = require('../../../assets/images/logo.png');
 
@@ -30,9 +31,16 @@ const DIETARY_OPTIONS = [
   'Diabetic / Low Spice Food',
 ];
 
-const DELIVERY_METHODS = [
-  'Volunteer Doorstep Delivery',
-  'Self Pickup at Community Hub',
+const DELIVERY_METHODS: { value: RequestDeliveryMethod; label: string }[] = [
+  { value: 'doorstep', label: 'Volunteer Doorstep Delivery' },
+  { value: 'hub_pickup', label: 'Self Pickup at Community Hub' },
+];
+
+const CONTACT_OPTIONS: { value: ContactPreference; label: string }[] = [
+  { value: 'call', label: 'Phone call' },
+  { value: 'sms', label: 'SMS' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'in_app', label: 'In-app messages' },
 ];
 
 export default function Step2DetailsScreen() {
@@ -46,12 +54,15 @@ export default function Step2DetailsScreen() {
   const [dietary, setDietary] = useState(
     draft.dietaryPreference || DIETARY_OPTIONS[0]!,
   );
-  const [deliveryMethod, setDeliveryMethod] = useState(
-    draft.deliveryMethod || DELIVERY_METHODS[0]!,
+  const [deliveryMethod, setDeliveryMethod] = useState<RequestDeliveryMethod>(
+    draft.deliveryMethod || 'doorstep',
+  );
+  const [contactPreference, setContactPreference] = useState<ContactPreference>(
+    draft.contactPreference || 'in_app',
   );
 
   const [activeModal, setActiveModal] = useState<
-    'category' | 'dietary' | 'delivery' | null
+    'category' | 'dietary' | 'delivery' | 'contact' | null
   >(null);
 
   const handleDecrement = () => {
@@ -69,10 +80,13 @@ export default function Step2DetailsScreen() {
   const handleProceed = () => {
     update({
       mealCategory,
+      foodCategory: mealCategory,
       servingsNeeded: portions,
+      familySize: portions,
       dietaryPreference: dietary,
+      dietaryRequirements: [dietary],
       deliveryMethod,
-      notes: `${mealCategory} • ${dietary} • ${deliveryMethod} • For ${portions} people`,
+      contactPreference,
     });
     router.push('/(recipient)/request/step3-review');
   };
@@ -237,7 +251,24 @@ export default function Step2DetailsScreen() {
               <Ionicons name="car-outline" size={20} color="#4A1521" />
             </View>
             <Text style={styles.inputText} numberOfLines={1}>
-              {deliveryMethod}
+              {DELIVERY_METHODS.find((item) => item.value === deliveryMethod)?.label}
+            </Text>
+            <Ionicons name="chevron-down" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.fieldSection}>
+          <Text style={styles.fieldLabel}>Contact Preference</Text>
+          <TouchableOpacity
+            style={styles.inputBox}
+            onPress={() => setActiveModal('contact')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.iconBox}>
+              <Ionicons name="call-outline" size={20} color="#4A1521" />
+            </View>
+            <Text style={styles.inputText} numberOfLines={1}>
+              {CONTACT_OPTIONS.find((item) => item.value === contactPreference)?.label}
             </Text>
             <Ionicons name="chevron-down" size={18} color="#9CA3AF" />
           </TouchableOpacity>
@@ -258,32 +289,38 @@ export default function Step2DetailsScreen() {
                 ? 'Select Meal Category'
                 : activeModal === 'dietary'
                 ? 'Select Dietary Preference'
+                : activeModal === 'contact'
+                ? 'Select Contact Preference'
                 : 'Select Delivery Method'}
             </Text>
 
             <ScrollView style={{ maxHeight: 280 }}>
               {(activeModal === 'category'
-                ? MEAL_CATEGORIES
+                ? MEAL_CATEGORIES.map((label) => ({ value: label, label }))
                 : activeModal === 'dietary'
-                ? DIETARY_OPTIONS
+                ? DIETARY_OPTIONS.map((label) => ({ value: label, label }))
+                : activeModal === 'contact'
+                ? CONTACT_OPTIONS
                 : DELIVERY_METHODS
               ).map((item) => (
                 <TouchableOpacity
-                  key={item}
+                  key={item.value}
                   style={styles.optionRow}
                   onPress={() => {
-                    if (activeModal === 'category') setMealCategory(item);
-                    if (activeModal === 'dietary') setDietary(item);
-                    if (activeModal === 'delivery') setDeliveryMethod(item);
+                    if (activeModal === 'category') setMealCategory(item.value);
+                    if (activeModal === 'dietary') setDietary(item.value);
+                    if (activeModal === 'delivery') setDeliveryMethod(item.value as RequestDeliveryMethod);
+                    if (activeModal === 'contact') setContactPreference(item.value as ContactPreference);
                     setActiveModal(null);
                   }}
                 >
-                  <Text style={styles.optionText}>{item}</Text>
+                  <Text style={styles.optionText}>{item.label}</Text>
                   <Ionicons
                     name={
-                      (activeModal === 'category' && mealCategory === item) ||
-                      (activeModal === 'dietary' && dietary === item) ||
-                      (activeModal === 'delivery' && deliveryMethod === item)
+                      (activeModal === 'category' && mealCategory === item.value) ||
+                      (activeModal === 'dietary' && dietary === item.value) ||
+                      (activeModal === 'delivery' && deliveryMethod === item.value) ||
+                      (activeModal === 'contact' && contactPreference === item.value)
                         ? 'checkmark-circle'
                         : 'ellipse-outline'
                     }

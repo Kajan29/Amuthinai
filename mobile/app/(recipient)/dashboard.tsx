@@ -38,6 +38,7 @@ import {
   notifyMealDonationRequested,
   type AppNotificationItem,
 } from '@/services/notifications';
+import { DeliveryPinCard } from '@/components/DeliveryPinCard';
 import { colors, spacing, typography } from '@/theme';
 
 const logoImage = require('../../assets/images/logo.png');
@@ -130,8 +131,12 @@ export default function RecipientDashboard() {
     mutationFn: (dist: DistributionItem) => {
       const payload: CreateRequestPayload = {
         servingsNeeded: requestedPortions,
+        familySize: requestedPortions,
         neededBy: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-        notes: `Requested from ${dist.title} (${dist.donorName || 'Donor'}). ${requestNotes.trim()}`,
+        notes: requestNotes.trim() || undefined,
+        foodCategory: dist.foodType || dist.title,
+        contactPreference: 'in_app',
+        deliveryMethod: 'doorstep',
         dropAddress: {
           line1: currentUser?.address?.line1 || 'Hospital Road',
           city: hubCity,
@@ -364,7 +369,7 @@ export default function RecipientDashboard() {
                   <View key={i} style={styles.badgeBar} />
                 ))}
               </View>
-              <Text style={styles.vanakkamText}>வணக்கம் (Vanakkam)</Text>
+              <Text style={styles.vanakkamText}>{t('recipient.greeting')}</Text>
             </View>
 
             {/* Dynamic logged-in user name with welcoming greeting */}
@@ -402,7 +407,7 @@ export default function RecipientDashboard() {
               <Text style={styles.statNumber}>
                 {String(stats?.nearbyHubs ?? 4).padStart(2, '0')}
               </Text>
-              <Text style={styles.statLabel}>Nearby Hubs</Text>
+              <Text style={styles.statLabel}>{t('recipient.nearbyHubs')}</Text>
               <View style={[styles.statUnderline, { backgroundColor: '#0F7B4F' }]} />
             </View>
 
@@ -414,7 +419,7 @@ export default function RecipientDashboard() {
               <Text style={styles.statNumber}>
                 {String(stats?.mealsShared ?? 18).padStart(2, '0')}
               </Text>
-              <Text style={styles.statLabel}>Meals Shared</Text>
+              <Text style={styles.statLabel}>{t('recipient.mealsShared')}</Text>
               <View style={[styles.statUnderline, { backgroundColor: '#5B1527' }]} />
             </View>
           </View>
@@ -698,7 +703,7 @@ export default function RecipientDashboard() {
                     {dist.subtitle}
                   </Text>
                   <View style={styles.distLinkRow}>
-                    <Text style={styles.distLinkText}>Request Meal</Text>
+                    <Text style={styles.distLinkText}>{t('recipient.requestMeal')}</Text>
                     <Ionicons name="arrow-forward-circle-outline" size={15} color="#70192F" />
                   </View>
                 </View>
@@ -945,11 +950,13 @@ export default function RecipientDashboard() {
                     }
                   >
                     <Ionicons name="call" size={16} color="#FFFFFF" />
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
 
-              {/* 4. Delivery Status & Timeline */}
+                <DeliveryPinCard pin={liveTrackingData?.assignment?.deliveryPin} />
+
+                {/* 4. Delivery Status & Timeline */}
               <View style={styles.sectionCard}>
                 <View style={styles.sectionCardHeader}>
                   <View style={[styles.sectionIconBadge, { backgroundColor: '#FEF3C7' }]}>
@@ -1207,7 +1214,13 @@ export default function RecipientDashboard() {
                   <Text style={styles.mapEtaText}>
                     {isTargetCurrentActive
                       ? currentTargetRequest?.status === 'matched'
-                        ? 'En Route • Arriving in ~15 mins (1.4 km remaining • Speed: 28 km/h)'
+                        ? liveTrackingData?.etaMinutes
+                          ? `En Route • Arriving in ~${liveTrackingData.etaMinutes} mins${
+                              liveTrackingData.routeKm
+                                ? ` (${liveTrackingData.routeKm.toFixed(1)} km remaining)`
+                                : ''
+                            }`
+                          : 'En Route • Volunteer assigned'
                         : 'Matching • Locating nearest volunteer'
                       : `Delivered Successfully on ${new Date(
                           currentTargetRequest?.createdAt || Date.now(),
@@ -1256,6 +1269,8 @@ export default function RecipientDashboard() {
                   <Ionicons name="call" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
+
+              <DeliveryPinCard pin={liveTrackingData?.assignment?.deliveryPin} />
 
               {/* Route Endpoints Breakdown (Start, Volunteer, Destination) */}
               <View style={styles.locationTraceCard}>

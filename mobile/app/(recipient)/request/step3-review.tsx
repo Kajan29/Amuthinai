@@ -20,6 +20,19 @@ import { requestsApi, type CreateRequestPayload } from '@/api/requests.api';
 import { Card } from '@/components/ui';
 import { notifyFoodRequestPlaced } from '@/services/notifications';
 import { useRequestDraft } from '@/store/requestDraft.store';
+import type { ContactPreference, RequestDeliveryMethod } from '@/types';
+
+const DELIVERY_LABELS: Record<RequestDeliveryMethod, string> = {
+  doorstep: 'Volunteer Doorstep Delivery',
+  hub_pickup: 'Self Pickup at Community Hub',
+};
+
+const CONTACT_LABELS: Record<ContactPreference, string> = {
+  call: 'Phone call',
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  in_app: 'In-app messages',
+};
 
 const logoImage = require('../../../assets/images/logo.png');
 
@@ -29,17 +42,20 @@ export default function Step3ReviewScreen() {
 
   const submit = useMutation({
     mutationFn: () => {
+      const familySize = draft.familySize || draft.servingsNeeded || 3;
       const payload: CreateRequestPayload = {
-        servingsNeeded: draft.servingsNeeded || 3,
+        servingsNeeded: draft.servingsNeeded || familySize,
+        familySize,
         neededBy: draft.neededBy || new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-        notes: [
-          draft.mealCategory,
-          draft.dietaryPreference,
-          draft.deliveryMethod,
-          additionalNotes.trim(),
-        ]
-          .filter(Boolean)
-          .join(' • '),
+        notes: additionalNotes.trim() || undefined,
+        dietaryRequirements: draft.dietaryRequirements?.length
+          ? draft.dietaryRequirements
+          : draft.dietaryPreference
+            ? [draft.dietaryPreference]
+            : undefined,
+        foodCategory: draft.foodCategory || draft.mealCategory,
+        contactPreference: draft.contactPreference || 'in_app',
+        deliveryMethod: draft.deliveryMethod === 'hub_pickup' ? 'hub_pickup' : 'doorstep',
         dropAddress: draft.dropAddress || {
           line1: draft.hubAddress || 'Hospital Road',
           city: 'Jaffna',
@@ -145,9 +161,11 @@ export default function Step3ReviewScreen() {
               <Ionicons name="restaurant" size={18} color="#4A1521" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel}>Meal Items & Number of People</Text>
+              <Text style={styles.rowLabel}>Meal Items & Family Size</Text>
               <Text style={styles.rowValue}>
-                {draft.servingsNeeded || 3} {draft.servingsNeeded === 1 ? 'Person' : 'People'} • {draft.mealCategory || 'Cooked Hot Meals'}
+                {draft.familySize || draft.servingsNeeded || 3}{' '}
+                {(draft.familySize || draft.servingsNeeded) === 1 ? 'Person' : 'People'} •{' '}
+                {draft.foodCategory || draft.mealCategory || 'Cooked Hot Meals'}
               </Text>
             </View>
           </View>
@@ -161,7 +179,9 @@ export default function Step3ReviewScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.rowLabel}>Dietary Preference</Text>
-              <Text style={styles.rowValue}>{draft.dietaryPreference || 'Pure Vegetarian'}</Text>
+              <Text style={styles.rowValue}>
+                {draft.dietaryRequirements?.[0] || draft.dietaryPreference || 'Pure Vegetarian'}
+              </Text>
             </View>
           </View>
 
@@ -175,7 +195,25 @@ export default function Step3ReviewScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.rowLabel}>Delivery Method</Text>
               <Text style={styles.rowValue}>
-                {draft.deliveryMethod || 'Volunteer Doorstep Delivery'}
+                {draft.deliveryMethod
+                  ? DELIVERY_LABELS[draft.deliveryMethod]
+                  : 'Volunteer Doorstep Delivery'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.summaryRow}>
+            <View style={styles.rowIconWrap}>
+              <Ionicons name="call" size={18} color="#2563EB" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowLabel}>Contact Preference</Text>
+              <Text style={styles.rowValue}>
+                {draft.contactPreference
+                  ? CONTACT_LABELS[draft.contactPreference]
+                  : 'In-app messages'}
               </Text>
             </View>
           </View>

@@ -17,6 +17,7 @@ import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { clampSafeHours, expiresAt } from 'src/common/utils/freshness.util';
 import { nearSphere } from 'src/common/utils/geo.util';
+import { FoodRequest } from 'src/modules/food-requests/schemas/food-request.schema';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
 import { StatusHistoryService } from 'src/modules/status-history/status-history.service';
 

@@ -41,6 +41,16 @@ export const LANGUAGES: { code: Language; label: string }[] = [
 /** FR3 — default safe-consumption window for cooked food, in hours. */
 export const DEFAULT_SAFE_HOURS = 6;
 
+/** FR3 — upper bound on the safe-consumption window a donor may declare. */
+export const MAX_SAFE_HOURS: Record<FoodType, number> = {
+  cooked: 6,
+  raw: 24,
+  packaged: 72,
+  bakery: 24,
+  dairy: 12,
+  beverage: 12,
+};
+
 /** A donation is flagged urgent once this much of its safe window is left. */
 export const URGENT_THRESHOLD_MINUTES = 90;
 

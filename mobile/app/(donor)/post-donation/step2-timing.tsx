@@ -2,12 +2,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MAX_SAFE_HOURS } from '@/constants';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
-import type { Address, DeliveryMethod, HandlingInstruction, PickupSource } from '@/types';
+import type { Address, DeliveryMethod, FoodType, HandlingInstruction, PickupSource } from '@/types';
 
 const NOTE_LIMIT = 150;
 
@@ -28,7 +29,7 @@ const HANDLING: { id: HandlingInstruction; labelKey: string; icon: keyof typeof 
   ];
 
 type Clock = { hour: number; minute: number; period: 'AM' | 'PM' };
-type Picking = 'ready' | 'consume' | null;
+type Picking = 'ready' | 'consume' | 'cooked' | null;
 
 /** FR3 — logistics: where and when the food can be collected. */
 export default function Step2Timing() {
@@ -49,12 +50,17 @@ export default function Step2Timing() {
 
   useEffect(() => {
     const patch: Parameters<typeof update>[0] = {};
+    const foodType: FoodType = draft.foodType ?? 'cooked';
+    const maxHours = MAX_SAFE_HOURS[foodType];
     if (!draft.pickupSource) patch.pickupSource = 'registered';
     if (!draft.pickupAddress) patch.pickupAddress = REGISTERED_ADDRESS;
-    if (!draft.readyFrom) patch.readyFrom = roundHalfHour(new Date()).toISOString();
-    if (!draft.consumeBefore) {
-      const start = new Date(draft.readyFrom ?? patch.readyFrom ?? Date.now());
-      patch.consumeBefore = new Date(start.getTime() + 4.5 * 60 * 60 * 1000).toISOString();
+    if (!draft.cookedAt) patch.cookedAt = roundHalfHour(new Date()).toISOString();
+    if (!draft.readyFrom) patch.readyFrom = draft.cookedAt ?? patch.cookedAt;
+    const cooked = new Date(draft.cookedAt ?? patch.cookedAt ?? Date.now());
+    const autoDeadline = new Date(cooked.getTime() + maxHours * 60 * 60 * 1000).toISOString();
+    if (!draft.consumeBefore || (foodType === 'cooked' && new Date(draft.consumeBefore).getTime() > new Date(autoDeadline).getTime())) {
+      patch.consumeBefore = autoDeadline;
+      patch.safeForHours = maxHours;
     }
     if (!draft.handling) patch.handling = ['keep_warm', 'individually_packed'];
     if (!draft.deliveryMethod) patch.deliveryMethod = 'volunteer_rider';
@@ -63,17 +69,22 @@ export default function Step2Timing() {
   }, []);
 
   const source: PickupSource = draft.pickupSource ?? 'registered';
-  const readyFrom = draft.readyFrom ?? new Date().toISOString();
-  const consumeBefore = draft.consumeBefore ?? new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+  const foodType: FoodType = draft.foodType ?? 'cooked';
+  const isCooked = foodType === 'cooked';
+  const cookedAt = draft.cookedAt ?? new Date().toISOString();
+  const readyFrom = draft.readyFrom ?? cookedAt;
+  const consumeBefore = draft.consumeBefore ?? new Date(Date.now() + MAX_SAFE_HOURS[foodType] * 60 * 60 * 1000).toISOString();
   const handling = draft.handling ?? [];
   const method: DeliveryMethod = draft.deliveryMethod ?? 'volunteer_rider';
   const note = draft.handoverInstructions ?? '';
-  const windowOk = new Date(consumeBefore).getTime() > Math.max(Date.now(), new Date(readyFrom).getTime());
+  const windowOk =
+    new Date(consumeBefore).getTime() > Math.max(Date.now(), new Date(readyFrom).getTime()) &&
+    new Date(consumeBefore).getTime() > new Date(cookedAt).getTime();
   const customOk = customLine.trim().length >= 3 && customCity.trim().length >= 2;
   const canContinue = windowOk && (source === 'registered' || customOk);
   const minutesLeft = Math.max(
     0,
-    Math.round((new Date(consumeBefore).getTime() - new Date(readyFrom).getTime()) / 60_000),
+    Math.round((new Date(consumeBefore).getTime() - Date.now()) / 60_000),
   );
 
   function chooseSource(next: PickupSource) {
@@ -98,14 +109,33 @@ export default function Step2Timing() {
   }
 
   function openClock(which: Exclude<Picking, null>) {
-    setClock(readClock(which === 'ready' ? readyFrom : consumeBefore));
+    const sourceTime = which === 'cooked' ? cookedAt : which === 'ready' ? readyFrom : consumeBefore;
+    setClock(readClock(sourceTime));
     setPicking(which);
   }
 
   function applyClock() {
-    const base = picking === 'consume' ? consumeBefore : readyFrom;
-    const next = writeClock(base, clock);
-    update(picking === 'consume' ? { consumeBefore: next } : { readyFrom: next });
+    if (picking === 'cooked') {
+      const next = writeClock(cookedAt, clock);
+      const maxHours = MAX_SAFE_HOURS[foodType];
+      const deadline = new Date(new Date(next).getTime() + maxHours * 60 * 60 * 1000).toISOString();
+      update({
+        cookedAt: next,
+        consumeBefore: isCooked ? deadline : consumeBefore,
+        safeForHours: isCooked ? maxHours : draft.safeForHours,
+      });
+    } else if (picking === 'consume') {
+      let next = writeClock(consumeBefore, clock);
+      if (isCooked) {
+        const maxDeadline = new Date(cookedAt).getTime() + MAX_SAFE_HOURS.cooked * 60 * 60 * 1000;
+        if (new Date(next).getTime() > maxDeadline) {
+          next = new Date(maxDeadline).toISOString();
+        }
+      }
+      update({ consumeBefore: next });
+    } else {
+      update({ readyFrom: writeClock(readyFrom, clock) });
+    }
     setPicking(null);
   }
 
@@ -119,10 +149,11 @@ export default function Step2Timing() {
             district: customNote.trim() || undefined,
             location: REGISTERED_ADDRESS.location,
           };
-    const hours = Math.min(
-      72,
-      Math.max(1, Math.ceil((new Date(consumeBefore).getTime() - Date.now()) / 3_600_000)),
+    const maxHours = MAX_SAFE_HOURS[foodType];
+    const hoursFromCooked = Math.ceil(
+      (new Date(consumeBefore).getTime() - new Date(cookedAt).getTime()) / 3_600_000,
     );
+    const hours = Math.min(maxHours, Math.max(1, hoursFromCooked));
     update({
       pickupSource: source,
       pickupAddress,
@@ -131,10 +162,16 @@ export default function Step2Timing() {
       handling,
       deliveryMethod: method,
       handoverInstructions: note.trim() || undefined,
-      cookedAt: new Date().toISOString(),
+      cookedAt,
       safeForHours: hours,
     });
     router.push('/(donor)/post-donation/step3-review');
+  }
+
+  function saveDraft() {
+    Alert.alert(t('donor.draftSaved'), t('donor.draftSavedBody'), [
+      { text: t('common.ok'), onPress: () => router.replace('/(donor)/dashboard') },
+    ]);
   }
 
   return (
@@ -240,6 +277,13 @@ export default function Step2Timing() {
           {minutesLeft <= 120 ? <Text style={styles.urgent}>{t('donor.urgentWindow')}</Text> : null}
         </View>
         <View style={styles.windowCard}>
+          <TimeCard
+            label={t('donor.cookedAtLabel')}
+            day={dayLabel(cookedAt, t('donor.today'))}
+            time={clockLabel(cookedAt)}
+            onPress={() => openClock('cooked')}
+          />
+          {isCooked ? <Text style={styles.cookedHint}>{t('donor.cookedDeadlineHint')}</Text> : null}
           <View style={styles.windowRow}>
             <TimeCard
               label={t('donor.readyFrom')}
@@ -252,7 +296,8 @@ export default function Step2Timing() {
               day={dayLabel(consumeBefore, t('donor.today'))}
               time={clockLabel(consumeBefore)}
               warn={minutesLeft <= 120 || !windowOk}
-              onPress={() => openClock('consume')}
+              locked={isCooked}
+              onPress={isCooked ? undefined : () => openClock('consume')}
             />
           </View>
           <View style={[styles.windowNoteRow, !windowOk && styles.windowNoteBad]}>
@@ -267,6 +312,12 @@ export default function Step2Timing() {
                 : t('donor.windowInvalid')}
             </Text>
           </View>
+          {isCooked ? (
+            <View style={styles.safetyBanner}>
+              <Ionicons name="shield-checkmark" size={16} color={donorColors.orange} />
+              <Text style={styles.safetyText}>{t('donor.cookedSafetyReminder')}</Text>
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>{t('donor.storageTitle')}</Text>
@@ -336,8 +387,8 @@ export default function Step2Timing() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backLabel}>{t('donor.backStep')}</Text>
+        <Pressable onPress={saveDraft} style={styles.backBtn}>
+          <Text style={styles.backLabel}>{t('donor.saveDraft')}</Text>
         </Pressable>
         <Pressable
           disabled={!canContinue}
@@ -353,7 +404,11 @@ export default function Step2Timing() {
           <Pressable style={styles.backdrop} onPress={() => setPicking(null)} />
           <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
             <Text style={styles.sheetTitle}>
-              {picking === 'ready' ? t('donor.readyFrom') : t('donor.consumeBefore')}
+              {picking === 'cooked'
+                ? t('donor.cookedAtLabel')
+                : picking === 'ready'
+                  ? t('donor.readyFrom')
+                  : t('donor.consumeBefore')}
             </Text>
             <View style={styles.clockRow}>
               <ClockColumn
@@ -413,27 +468,35 @@ function TimeCard({
   day,
   time,
   warn = false,
+  locked = false,
   onPress,
 }: {
   label: string;
   day: string;
   time: string;
   warn?: boolean;
-  onPress: () => void;
+  locked?: boolean;
+  onPress?: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <Pressable onPress={onPress} style={styles.timeCard}>
+    <Pressable onPress={onPress} disabled={!onPress} style={styles.timeCard}>
       <View style={styles.timeTop}>
         <Text style={styles.timeLabel}>{label}</Text>
-        <Ionicons name="create-outline" size={14} color={donorColors.muted} />
+        <Ionicons
+          name={locked ? 'lock-closed-outline' : 'create-outline'}
+          size={14}
+          color={donorColors.muted}
+        />
       </View>
       <Text style={styles.timeDay}>{day}</Text>
       <View style={styles.timeValueRow}>
         <Text style={[styles.timeValue, warn && styles.timeValueWarn]}>{time}</Text>
         {warn ? <Ionicons name="warning" size={14} color={donorColors.orange} /> : null}
       </View>
-      <Text style={styles.tapHint}>{t('donor.tapToChange')}</Text>
+      <Text style={styles.tapHint}>
+        {locked ? t('donor.consumeLockedCooked') : t('donor.tapToChange')}
+      </Text>
     </Pressable>
   );
 }
@@ -624,6 +687,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
+  cookedHint: { color: donorColors.orange, fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  safetyBanner: {
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF6EC',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 8,
+    padding: 10,
+  },
+  safetyText: { color: '#8A5A32', flex: 1, fontSize: 12, lineHeight: 17 },
   windowNoteBad: { backgroundColor: '#FDECEC' },
   windowNote: { color: donorColors.green, flex: 1, fontSize: 12, fontWeight: '600', lineHeight: 17 },
   windowNoteTextBad: { color: donorColors.alert },

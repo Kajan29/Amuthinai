@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -305,8 +306,15 @@ export default function Step3Review() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backLabel}>{t('donor.backStep')}</Text>
+        <Pressable
+          onPress={() => {
+            Alert.alert(t('donor.draftSaved'), t('donor.draftSavedBody'), [
+              { text: t('common.ok'), onPress: () => router.replace('/(donor)/dashboard') },
+            ]);
+          }}
+          style={styles.backBtn}
+        >
+          <Text style={styles.backLabel}>{t('donor.saveDraft')}</Text>
         </Pressable>
         <Pressable
           disabled={!canPost}

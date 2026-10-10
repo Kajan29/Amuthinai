@@ -29,18 +29,23 @@ export default function AssignVolunteer() {
   });
 
   const matchedRequestId = options?.requests[0]?.id;
+  const currentAssignmentId = options?.currentAssignment?.id;
 
   const assign = useMutation({
     mutationFn: (volunteerId: string) =>
-      adminApi.assignVolunteer(donationId, volunteerId, matchedRequestId),
+      currentAssignmentId
+        ? adminApi.reassign(currentAssignmentId, volunteerId, 'Reassigned by admin')
+        : adminApi.assignVolunteer(donationId, volunteerId, matchedRequestId),
     async onSuccess() {
       await queryClient.invalidateQueries({ queryKey: ['admin.pendingDonations'] });
       await queryClient.invalidateQueries({ queryKey: ['admin.assignments'] });
       await queryClient.invalidateQueries({ queryKey: ['admin.kpis'] });
       await queryClient.invalidateQueries({ queryKey: ['admin.monitor'] });
       Alert.alert(
-        'Courier Assigned',
-        'Pickup task offer dispatched to the volunteer.',
+        currentAssignmentId ? 'Courier Reassigned' : 'Courier Assigned',
+        currentAssignmentId
+          ? 'The previous volunteer was notified and a new rider was assigned.'
+          : 'Pickup task offer dispatched to the volunteer.',
         [{ text: 'View Deliveries', onPress: () => router.push('/(admin)/deliveries' as any) }],
       );
     },
@@ -77,7 +82,9 @@ export default function AssignVolunteer() {
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <View style={styles.headerBlock}>
-          <Text style={styles.screenHeading}>Assign Delivery Courier</Text>
+          <Text style={styles.screenHeading}>
+            {currentAssignmentId ? 'Reassign Delivery Courier' : 'Assign Delivery Courier'}
+          </Text>
           <Text style={styles.screenSubheading}>
             Riders ranked by proximity to pickup point, vehicle cargo capacity, and active load
           </Text>
@@ -175,7 +182,13 @@ export default function AssignVolunteer() {
                           !isTop && styles.assignBtnTextSecondary,
                         ]}
                       >
-                        {isTop ? 'Assign & Dispatch Next' : 'Assign to Courier'}
+                        {currentAssignmentId
+                          ? isTop
+                            ? 'Reassign to Best Match'
+                            : 'Reassign to Courier'
+                          : isTop
+                            ? 'Assign & Dispatch Next'
+                            : 'Assign to Courier'}
                       </Text>
                     </>
                   )}

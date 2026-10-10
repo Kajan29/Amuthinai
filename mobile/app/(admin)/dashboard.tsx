@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminApi } from '@/api/admin.api';
@@ -30,6 +31,7 @@ import {
 } from '@/utils/format';
 
 export default function AdminDashboard() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'all' | 'donations' | 'volunteers' | 'recipients' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [mapFilter, setMapFilter] = useState<'all' | 'hubs' | 'donations' | 'routes' | 'demand'>('all');
@@ -250,7 +252,7 @@ export default function AdminDashboard() {
             <Text style={styles.metricValue}>
               {padMetric(kpis?.pendingApprovals)}
             </Text>
-            <Text style={styles.metricLabel}>Approvals</Text>
+            <Text style={styles.metricLabel}>{t('admin.approvalsLabel')}</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.adminMaroon }]} />
           </TouchableOpacity>
 
@@ -267,7 +269,7 @@ export default function AdminDashboard() {
             <Text style={styles.metricValue}>
               {padMetric(kpis?.activeDeliveries)}
             </Text>
-            <Text style={styles.metricLabel}>Dispatched</Text>
+            <Text style={styles.metricLabel}>{t('admin.dispatched')}</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.mint }]} />
           </TouchableOpacity>
 
@@ -284,7 +286,7 @@ export default function AdminDashboard() {
             <Text style={styles.metricValue}>
               {padMetric(kpis?.totalVolunteers)}
             </Text>
-            <Text style={styles.metricLabel}>Volunteers</Text>
+            <Text style={styles.metricLabel}>{t('admin.volunteers')}</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.amber }]} />
           </TouchableOpacity>
 
@@ -301,7 +303,7 @@ export default function AdminDashboard() {
             <Text style={styles.metricValue}>
               {padMetric(kpis?.urgentDonations)}
             </Text>
-            <Text style={styles.metricLabel}>Urgent</Text>
+            <Text style={styles.metricLabel}>{t('admin.urgent')}</Text>
             <View style={[styles.metricUnderline, { backgroundColor: colors.urgentRed }]} />
           </TouchableOpacity>
         </View>
@@ -336,7 +338,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('all')}
           >
             <Text style={[styles.filterPillText, activeTab === 'all' && styles.filterPillTextActive]}>
-              All Tasks ({(kpis?.pendingApprovals ?? 0) + (kpis?.pendingVolunteerKyc ?? 0) + (kpis?.openRecipientRequests ?? 0)})
+              {t('admin.allTasks')} ({(kpis?.pendingApprovals ?? 0) + (kpis?.pendingVolunteerKyc ?? 0) + (kpis?.openRecipientRequests ?? 0)})
             </Text>
           </TouchableOpacity>
 
@@ -345,7 +347,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('donations')}
           >
             <Text style={[styles.filterPillText, activeTab === 'donations' && styles.filterPillTextActive]}>
-              Donations ({kpis?.pendingApprovals ?? 0})
+              {t('nav.donations')} ({kpis?.pendingApprovals ?? 0})
             </Text>
           </TouchableOpacity>
 
@@ -354,7 +356,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('volunteers')}
           >
             <Text style={[styles.filterPillText, activeTab === 'volunteers' && styles.filterPillTextActive]}>
-              Volunteers ({kpis?.pendingVolunteerKyc ?? 0})
+              {t('admin.volunteers')} ({kpis?.pendingVolunteerKyc ?? 0})
             </Text>
           </TouchableOpacity>
 
@@ -363,7 +365,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('recipients')}
           >
             <Text style={[styles.filterPillText, activeTab === 'recipients' && styles.filterPillTextActive]}>
-              Recipients ({kpis?.openRecipientRequests ?? 0})
+              {t('admin.recipients')} ({kpis?.openRecipientRequests ?? 0})
             </Text>
           </TouchableOpacity>
 
@@ -372,7 +374,7 @@ export default function AdminDashboard() {
             onPress={() => setActiveTab('urgent')}
           >
             <Text style={[styles.filterPillText, activeTab === 'urgent' && styles.filterPillTextActive]}>
-              Urgent ({kpis?.urgentDonations ?? 0})
+              {t('admin.urgent')} ({kpis?.urgentDonations ?? 0})
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -580,7 +582,7 @@ export default function AdminDashboard() {
 
         {/* System Overview Section (Idea Paragraph Implementation) */}
         <View style={styles.overviewCard}>
-          <Text style={styles.overviewTitle}>Food Distribution System Overview</Text>
+          <Text style={styles.overviewTitle}>{t('admin.overviewTitle')}</Text>
           <Text style={styles.overviewSubtitle}>
             Complete logistics pipeline from Jaffna donors to vulnerable families
           </Text>
@@ -594,32 +596,52 @@ export default function AdminDashboard() {
               <Text style={[styles.overviewNumber, { color: colors.warning }]}>
                 {kpis?.pendingApprovals ?? 0}
               </Text>
-              <Text style={styles.overviewLabel}>Pending Approvals</Text>
+              <Text style={styles.overviewLabel}>{t('admin.pendingApprovals')}</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.mint }]}>
                 {kpis?.activeDeliveries ?? 0}
               </Text>
-              <Text style={styles.overviewLabel}>Active Deliveries</Text>
+              <Text style={styles.overviewLabel}>{t('admin.activeDeliveries')}</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.primary }]}>
                 {kpis?.completedDistributions ?? 0}
               </Text>
-              <Text style={styles.overviewLabel}>Completed Distributions</Text>
+              <Text style={styles.overviewLabel}>{t('admin.completedDistributions')}</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.amber }]}>
                 {kpis?.verifiedVolunteers ?? 0}
               </Text>
-              <Text style={styles.overviewLabel}>Available Volunteers</Text>
+              <Text style={styles.overviewLabel}>{t('admin.availableVolunteers')}</Text>
             </View>
             <View style={styles.overviewItem}>
               <Text style={[styles.overviewNumber, { color: colors.danger }]}>
                 {kpis?.openDisputes ?? 0}
               </Text>
-              <Text style={styles.overviewLabel}>Unresolved Concerns</Text>
+              <Text style={styles.overviewLabel}>{t('admin.unresolvedConcerns')}</Text>
             </View>
+            <TouchableOpacity
+              style={styles.overviewItem}
+              onPress={() => router.push('/(admin)/recipients' as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.overviewNumber, { color: colors.urgentRed }]}>
+                {kpis?.unmetServings ?? 0}
+              </Text>
+              <Text style={styles.overviewLabel}>Unmet Demand (servings)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.overviewItem}
+              onPress={() => router.push('/(admin)/deliveries' as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.overviewNumber, { color: colors.warning }]}>
+                {kpis?.activePickups ?? 0}
+              </Text>
+              <Text style={styles.overviewLabel}>Active Pickups</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.overviewActions}>
@@ -627,7 +649,7 @@ export default function AdminDashboard() {
               style={styles.overviewBtn}
               onPress={() => router.push('/(admin)/approvals')}
             >
-              <Text style={styles.overviewBtnText}>Open Approvals & KYC Hub →</Text>
+              <Text style={styles.overviewBtnText}>{t('admin.openApprovals')} →</Text>
             </TouchableOpacity>
           </View>
         </View>

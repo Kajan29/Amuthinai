@@ -24,6 +24,7 @@ import { formatAddress, titleCase } from '@/utils/format';
 
 interface DeliveryItem {
   id: string;
+  donationId: string;
   donationTitle: string;
   servings: number;
   foodType: string;
@@ -66,6 +67,7 @@ function mapMonitoredTask(task: MonitoredTask): DeliveryItem {
 
   return {
     id: task.assignment.id,
+    donationId: task.donation.id,
     donationTitle: task.donation.title,
     servings: task.donation.servings,
     foodType: titleCase(task.donation.foodType) || 'Food',
@@ -119,22 +121,16 @@ export default function DeliveriesMonitor() {
   };
 
   const handleReassign = () => {
+    if (!selectedDelivery?.donationId) return;
     Alert.alert(
       'Reassign Courier',
-      'Select a replacement volunteer rider from Jaffna Central pool.',
+      'Choose another volunteer or an NGO fallback for this donation.',
       [
         {
-          text: 'Find Nearest Rider',
+          text: 'Choose Volunteer',
           onPress: () => {
             setDetailModalVisible(false);
-            router.push('/(admin)/approvals/volunteers' as any);
-          },
-        },
-        {
-          text: 'Confirm Donor Self-Delivery',
-          onPress: () => {
-            setDetailModalVisible(false);
-            Alert.alert('Donor Self-Delivery Confirmed', 'Donor notified to transport meals directly to drop location.');
+            router.push(`/(admin)/assign/${selectedDelivery.donationId}` as any);
           },
         },
         { text: 'Cancel', style: 'cancel' },

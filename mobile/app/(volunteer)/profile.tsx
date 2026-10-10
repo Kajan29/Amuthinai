@@ -3,22 +3,14 @@ import { useMutation } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useQuery } from '@tanstack/react-query';
 
 import { assignmentsApi } from '@/api/assignments.api';
 import { pointsApi } from '@/api/points.api';
 import { usersApi } from '@/api/users.api';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { ProfileScreen } from '@/components/ProfileScreen';
 import { Button } from '@/components/ui';
 import { TRAVEL_RADIUS_OPTIONS_KM, VEHICLE_TYPES } from '@/constants';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,7 +18,6 @@ import { useOfflineQuery } from '@/hooks/useOfflineQuery';
 import { useAuthStore } from '@/store/auth.store';
 import { radius, typography } from '@/theme';
 import { volunteerColors, getTier, KARMA_TIERS } from '@/theme/volunteer';
-import { initials } from '@/utils/tasks';
 import type { TaskView, VehicleType } from '@/types';
 
 interface VolunteerAchievementItem {
@@ -109,8 +100,7 @@ function buildAchievements(
  */
 export default function VolunteerProfile() {
   const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
-  const { user, confirmLogout } = useAuth();
+  const { user } = useAuth();
 
   const setUser = useAuthStore((state) => state.setUser);
   const pointsSummary = useOfflineQuery('volunteer.points', () => pointsApi.summary());
@@ -145,51 +135,37 @@ export default function VolunteerProfile() {
   };
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={[
-        styles.scrollContent,
-        { paddingBottom: Math.max(insets.bottom + 80, 100) },
+    <ProfileScreen
+      role="volunteer"
+      menuItems={[
+        {
+          icon: 'document-text-outline',
+          label: t('volunteer.deliveryHistory'),
+          onPress: () => router.push('/(volunteer)/tasks'),
+        },
+        {
+          icon: 'heart-outline',
+          label: t('volunteer.communityImpact'),
+          onPress: () => router.push('/(volunteer)/karma'),
+        },
+        {
+          icon: 'alert-circle-outline',
+          label: t('recipient.raiseConcern'),
+          onPress: () => router.push('/(volunteer)/raise-concern'),
+          danger: true,
+        },
       ]}
     >
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Text style={styles.headerTitle}>Volunteer Profile</Text>
-        <LanguageSwitcher />
-      </View>
-
-      {/* Main Profile & Karma Card */}
       <View style={styles.profileCard}>
-        <View style={styles.avatarLarge}>
-          <Text style={styles.avatarLargeText}>{initials(user?.name)}</Text>
-        </View>
-        <Text style={styles.profileName}>{user?.name ?? ''}</Text>
-        <Text style={styles.profileEmail}>{user?.email ?? ''}</Text>
-
-        {/* Verification badge */}
-        <View style={styles.verificationRow}>
-          <View style={styles.verifiedBadge}>
-            <Ionicons
-              name={user?.isVerified ? 'checkmark-circle' : 'time-outline'}
-              size={16}
-              color={user?.isVerified ? volunteerColors.green : volunteerColors.orange}
-            />
-            <Text style={styles.verifiedText}>
-              {user?.isVerified ? 'Verified Community Volunteer' : 'Verification pending admin review'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Quick Stats: Karma Points, Deliveries, Tier */}
         <View style={styles.quickStatsRow}>
           <View style={styles.quickStat}>
             <Text style={styles.quickStatValue}>{balance.toLocaleString()} KP</Text>
-            <Text style={styles.quickStatLabel}>Total Karma</Text>
+            <Text style={styles.quickStatLabel}>{t('volunteer.karma')}</Text>
           </View>
           <View style={styles.quickStatDivider} />
           <View style={styles.quickStat}>
             <Text style={styles.quickStatValue}>{deliveryCount}</Text>
-            <Text style={styles.quickStatLabel}>Deliveries</Text>
+            <Text style={styles.quickStatLabel}>{t('volunteer.deliveries')}</Text>
           </View>
           <View style={styles.quickStatDivider} />
           <View style={styles.quickStat}>
@@ -412,57 +388,11 @@ export default function VolunteerProfile() {
         {save.isSuccess && (
           <View style={styles.savedRow}>
             <Ionicons name="checkmark-circle" size={16} color={volunteerColors.green} />
-            <Text style={styles.savedText}>Settings saved successfully</Text>
+            <Text style={styles.savedText}>{t('volunteer.settingsSaved')}</Text>
           </View>
         )}
       </View>
-
-      {/* Navigation Options */}
-      <View style={styles.menuCard}>
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push('/(volunteer)/tasks')}
-        >
-          <Ionicons name="document-text-outline" size={20} color={volunteerColors.ink} />
-          <Text style={styles.menuLabel}>Delivery History & Logs</Text>
-          <Ionicons name="chevron-forward" size={18} color={volunteerColors.muted} />
-        </TouchableOpacity>
-        <View style={styles.menuDivider} />
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push('/(volunteer)/karma')}
-        >
-          <Ionicons name="heart-outline" size={20} color={volunteerColors.ink} />
-          <Text style={styles.menuLabel}>Community Impact & Leaderboard</Text>
-          <Ionicons name="chevron-forward" size={18} color={volunteerColors.muted} />
-        </TouchableOpacity>
-        <View style={styles.menuDivider} />
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push('/(volunteer)/raise-concern')}
-        >
-          <Ionicons name="alert-circle-outline" size={20} color={volunteerColors.urgentRed} />
-          <Text style={[styles.menuLabel, { color: volunteerColors.urgentRed, fontWeight: '600' }]}>
-            Report an Issue / Raise Concern
-          </Text>
-          <Ionicons name="chevron-forward" size={18} color={volunteerColors.muted} />
-        </TouchableOpacity>
-        <View style={styles.menuDivider} />
-        <TouchableOpacity style={styles.menuItem}>
-          <Ionicons name="shield-checkmark-outline" size={20} color={volunteerColors.ink} />
-          <Text style={styles.menuLabel}>Food Safety Guidelines</Text>
-          <Ionicons name="chevron-forward" size={18} color={volunteerColors.muted} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Sign Out */}
-      <TouchableOpacity style={styles.signOutBtn} onPress={() => void confirmLogout()}>
-        <Ionicons name="log-out-outline" size={20} color={volunteerColors.urgentRed} />
-        <Text style={styles.signOutText}>{t('common.signOut')}</Text>
-      </TouchableOpacity>
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
+    </ProfileScreen>
   );
 }
 

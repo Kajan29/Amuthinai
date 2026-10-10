@@ -22,6 +22,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { queryClient } from '@/api/queryClient';
 import { requestsApi } from '@/api/requests.api';
+import { DeliveryPinCard } from '@/components/DeliveryPinCard';
 import { Badge, Card, EmptyState } from '@/components/ui';
 import { MAPBOX_ACCESS_TOKEN } from '@/constants';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -745,7 +746,13 @@ export default function RecipientRequestsScreen() {
                   <View style={styles.pulseDot} />
                   <Text style={styles.floatingEtaText}>
                     {selectedRequest?.status === 'matched'
-                      ? 'En Route • Estimated Arrival: ~15 mins (1.4 km)'
+                      ? liveTrackingData?.etaMinutes
+                        ? `En Route • Arriving in ~${liveTrackingData.etaMinutes} mins${
+                            liveTrackingData.routeKm
+                              ? ` (${liveTrackingData.routeKm.toFixed(1)} km)`
+                              : ''
+                          }`
+                        : 'En Route • Volunteer assigned'
                       : selectedRequest?.status === 'fulfilled'
                       ? 'Delivered Safely'
                       : 'Matching nearest courier'}
@@ -786,6 +793,8 @@ export default function RecipientRequestsScreen() {
                   <Ionicons name="call" size={16} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
+
+              <DeliveryPinCard pin={liveTrackingData?.assignment?.deliveryPin} />
 
               {/* Endpoints Trace */}
               <View style={styles.endpointsCard}>

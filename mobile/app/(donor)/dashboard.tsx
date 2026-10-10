@@ -39,6 +39,8 @@ export default function DonorDashboard() {
   const { user, logout } = useAuth();
   const dashboard = useDonorDashboard();
   const updateDraft = useDonationDraft((state) => state.update);
+  const draftTitle = useDonationDraft((state) => state.draft.title);
+  const hasDraft = Boolean(draftTitle?.trim());
   const [tab, setTab] = useState<Tab>('all');
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -216,7 +218,9 @@ export default function DonorDashboard() {
           <View style={styles.plus}>
             <Ionicons name="add" size={16} color="#FFFFFF" />
           </View>
-          <Text style={styles.ctaLabel}>{t('donor.postSurplus')}</Text>
+          <Text style={styles.ctaLabel}>
+            {hasDraft ? t('donor.continueDraft') : t('donor.postSurplus')}
+          </Text>
         </Pressable>
       </View>
 

@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
-  Image,
   Linking,
   Platform,
   ScrollView,
@@ -17,7 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ngosApi } from '@/api/ngos.api';
-import { MAPBOX_ACCESS_TOKEN } from '@/constants';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { useAuth } from '@/hooks/useAuth';
 import type { GeoPoint, Ngo } from '@/types';
 import { distanceKm, toGeoPoint } from '@/utils/geo';
@@ -87,7 +87,15 @@ export default function HubMapScreen() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'meals' | 'nearby'>('all');
 
   useEffect(() => {
-    if (!selectedHubId && liveHubs[0]) setSelectedHubId(liveHubs[0].id);
+    const first = liveHubs[0];
+    if (selectedHubId || !first) return;
+    setSelectedHubId(first.id);
+    mapRef.current?.animateToRegion?.({
+      latitude: first.lat,
+      longitude: first.lng,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.05,
+    });
   }, [liveHubs, selectedHubId]);
 
   // Compute live distances for each hub
@@ -128,9 +136,16 @@ export default function HubMapScreen() {
       filteredHubs.find((h) => h.id === selectedHubId) ||
       hubsWithDistance.find((h) => h.id === selectedHubId) ||
       filteredHubs[0] ||
-      hubsWithDistance[0]!
+      hubsWithDistance[0]
     );
   }, [filteredHubs, hubsWithDistance, selectedHubId]);
+  const mapCenter = useMemo(
+    () =>
+      selectedHub
+        ? { latitude: selectedHub.lat, longitude: selectedHub.lng }
+        : { latitude: userLat, longitude: userLng },
+    [selectedHub, userLat, userLng],
+  );
 
   // Handle selecting a hub on map or list
   const handleSelectHub = (hub: (typeof hubsWithDistance)[0], scrollCarousel = true) => {
@@ -199,18 +214,25 @@ export default function HubMapScreen() {
     });
   };
 
-  // Construct fallback Mapbox static URL with all pins
-  const mapboxStaticUrl = useMemo(() => {
-    const hubPins = filteredHubs
-      .slice(0, 6)
-      .map(
-        (h) =>
-          `pin-s-${h.id === selectedHubId ? 'star+5A1626' : 'restaurant+0F7B4F'}(${h.lng},${h.lat})`,
-      )
-      .join(',');
-    const userPin = `pin-s-home+F59E0B(${userLng},${userLat})`;
-    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${userPin},${hubPins}/${selectedHub.lng},${selectedHub.lat},12.5,0/650x450@2x?access_token=${MAPBOX_ACCESS_TOKEN}`;
-  }, [filteredHubs, selectedHubId, selectedHub, userLng, userLat]);
+  const mapboxStaticUrl = useMemo(
+    () =>
+      getMapboxStaticMapUrl({
+        center: mapCenter,
+        zoom: 12.5,
+        width: 650,
+        height: 450,
+        markers: [
+          { latitude: userLat, longitude: userLng, label: 'home', color: 'F59E0B' },
+          ...filteredHubs.slice(0, 6).map((h) => ({
+            latitude: h.lat,
+            longitude: h.lng,
+            label: h.id === selectedHubId ? 'star' : 'restaurant',
+            color: h.id === selectedHubId ? '5A1626' : '0F7B4F',
+          })),
+        ],
+      }),
+    [filteredHubs, selectedHubId, mapCenter, userLng, userLat],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -353,8 +375,7 @@ export default function HubMapScreen() {
                 ref={mapRef}
                 style={styles.mapComponent}
                 initialRegion={{
-                  latitude: selectedHub.lat,
-                  longitude: selectedHub.lng,
+                  ...mapCenter,
                   latitudeDelta: 0.05,
                   longitudeDelta: 0.05,
                 }}
@@ -364,6 +385,7 @@ export default function HubMapScreen() {
                   coordinate={{ latitude: userLat, longitude: userLng }}
                   title="Your Registered Location"
                   description="Delivery Drop Point"
+                  pinColor="#F59E0B"
                 >
                   <View style={styles.userMarkerWrapper}>
                     <View style={styles.userMarkerBadge}>
@@ -382,6 +404,7 @@ export default function HubMapScreen() {
                       coordinate={{ latitude: hub.lat, longitude: hub.lng }}
                       title={hub.name}
                       description={`${hub.address} • ${hub.availableMeals} packs ready`}
+                      pinColor={isSelected ? '#5A1626' : '#0F7B4F'}
                       onPress={() => handleSelectHub(hub, true)}
                     >
                       <View style={[styles.hubMarkerPinWrap, isSelected && styles.hubMarkerSelectedWrap]}>
@@ -434,11 +457,7 @@ export default function HubMapScreen() {
             ) : (
               /* Fallback for Web: Mapbox Static Map with clickable hub overlays */
               <View style={styles.fallbackMapWrapper}>
-                <Image
-                  source={{ uri: mapboxStaticUrl }}
-                  style={styles.fallbackMapImage}
-                  resizeMode="cover"
-                />
+                <MapboxStaticImage uri={mapboxStaticUrl} style={styles.fallbackMapImage} />
                 <View style={styles.fallbackOverlayNotice}>
                   <Ionicons name="information-circle" size={16} color="#0F7B4F" />
                   <Text style={styles.fallbackOverlayText}>
@@ -471,7 +490,13 @@ export default function HubMapScreen() {
             <View style={styles.floatingHubIndicator}>
               <View style={styles.greenPulseDot} />
               <Text style={styles.floatingIndicatorText}>
-                Selected: <Text style={{ fontWeight: '800' }}>{selectedHub.name}</Text>
+                {selectedHub ? (
+                  <>
+                    Selected: <Text style={{ fontWeight: '800' }}>{selectedHub.name}</Text>
+                  </>
+                ) : (
+                  'No partner hubs yet'
+                )}
               </Text>
             </View>
           </View>

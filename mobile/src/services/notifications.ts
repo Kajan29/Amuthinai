@@ -6,16 +6,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '@/theme';
 
 /**
- * Configure notification behavior when app is in foreground
+ * Configure notification behavior when app is in foreground.
+ * Skip on web — expo-notifications does not support push token listeners there.
  */
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
 
 const NOTIFICATIONS_STORAGE_KEY = '@amuthinai_notification_history';
 

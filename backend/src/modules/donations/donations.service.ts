@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 
 import { paginate, type PaginatedDto } from 'src/common/dto/pagination.dto';
+import { DeliveryMethod } from 'src/common/enums/donation-details.enum';
 import {
   DonationStatus,
   TERMINAL_DONATION_STATUSES,
@@ -15,12 +17,23 @@ import {
 } from 'src/common/enums/donation-status.enum';
 import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { Role } from 'src/common/enums/role.enum';
-import { clampSafeHours, expiresAt } from 'src/common/utils/freshness.util';
-import { nearSphere } from 'src/common/utils/geo.util';
-import { FoodRequest } from 'src/modules/food-requests/schemas/food-request.schema';
+import {
+  URGENT_THRESHOLD_MINUTES,
+  assertPrepareTimeForPost,
+  clampSafeHours,
+  expiresAt,
+  minutesUntilExpiry,
+} from 'src/common/utils/freshness.util';
+import { distanceKm, nearSphere } from 'src/common/utils/geo.util';
+import {
+  FoodRequest,
+  type FoodRequestDocument,
+} from 'src/modules/food-requests/schemas/food-request.schema';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
 import { StatusHistoryService } from 'src/modules/status-history/status-history.service';
+import { UsersService } from 'src/modules/users/users.service';
 
+import { ClaimDonationDto } from './dto/claim-donation.dto';
 import { CreateDonationDto } from './dto/create-donation.dto';
 import { QueryDonationsDto } from './dto/query-donations.dto';
 import { Donation, DonationDocument } from './schemas/donation.schema';
@@ -31,6 +44,34 @@ export interface DonorStats {
   karmaPoints: number;
 }
 
+/** A general donation as a recipient sees it before claiming: no donor contact details. */
+export interface AvailableDonationView {
+  id: string;
+  title: string;
+  foodType: string;
+  servings: number;
+  quantityUnit: string | null;
+  dietaryTags: string[];
+  description: string | null;
+  photoUrl: string | null;
+  status: DonationStatus;
+  areaLabel: string;
+  pickupLocation: [number, number] | null;
+  distanceKm: number | null;
+  cookedAt: string;
+  expiresAt: string;
+  minutesLeft: number;
+  isUrgent: boolean;
+  donorName: string;
+  preferredDeliveryMethod: DeliveryMethod | null;
+}
+
+/** Volunteers this close to an urgent pickup are pinged directly. */
+const QUICK_COLLECTION_RADIUS_KM = 15;
+
+/** Donations a recipient can still claim. Rejected/assigned/closed food is never offered. */
+const CLAIMABLE_STATUSES = [DonationStatus.PendingApproval, DonationStatus.Approved];
+
 @Injectable()
 export class DonationsService {
   constructor(
@@ -38,14 +79,13 @@ export class DonationsService {
     @InjectModel(FoodRequest.name) private readonly requestModel: Model<FoodRequest>,
     private readonly statusHistory: StatusHistoryService,
     private readonly notifications: NotificationsService,
+    private readonly usersService: UsersService,
   ) {}
 
   /** FR2, FR3 */
   async create(donorId: string, dto: CreateDonationDto): Promise<DonationDocument> {
     const cookedAt = new Date(dto.cookedAt);
-    if (cookedAt.getTime() > Date.now()) {
-      throw new BadRequestException('Cooked time cannot be in the future');
-    }
+    assertPrepareTimeForPost(dto.foodType, cookedAt);
 
     // FR3 — the declared window is capped by the food type, and must not already be over.
     const safeForHours = clampSafeHours(dto.foodType, dto.safeForHours);
@@ -62,12 +102,14 @@ export class DonationsService {
       expiresAt: expiry,
       photoUrls: dto.photoUrls ?? [],
       foodRequestId: dto.foodRequestId ? new Types.ObjectId(dto.foodRequestId) : undefined,
+      claimedAt: dto.foodRequestId ? new Date() : undefined,
       status: DonationStatus.PendingApproval,
     });
 
+    let request: FoodRequest | null = null;
     if (dto.foodRequestId) {
       try {
-        await this.claimRequest(dto.foodRequestId, donation.id as string);
+        request = await this.claimRequest(dto.foodRequestId, donation.id as string);
       } catch (error) {
         await this.donationModel.deleteOne({ _id: donation._id }).exec();
         throw error;
@@ -79,17 +121,178 @@ export class DonationsService {
       status: DonationStatus.PendingApproval,
       actorId: donorId,
       actorRole: Role.Donor,
-      note: 'Donation submitted',
+      note: request ? 'Donation submitted for a recipient request' : 'General donation submitted',
     });
 
+    const urgent = minutesUntilExpiry(expiry) <= URGENT_THRESHOLD_MINUTES;
     await this.notifications.sendToAdmins({
-      title: 'New donation awaiting approval',
-      body: `${donation.title} — ${donation.servings} servings, safe until ${formatTime(expiry)}`,
-      type: 'donation',
+      title: urgent ? 'Urgent: review this donation quickly' : 'New donation awaiting approval',
+      body: `${donation.title} — ${donation.servings} servings, safe until ${formatTime(expiry)}${
+        request ? ' · answers a recipient request' : ' · general donation'
+      }`,
+      type: urgent ? 'urgent' : 'donation',
       data: { donationId: donation.id as string },
     });
 
+    if (request) {
+      await this.notifications.sendToUsers([request.recipientId.toString()], {
+        title: 'A donor answered your request',
+        body: `${donation.title} (${donation.servings} servings) is waiting for admin approval.`,
+        type: 'request',
+        data: { requestId: dto.foodRequestId as string, donationId: donation.id as string },
+      });
+    }
+
     return donation;
+  }
+
+  /**
+   * A recipient claims a general donation. The donation is taken with a single conditional
+   * update, so two recipients tapping "Claim" at once can never both win.
+   */
+  async claim(
+    donationId: string,
+    recipientId: string,
+    dto: ClaimDonationDto,
+  ): Promise<{ donation: DonationDocument; requestId: string }> {
+    const active = await this.requestModel.exists({
+      recipientId: new Types.ObjectId(recipientId),
+      status: { $in: [RequestStatus.Open, RequestStatus.Matched] },
+    });
+    if (active) {
+      throw new BadRequestException(
+        'You already have a request in progress. Finish or cancel it before claiming more food.',
+      );
+    }
+
+    const recipient = await this.usersService.findById(recipientId);
+    const dropAddress = dto.dropAddress ?? recipient.address;
+    if (!dropAddress?.location?.coordinates?.length) {
+      throw new BadRequestException('Add your address so the food can reach you');
+    }
+
+    const requestId = new Types.ObjectId();
+    const now = new Date();
+    const claimed = await this.donationModel
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(donationId),
+          foodRequestId: { $exists: false },
+          status: { $in: CLAIMABLE_STATUSES },
+          expiresAt: { $gt: now },
+        },
+        { $set: { foodRequestId: requestId, claimedAt: now } },
+        { new: true },
+      )
+      .exec();
+
+    if (!claimed) {
+      const exists = await this.donationModel.exists({ _id: donationId });
+      if (!exists) throw new NotFoundException('Donation not found');
+      throw new ConflictException('Another recipient has already claimed this food');
+    }
+
+    try {
+      await this.requestModel.create({
+        _id: requestId,
+        recipientId: new Types.ObjectId(recipientId),
+        servingsNeeded: Math.min(dto.servingsNeeded ?? claimed.servings, claimed.servings),
+        neededBy: claimed.expiresAt,
+        notes: dto.notes,
+        familySize: dto.servingsNeeded ?? claimed.servings,
+        contactPhone: dto.contactPhone ?? recipient.phone,
+        dropAddress,
+        status: RequestStatus.Matched,
+        matchedDonationId: claimed._id,
+        origin: 'claim',
+      });
+    } catch (error) {
+      await this.donationModel
+        .updateOne({ _id: claimed._id }, { $unset: { foodRequestId: 1, claimedAt: 1 } })
+        .exec();
+      throw error;
+    }
+
+    await this.statusHistory.append({
+      donationId,
+      status: claimed.status,
+      actorId: recipientId,
+      actorRole: Role.Recipient,
+      note: 'Claimed by a recipient',
+    });
+
+    await Promise.all([
+      this.notifications.sendToUsers([claimed.donorId.toString()], {
+        title: 'A recipient claimed your donation',
+        body: `${recipient.name.split(' ')[0]} claimed ${claimed.title}.`,
+        type: 'donation',
+        data: { donationId },
+      }),
+      this.notifications.sendToAdmins({
+        title:
+          claimed.status === DonationStatus.PendingApproval
+            ? 'Claimed donation awaiting approval'
+            : 'Claimed donation ready to dispatch',
+        body: `${claimed.title} was claimed by ${recipient.name}. Choose how it will be delivered.`,
+        type: 'donation',
+        data: { donationId },
+      }),
+    ]);
+
+    return { donation: claimed, requestId: requestId.toString() };
+  }
+
+  /** Admin pairs an unclaimed general donation with an open request, under the same guard. */
+  async linkRequest(donationId: string, requestId: string, adminId: string) {
+    const now = new Date();
+    const donation = await this.donationModel
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(donationId),
+          foodRequestId: { $exists: false },
+          status: { $in: CLAIMABLE_STATUSES },
+          expiresAt: { $gt: now },
+        },
+        { $set: { foodRequestId: new Types.ObjectId(requestId), claimedAt: now } },
+        { new: true },
+      )
+      .exec();
+    if (!donation) {
+      throw new ConflictException('This donation already has a recipient or is no longer open');
+    }
+
+    let request: FoodRequest;
+    try {
+      request = await this.claimRequest(requestId, donationId);
+    } catch (error) {
+      await this.donationModel
+        .updateOne({ _id: donation._id }, { $unset: { foodRequestId: 1, claimedAt: 1 } })
+        .exec();
+      throw error;
+    }
+
+    await this.statusHistory.append({
+      donationId,
+      status: donation.status,
+      actorId: adminId,
+      actorRole: Role.Admin,
+      note: 'Recipient request linked by admin',
+    });
+
+    await this.notifications.sendToUsers([request.recipientId.toString()], {
+      title: 'Food found for your request',
+      body: `${donation.title} (${donation.servings} servings) has been set aside for you.`,
+      type: 'request',
+      data: { requestId, donationId },
+    });
+
+    return donation;
+  }
+
+  /** The recipient a donation is confirmed for, or null for an unclaimed general donation. */
+  recipientOf(donation: DonationDocument): Promise<FoodRequestDocument | null> {
+    if (!donation.foodRequestId) return Promise.resolve(null);
+    return this.requestModel.findById(donation.foodRequestId).exec();
   }
 
   async findAll(
@@ -139,14 +342,66 @@ export class DonationsService {
     donation.reviewedAt = new Date();
     const saved = await donation.save();
 
+    const request = await this.recipientOf(saved);
     await this.notifications.sendToUsers([donation.donorId.toString()], {
       title: 'Donation approved',
-      body: `${donation.title} was approved. We are finding a volunteer to collect it.`,
+      body: request
+        ? `${donation.title} was approved. The admin is choosing how it will be delivered.`
+        : `${donation.title} was approved and is now visible to recipients who can claim it.`,
       type: 'donation',
       data: { donationId: id },
     });
 
+    if (request) {
+      await this.notifications.sendToUsers([request.recipientId.toString()], {
+        title: 'Your food was approved',
+        body: `${donation.title} passed the safety review. Delivery details are on the way.`,
+        type: 'request',
+        data: { requestId: request.id as string, donationId: id },
+      });
+    }
+
+    if (minutesUntilExpiry(saved.expiresAt) <= URGENT_THRESHOLD_MINUTES) {
+      await this.alertQuickCollection(saved);
+    }
+
     return saved;
+  }
+
+  /**
+   * Food close to its safe limit: tell admins, and if a volunteer could take it, the
+   * available volunteers close to the pickup. Returns how many volunteers were pinged.
+   */
+  async alertQuickCollection(donation: DonationDocument): Promise<number> {
+    const minutesLeft = Math.max(0, minutesUntilExpiry(donation.expiresAt));
+    const area = donation.pickupAddress.city || donation.pickupAddress.line1;
+    const body = `${donation.title} — ${donation.servings} servings in ${area}. Safe for ${minutesLeft} more minutes.`;
+
+    await this.notifications.sendToAdmins({
+      title: 'Urgent: needs quick collection',
+      body,
+      type: 'urgent',
+      data: { donationId: donation.id as string },
+    });
+
+    const volunteerCanTake =
+      donation.status === DonationStatus.Approved &&
+      Boolean(donation.foodRequestId) &&
+      (!donation.deliveryMethod || donation.deliveryMethod === DeliveryMethod.VolunteerRider);
+    if (!volunteerCanTake) return 0;
+
+    const volunteers = await this.usersService.findVolunteersNear(
+      donation.pickupAddress.location.coordinates,
+      QUICK_COLLECTION_RADIUS_KM,
+    );
+    const ids = volunteers.map((volunteer) => volunteer.id as string);
+    await this.notifications.sendToUsers(ids, {
+      title: 'Urgent pickup near you',
+      body,
+      type: 'urgent',
+      data: { donationId: donation.id as string },
+    });
+    return ids.length;
   }
 
   /** FR4 */
@@ -248,7 +503,10 @@ export class DonationsService {
 
     if (donation.foodRequestId && next === DonationStatus.Delivered) {
       await this.requestModel
-        .updateOne({ _id: donation.foodRequestId }, { status: RequestStatus.Fulfilled })
+        .updateOne(
+          { _id: donation.foodRequestId },
+          { status: RequestStatus.Fulfilled, fulfilledAt: new Date() },
+        )
         .exec();
     }
 
@@ -258,14 +516,14 @@ export class DonationsService {
         next === DonationStatus.Rejected ||
         next === DonationStatus.Expired)
     ) {
-      await this.releaseRequest(donation.id as string);
+      await this.releaseRequest(donation, next);
     }
 
     return donation;
   }
 
   /** Take an open recipient request so a second donor cannot answer the same need. */
-  private async claimRequest(requestId: string, donationId: string): Promise<void> {
+  private async claimRequest(requestId: string, donationId: string): Promise<FoodRequestDocument> {
     const claimed = await this.requestModel
       .findOneAndUpdate(
         {
@@ -277,41 +535,87 @@ export class DonationsService {
           status: RequestStatus.Matched,
           matchedDonationId: new Types.ObjectId(donationId),
         },
+        { new: true },
       )
       .exec();
 
     if (!claimed) {
-      throw new BadRequestException('This request is no longer open');
+      throw new ConflictException('This request was already answered by another donor');
     }
+    return claimed;
   }
 
-  /** Put a request back in the donor list when its donation does not go through. */
-  private async releaseRequest(donationId: string): Promise<void> {
-    await this.requestModel
-      .updateOne(
-        {
-          matchedDonationId: new Types.ObjectId(donationId),
-          status: RequestStatus.Matched,
-        },
-        { $set: { status: RequestStatus.Open }, $unset: { matchedDonationId: 1 } },
-      )
+  /**
+   * When a donation does not go through, a recipient's own request goes back to the donor
+   * list; a claim on a general donation has nothing left to wait for, so it is closed.
+   */
+  private async releaseRequest(donation: DonationDocument, next: DonationStatus): Promise<void> {
+    const request = await this.requestModel
+      .findOne({
+        matchedDonationId: donation._id,
+        status: RequestStatus.Matched,
+      })
       .exec();
+    if (!request) return;
+
+    if (request.origin === 'claim') {
+      request.status = RequestStatus.Cancelled;
+      request.cancelledAt = new Date();
+    } else {
+      request.status = RequestStatus.Open;
+      request.matchedDonationId = undefined;
+    }
+    await request.save();
+
+    const reason =
+      next === DonationStatus.Expired
+        ? 'passed its safe time'
+        : next === DonationStatus.Rejected
+          ? 'did not pass the safety review'
+          : 'was cancelled';
+    await this.notifications.sendToUsers([request.recipientId.toString()], {
+      title: 'Donation update',
+      body:
+        request.origin === 'claim'
+          ? `${donation.title} ${reason}. Please claim other available food.`
+          : `${donation.title} ${reason}. Your request is open again for other donors.`,
+      type: 'request',
+      data: { requestId: request.id as string },
+    });
   }
 
   timeline(donationId: string) {
     return this.statusHistory.findByDonation(donationId);
   }
 
-  /** FR6 — approved donations near a point, freshest deadline first. */
+  /**
+   * FR6 — approved donations near a point that a volunteer may pick up: a recipient is
+   * already confirmed and nobody chose a pickup or self-delivery handover instead.
+   */
   findApprovedNear(coordinates: [number, number], radiusKm: number) {
     return this.donationModel
       .find({
         status: DonationStatus.Approved,
         expiresAt: { $gt: new Date() },
+        foodRequestId: { $exists: true },
+        deliveryMethod: { $nin: [DeliveryMethod.RecipientPickup, DeliveryMethod.SelfDrop] },
         'pickupAddress.location': nearSphere(coordinates, radiusKm),
       })
       .limit(50)
       .exec();
+  }
+
+  /** Admin confirms how the food will move, once it is approved and has a recipient. */
+  async confirmDeliveryMethod(id: string, method: DeliveryMethod): Promise<DonationDocument> {
+    const donation = await this.donationModel
+      .findOneAndUpdate(
+        { _id: id, status: DonationStatus.Approved },
+        { $set: { deliveryMethod: method, deliveryMethodConfirmedAt: new Date() } },
+        { new: true },
+      )
+      .exec();
+    if (!donation) throw new BadRequestException('Only approved donations can be dispatched');
+    return donation;
   }
 
   /** FR3 — used by the scheduler to close out donations nobody collected in time. */
@@ -328,7 +632,9 @@ export class DonationsService {
   findExpiringWithin(minutes: number, now: Date = new Date()) {
     return this.donationModel
       .find({
-        status: { $in: [DonationStatus.Approved, DonationStatus.Assigned] },
+        status: {
+          $in: [DonationStatus.PendingApproval, DonationStatus.Approved, DonationStatus.Assigned],
+        },
         expiresAt: { $gt: now, $lte: new Date(now.getTime() + minutes * 60_000) },
       })
       .exec();
@@ -361,28 +667,62 @@ export class DonationsService {
     return result ?? { totalDonations: 0, servingsShared: 0 };
   }
 
-  /** Available distributions for recipient dashboard */
+  /**
+   * General donations a recipient can still claim: not rejected or closed, not yet confirmed
+   * for anyone, and inside the safe window. Soonest-expiring first so urgent food goes first.
+   */
   async getAvailableForRecipient(
     recipientId: string,
     query: QueryDonationsDto,
-  ): Promise<PaginatedDto<DonationDocument>> {
-    // Get recipient location to find nearby donations
-    // For now, we'll just get approved donations that haven't expired
+  ): Promise<PaginatedDto<AvailableDonationView>> {
     const filter: FilterQuery<Donation> = {
-      status: DonationStatus.Approved,
+      status: { $in: CLAIMABLE_STATUSES },
+      foodRequestId: { $exists: false },
       expiresAt: { $gt: new Date() },
     };
 
-    const [items, total] = await Promise.all([
+    const [items, total, recipient] = await Promise.all([
       this.donationModel
         .find(filter)
-        .sort({ expiresAt: 1 }) // Soonest expiring first
+        .populate<{ donorId: { name?: string } | null }>('donorId', 'name')
+        .sort({ expiresAt: 1 })
         .skip(query.skip)
         .limit(query.pageSize),
       this.donationModel.countDocuments(filter),
+      this.usersService.findById(recipientId).catch(() => null),
     ]);
 
-    return paginate(items, total, query);
+    const origin = recipient?.address?.location?.coordinates;
+    const views = items.map((donation): AvailableDonationView => {
+      const minutesLeft = Math.max(0, minutesUntilExpiry(donation.expiresAt));
+      const pickup = donation.pickupAddress?.location?.coordinates ?? null;
+      const donor = donation.donorId as unknown as { name?: string } | null;
+      return {
+        id: donation.id as string,
+        title: donation.title,
+        foodType: donation.foodType,
+        servings: donation.servings,
+        quantityUnit: donation.quantityUnit ?? null,
+        dietaryTags: donation.dietaryTags ?? [],
+        description: donation.description ?? null,
+        photoUrl: donation.photoUrls?.[0] ?? null,
+        status: donation.status,
+        areaLabel:
+          [donation.pickupAddress?.city, donation.pickupAddress?.district]
+            .filter(Boolean)
+            .join(', ') || donation.pickupAddress?.line1,
+        pickupLocation: pickup,
+        distanceKm: origin && pickup ? distanceKm(origin, pickup) : null,
+        cookedAt: donation.cookedAt.toISOString(),
+        expiresAt: donation.expiresAt.toISOString(),
+        minutesLeft,
+        isUrgent: minutesLeft <= URGENT_THRESHOLD_MINUTES,
+        donorName: donor?.name?.split(' ')[0] || 'A donor',
+        preferredDeliveryMethod: donation.deliveryMethod ?? null,
+      };
+    });
+
+    return paginate(views, total, query);
   }
 
   /** Delivered servings and counts grouped by food type, for admin analytics. */

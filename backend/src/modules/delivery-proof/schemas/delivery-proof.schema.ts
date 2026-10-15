@@ -29,13 +29,18 @@ export class DeliveryProof {
   @Prop({ type: String, enum: ['pickup', 'delivery'], required: true })
   stage!: ProofStage;
 
-  @ApiProperty()
-  @Prop({ required: true })
-  photoUrl!: string;
+  /** Required for volunteer legs; optional for an in-person donor/recipient handover. */
+  @ApiProperty({ required: false })
+  @Prop()
+  photoUrl?: string;
 
-  @ApiProperty({ type: GeoPoint, description: 'Where the volunteer device was at capture' })
-  @Prop({ type: GeoPointSchema, required: true })
-  location!: GeoPoint;
+  @ApiProperty({ type: GeoPoint, required: false, description: 'Where the device was at capture' })
+  @Prop({ type: GeoPointSchema })
+  location?: GeoPoint;
+
+  @ApiProperty({ enum: ['volunteer', 'donor', 'admin'], required: false })
+  @Prop({ type: String, enum: ['volunteer', 'donor', 'admin'], default: 'volunteer' })
+  recordedBy?: 'volunteer' | 'donor' | 'admin';
 
   /** FR9 — true only when the recipient's PIN matched at delivery. */
   @ApiProperty({ default: false })

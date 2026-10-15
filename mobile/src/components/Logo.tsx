@@ -1,22 +1,19 @@
-import React from 'react';
-import { StyleSheet } from 'react-native';
-import LogoSvg from '../../assets/images/logo.svg';
+import { Image, StyleSheet } from 'react-native';
+
+import { logo } from '@/constants/images';
 
 interface LogoProps {
   width?: number;
   height?: number;
 }
 
-/**
- * Amuthinai Logo Component with transparent background
- * Uses SVG for crisp rendering at any size
- */
+/** Wordmark logo. Uses PNG so the standalone APK does not depend on a missing SVG. */
 export function Logo({ width = 300, height = 110 }: LogoProps) {
-  return <LogoSvg width={width} height={height} style={styles.logo} />;
+  return <Image source={logo} style={[styles.logo, { width, height }]} resizeMode="contain" />;
 }
 
 const styles = StyleSheet.create({
   logo: {
-    // SVG renders with transparent background by default
+    backgroundColor: 'transparent',
   },
 });

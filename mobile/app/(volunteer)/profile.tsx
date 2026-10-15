@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
   profileCard: {
     backgroundColor: '#FFF',
     borderRadius: radius.lg,
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginTop: 16,
     padding: 20,
     alignItems: 'center',
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
   sectionCard: {
     backgroundColor: '#FFF',
     borderRadius: radius.lg,
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginTop: 14,
     padding: 16,
     gap: 14,
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   settingsCard: {
     backgroundColor: '#FFF',
     borderRadius: radius.lg,
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginTop: 14,
     padding: 16,
     gap: 12,
@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
   radiusTextActive: { color: volunteerColors.maroon, fontWeight: '700' },
 
   /* Save */
-  saveSection: { paddingHorizontal: 16, marginTop: 14, gap: 8 },
+  saveSection: { paddingHorizontal: 0, marginTop: 14, gap: 8 },
   savedRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
   menuCard: {
     backgroundColor: '#FFF',
     borderRadius: radius.lg,
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginTop: 14,
     borderWidth: 1,
     borderColor: volunteerColors.line,
@@ -699,7 +699,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginHorizontal: 16,
+    marginHorizontal: 0,
     marginTop: 14,
     paddingVertical: 14,
     borderRadius: radius.lg,

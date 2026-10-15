@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing, typography } from '@/theme';
 import type { GeoPoint } from '@/types';
 import { toGeoPoint, toLatLng } from '@/utils/geo';
 import { MapView, Marker } from '@/utils/maps';
 
-/** Colombo — used until the device reports a position. */
-const FALLBACK_REGION: any = {
-  latitude: 6.9271,
-  longitude: 79.8612,
+/** Jaffna — used until the device reports a position. */
+const FALLBACK_REGION = {
+  latitude: 9.6645,
+  longitude: 80.02,
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
 };
@@ -23,24 +25,38 @@ interface MapPickerProps {
 
 /** FR5 — recipients drop a pin for the delivery location; donors reuse it for pickup. */
 export function MapPicker({ value, onChange, label, height = 260 }: MapPickerProps) {
-  const [region] = useState<any>(
-    value ? { ...toLatLng(value), latitudeDelta: 0.02, longitudeDelta: 0.02 } : FALLBACK_REGION,
-  );
+  const pin = value ? toLatLng(value) : FALLBACK_REGION;
+  const [region] = useState({
+    ...pin,
+    latitudeDelta: 0.02,
+    longitudeDelta: 0.02,
+  });
 
-  function handlePress(event: any) {
+  function handlePress(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) {
     const { latitude, longitude } = event.nativeEvent.coordinate;
     onChange(toGeoPoint(latitude, longitude));
   }
 
-  // Web fallback
+  const webMapUrl = getMapboxStaticMapUrl({
+    center: pin,
+    zoom: 14,
+    width: 600,
+    height: Math.round(height),
+    markers: [{ latitude: pin.latitude, longitude: pin.longitude, label: 'home', color: '5A1626' }],
+  });
+
   if (Platform.OS === 'web' || !MapView) {
     return (
       <View style={styles.wrapper}>
         {Boolean(label) && <Text style={styles.label}>{label}</Text>}
-        <View style={[styles.mapFrame, styles.webPlaceholder, { height }]}>
-          <Text style={styles.webText}>Map not available on web</Text>
-          <Text style={styles.hint}>Please use mobile app for map features</Text>
+        <View style={[styles.mapFrame, { height }]}>
+          <MapboxStaticImage uri={webMapUrl} />
         </View>
+        <Text style={styles.hint}>
+          {value
+            ? `Pinned at ${pin.latitude.toFixed(5)}, ${pin.longitude.toFixed(5)}`
+            : 'Map preview (pin dropping is available in the mobile app)'}
+        </Text>
       </View>
     );
   }
@@ -73,14 +89,4 @@ const styles = StyleSheet.create({
   },
   map: { flex: 1 },
   hint: { ...typography.caption, color: colors.textMuted },
-  webPlaceholder: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  webText: {
-    ...typography.body,
-    color: colors.textMuted,
-  },
 });

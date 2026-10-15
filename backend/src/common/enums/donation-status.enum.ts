@@ -32,7 +32,12 @@ export const DONATION_TRANSITIONS: Record<DonationStatus, DonationStatus[]> = {
     DonationStatus.Expired,
     DonationStatus.Cancelled,
   ],
-  [DonationStatus.PickedUp]: [DonationStatus.InTransit, DonationStatus.Cancelled],
+  // A recipient collecting in person receives the food at the moment it is collected.
+  [DonationStatus.PickedUp]: [
+    DonationStatus.InTransit,
+    DonationStatus.Delivered,
+    DonationStatus.Cancelled,
+  ],
   [DonationStatus.InTransit]: [DonationStatus.Delivered, DonationStatus.Cancelled],
   [DonationStatus.Delivered]: [],
   [DonationStatus.Rejected]: [],

@@ -1,11 +1,10 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from './ui/Button';
 
-import { uploadsApi } from '@/api/uploads.api';
+import { cloudinaryService } from '@/services/cloudinary';
 import { colors, radius, spacing, typography } from '@/theme';
 
 interface PhotoCaptureProps {
@@ -22,31 +21,29 @@ export function PhotoCapture({ value, onChange, max = 3, cameraOnly = false }: P
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function pick() {
+  function pick() {
     setError(null);
-
-    const permission = cameraOnly
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      setError('Permission denied');
+    if (cameraOnly) {
+      void capture('camera');
       return;
     }
+    Alert.alert('Add photo', undefined, [
+      { text: 'Take photo', onPress: () => void capture('camera') },
+      { text: 'Choose from gallery', onPress: () => void capture('gallery') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
 
-    const result = cameraOnly
-      ? await ImagePicker.launchCameraAsync({ quality: 0.6 })
-      : await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
-
-    const asset = result.canceled ? null : result.assets[0];
-    if (!asset) return;
-
+  async function capture(source: 'camera' | 'gallery') {
+    setError(null);
     setIsUploading(true);
     try {
-      const uploaded = await uploadsApi.uploadImage(asset.uri);
+      const uri = await cloudinaryService.pickOrCapture(source);
+      if (!uri) return;
+      const uploaded = await cloudinaryService.uploadImage(uri, 'amuthinai/photos');
       onChange([...value, uploaded.url]);
-    } catch {
-      setError('Upload failed, please try again');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed, please try again');
     } finally {
       setIsUploading(false);
     }

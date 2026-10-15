@@ -24,19 +24,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MapView, Marker, Polyline } from '@/utils/maps';
 
-import { notificationsApi } from '@/api/notifications.api';
+import { donationsApi } from '@/api/donations.api';
 import { queryClient } from '@/api/queryClient';
-import { requestsApi, type CreateRequestPayload } from '@/api/requests.api';
+import { requestsApi } from '@/api/requests.api';
 import { usersApi } from '@/api/users.api';
-import { MAPBOX_ACCESS_TOKEN } from '@/constants';
+import { RecipientDeliveryCard } from '@/components/flow/RecipientDeliveryCard';
+import { SafeTimePill } from '@/components/flow/SafeTimePill';
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { useAuth } from '@/hooks/useAuth';
 import { useOfflineQuery } from '@/hooks/useOfflineQuery';
-import type { FoodRequest } from '@/types';
+import type { Donation, DonationStatus, FoodRequest } from '@/types';
 import {
   registerForPushNotifications,
-  markNotificationsAsRead,
   notifyMealDonationRequested,
-  type AppNotificationItem,
 } from '@/services/notifications';
 import { DeliveryPinCard } from '@/components/DeliveryPinCard';
 import { colors, spacing, typography } from '@/theme';
@@ -54,6 +55,15 @@ interface DistributionItem {
   imageUrl: string;
   donorName?: string;
   servings?: number;
+  expiresAt?: string;
+  isUrgent?: boolean;
+  distanceKm?: number | null;
+  areaLabel?: string;
+}
+
+function linkedDonationStatus(request?: FoodRequest | null): DonationStatus | null {
+  const linked = request?.matchedDonationId;
+  return linked && typeof linked === 'object' ? (linked as Donation).status : null;
 }
 
 export default function RecipientDashboard() {
@@ -67,11 +77,6 @@ export default function RecipientDashboard() {
   const [selectedDistribution, setSelectedDistribution] = useState<DistributionItem | null>(null);
   const [requestedPortions, setRequestedPortions] = useState(2);
   const [requestNotes, setRequestNotes] = useState('');
-
-  // Notifications State & Badge
-  const [notificationsModalVisible, setNotificationsModalVisible] = useState(false);
-  const [notificationsList, setNotificationsList] = useState<AppNotificationItem[]>([]);
-  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   // Fetch fresh user profile
   const { data: profileUser } = useQuery({
@@ -125,97 +130,76 @@ export default function RecipientDashboard() {
   });
 
   const active = activeRequest;
+  const activeDonationStatus = linkedDonationStatus(activeRequest);
+  const activeStatusLabel = activeDonationStatus
+    ? t(`status.${activeDonationStatus}`)
+    : t('flow.claimedGeneral');
 
-  // Request Food from an Available Distribution Mutation
+  // Claim a general donation: the backend reserves it atomically for one recipient only.
   const requestFoodMutation = useMutation({
-    mutationFn: (dist: DistributionItem) => {
-      const payload: CreateRequestPayload = {
+    mutationFn: (dist: DistributionItem) =>
+      donationsApi.claim(dist.id, {
         servingsNeeded: requestedPortions,
-        familySize: requestedPortions,
-        neededBy: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
         notes: requestNotes.trim() || undefined,
-        foodCategory: dist.foodType || dist.title,
-        contactPreference: 'in_app',
-        deliveryMethod: 'doorstep',
-        dropAddress: {
-          line1: currentUser?.address?.line1 || 'Hospital Road',
-          city: hubCity,
-          district: hubDistrict,
-          location: { type: 'Point', coordinates: [80.0167, 9.6615] },
-        },
-      };
-      return requestsApi.create(payload);
-    },
+      }),
     async onSuccess() {
       const distTitle = selectedDistribution?.title || 'Hot Meals';
       const donorName = selectedDistribution?.donorName || 'Community Donor';
       setSelectedDistribution(null);
       setRequestNotes('');
-      await queryClient.invalidateQueries({ queryKey: ['recipient', 'requests'] });
-      await queryClient.invalidateQueries({ queryKey: ['recipient.requests'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['recipient', 'requests'] }),
+        queryClient.invalidateQueries({ queryKey: ['recipient.requests'] }),
+        queryClient.invalidateQueries({ queryKey: ['recipient', 'distributions'] }),
+      ]);
 
-      // Immediate phone notification
       await notifyMealDonationRequested(donorName, distTitle);
-      await loadNotifications();
 
-      Alert.alert(
-        'Request Sent to Donor!',
-        'The donor and nearby volunteers have been notified. Once approved, live tracking will appear on your dashboard.',
-        [{ text: 'OK' }],
-      );
+      Alert.alert(t('flow.claimed'), t('flow.claimedBody'), [{ text: 'OK' }]);
     },
-    onError(err: any) {
-      Alert.alert(
-        'Request Notice',
-        err?.message || 'You already have an active meal request in progress.',
-        [{ text: 'OK' }],
-      );
+    async onError(err: any) {
+      const status = err?.status ?? err?.statusCode ?? err?.response?.status;
+      if (status === 409) {
+        await queryClient.invalidateQueries({ queryKey: ['recipient', 'distributions'] });
+      }
+      const message =
+        status === 409 && /claimed/i.test(err?.message ?? '')
+          ? t('flow.claimTaken')
+          : err?.message || t('flow.alreadyActive');
+      Alert.alert(t('flow.claim'), message, [{ text: 'OK' }]);
     },
   });
 
-  // Setup push notifications & sync history
+  // Setup push notifications
   useEffect(() => {
     registerForPushNotifications();
-    loadNotifications();
   }, []);
-
-  const loadNotifications = async () => {
-    const page = await notificationsApi.list({ pageSize: 30 });
-    const list: AppNotificationItem[] = page.items.map((item) => ({
-      id: item.id,
-      title: item.title,
-      body: item.body,
-      type: 'system',
-      timestamp: item.createdAt,
-      read: item.read,
-      data: item.data,
-    }));
-    setNotificationsList(list);
-    setUnreadNotifCount(page.unread);
-  };
 
   const toggleSidebar = () => {
     setSidebarVisible(!sidebarVisible);
   };
 
-  const handleNotifications = async () => {
-    await loadNotifications();
-    setNotificationsModalVisible(true);
-    await notificationsApi.markAllRead().catch(() => markNotificationsAsRead());
-    setUnreadNotifCount(0);
-  };
-
   // Combine real backend distributions with UI cards
   const displayDistributions: DistributionItem[] = (distributions?.items ?? []).map((item, idx) => ({
     id: item.id,
-    foodType: item.title,
+    foodType: item.foodType,
     title: item.title,
-    subtitle: `${item.servings} Servings Available`,
+    subtitle: [
+      item.donorName ? t('flow.fromDonor', { name: item.donorName }) : null,
+      item.distanceKm != null ? t('flow.kmAway', { km: item.distanceKm.toFixed(1) }) : item.areaLabel,
+    ]
+      .filter(Boolean)
+      .join(' · '),
     badge: `${item.servings} ready`,
-    badgeBg: idx % 2 === 0 ? '#F59E0B' : '#16A34A',
-    actionText: 'Request',
+    badgeBg: item.isUrgent ? '#EA580C' : idx % 2 === 0 ? '#F59E0B' : '#16A34A',
+    actionText: t('flow.claim'),
     servings: item.servings,
-    imageUrl: item.photoUrls?.[0] || '',
+    imageUrl: item.photoUrl || '',
+    donorName: item.donorName,
+    expiresAt: item.expiresAt,
+    isUrgent: item.isUrgent,
+    distanceKm: item.distanceKm,
+    areaLabel: item.areaLabel,
   }));
 
   // Dynamic Mapbox Tracking URL centered on real pinned coordinates
@@ -226,9 +210,19 @@ export default function RecipientDashboard() {
   const hubLng = dropLng + 0.0169;
   const hubLat = dropLat + 0.0123;
 
-  const mapboxTrackingUrl = isTargetCurrentActive
-    ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s-restaurant+5A1626(${hubLng},${hubLat}),pin-s-bicycle+0F7B4F(${volunteerLng},${volunteerLat}),pin-s-home+F59E0B(${dropLng},${dropLat})/${dropLng},${dropLat},13.5,0/600x420@2x?access_token=${MAPBOX_ACCESS_TOKEN}`
-    : `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s-home+0F7B4F(${dropLng},${dropLat})/${dropLng},${dropLat},14,0/600x420@2x?access_token=${MAPBOX_ACCESS_TOKEN}`;
+  const mapboxTrackingUrl = getMapboxStaticMapUrl({
+    center: { latitude: dropLat, longitude: dropLng },
+    zoom: isTargetCurrentActive ? 13.5 : 14,
+    width: 600,
+    height: 420,
+    markers: isTargetCurrentActive
+      ? [
+          { latitude: hubLat, longitude: hubLng, label: 'restaurant', color: '5A1626' },
+          { latitude: volunteerLat, longitude: volunteerLng, label: 'bicycle', color: '0F7B4F' },
+          { latitude: dropLat, longitude: dropLng, label: 'home', color: 'F59E0B' },
+        ]
+      : [{ latitude: dropLat, longitude: dropLng, label: 'home', color: '0F7B4F' }],
+  });
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -349,14 +343,7 @@ export default function RecipientDashboard() {
 
           <Image source={logoImage} style={styles.logoImage} resizeMode="contain" />
 
-          <TouchableOpacity
-            style={styles.circularHeaderButton}
-            onPress={handleNotifications}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="notifications-outline" size={20} color="#1F2937" />
-            {unreadNotifCount > 0 && <View style={styles.notificationDot} />}
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
         </View>
 
         {/* Greeting & Sub-header Section with user's name & Vanakkam */}
@@ -468,7 +455,7 @@ export default function RecipientDashboard() {
                       <Text style={styles.diningSubText}>
                         {activeRequest
                           ? activeRequest.status === 'matched'
-                            ? 'VOLUNTEER ASSIGNED'
+                            ? 'FOOD MATCHED'
                             : 'CURRENT ACTIVITY'
                           : latestPastRequest
                           ? 'PAST ACTIVITY'
@@ -477,8 +464,8 @@ export default function RecipientDashboard() {
                       <Text style={styles.diningMainText}>
                         {activeRequest
                           ? activeRequest.status === 'matched'
-                            ? 'In Transit • On The Way'
-                            : 'Request Placed • Finding Volunteer'
+                            ? activeStatusLabel
+                            : t('flow.waitingDonor')
                           : latestPastRequest
                           ? latestPastRequest.status === 'fulfilled'
                             ? 'Delivered & Completed'
@@ -547,22 +534,15 @@ export default function RecipientDashboard() {
                     />
                     <Text style={styles.heroInfoText}>
                       {activeRequest ? (
-                        activeRequest.status === 'matched' ? (
-                          <>
-                            Arriving in{' '}
-                            <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>~15 mins</Text>
-                          </>
-                        ) : (
-                          <>
-                            Needed by{' '}
-                            <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>
-                              {new Date(activeRequest.neededBy).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </Text>
-                          </>
-                        )
+                        <>
+                          Needed by{' '}
+                          <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>
+                            {new Date(activeRequest.neededBy).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </Text>
+                        </>
                       ) : latestPastRequest ? (
                         <>
                           Delivered on{' '}
@@ -594,8 +574,8 @@ export default function RecipientDashboard() {
                     <Text style={[styles.heroInfoText, { color: '#34D399' }]}>
                       {activeRequest
                         ? activeRequest.status === 'matched'
-                          ? 'Volunteer on the way'
-                          : 'Matching with Hub'
+                          ? activeStatusLabel
+                          : t('flow.waitingDonor')
                         : latestPastRequest
                         ? `${latestPastRequest.servingsNeeded} Portions Received`
                         : 'Instant volunteer matching'}
@@ -659,11 +639,9 @@ export default function RecipientDashboard() {
 
           {/* Section: Available Distributions */}
           <View style={styles.sectionHeaderRow}>
-            <View>
-              <Text style={styles.sectionHeading}>Available Distributions</Text>
-              <Text style={styles.sectionSubheading}>
-                Pick up today or request direct drop-off
-              </Text>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={styles.sectionHeading}>{t('flow.availableTitle')}</Text>
+              <Text style={styles.sectionSubheading}>{t('flow.availableLead')}</Text>
             </View>
             <TouchableOpacity onPress={() => router.push('/(recipient)/requests')}>
               <Text style={styles.viewAllText}>View All ›</Text>
@@ -677,14 +655,17 @@ export default function RecipientDashboard() {
             contentContainerStyle={styles.distributionCardsScroll}
           >
             {displayDistributions.length === 0 ? (
-              <Text style={styles.sectionSubheading}>No approved donations are available right now.</Text>
+              <Text style={styles.sectionSubheading}>{t('flow.availableEmpty')}</Text>
             ) : null}
             {displayDistributions.map((dist) => (
               <TouchableOpacity
                 key={dist.id}
-                style={styles.distCard}
+                style={[styles.distCard, dist.isUrgent && styles.distCardUrgent]}
                 activeOpacity={0.9}
-                onPress={() => setSelectedDistribution(dist)}
+                onPress={() => {
+                  setRequestedPortions(Math.min(2, dist.servings || 2));
+                  setSelectedDistribution(dist);
+                }}
               >
                 <View style={styles.distImageWrapper}>
                   {dist.imageUrl ? (
@@ -702,8 +683,11 @@ export default function RecipientDashboard() {
                   <Text style={styles.distSubtitle} numberOfLines={1}>
                     {dist.subtitle}
                   </Text>
+                  {dist.expiresAt ? (
+                    <SafeTimePill expiresAt={dist.expiresAt} compact style={styles.distSafePill} />
+                  ) : null}
                   <View style={styles.distLinkRow}>
-                    <Text style={styles.distLinkText}>{t('recipient.requestMeal')}</Text>
+                    <Text style={styles.distLinkText}>{dist.actionText}</Text>
                     <Ionicons name="arrow-forward-circle-outline" size={15} color="#70192F" />
                   </View>
                 </View>
@@ -789,19 +773,28 @@ export default function RecipientDashboard() {
                   >
                     {isTargetCurrentActive
                       ? currentTargetRequest?.status === 'matched'
-                        ? 'OUT FOR DOORSTEP DELIVERY • EN ROUTE'
-                        : 'REQUEST RECEIVED • MATCHING VOLUNTEER'
-                      : 'DELIVERY COMPLETED & VERIFIED'}
+                        ? (liveTrackingData?.donation
+                            ? t(`status.${liveTrackingData.donation.status}`)
+                            : t('flow.claimedGeneral')
+                          ).toUpperCase()
+                        : t('flow.waitingDonor').toUpperCase()
+                      : currentTargetRequest?.status === 'fulfilled'
+                        ? 'DELIVERY COMPLETED & VERIFIED'
+                        : t('status.cancelled').toUpperCase()}
                   </Text>
                   <Text style={styles.distributionStatusSub}>
                     {isTargetCurrentActive
                       ? currentTargetRequest?.status === 'matched'
-                        ? `${liveTrackingData?.volunteer?.name || 'Your volunteer'} is on the way with your meal.`
-                        : 'Your meal request is being matched with the closest available relief hub.'
-                      : 'This food delivery was successfully completed to your doorstep.'}
+                        ? liveTrackingData?.donation?.title ?? t('flow.claimedBody')
+                        : t('flow.waitingDonorHint')
+                      : currentTargetRequest?.status === 'fulfilled'
+                        ? t('flow.verificationRequired')
+                        : ''}
                   </Text>
                 </View>
               </View>
+
+              {isTargetCurrentActive ? <RecipientDeliveryCard info={liveTrackingData} /> : null}
 
               {/* 1. Food Details Card */}
               <View style={styles.sectionCard}>
@@ -908,6 +901,7 @@ export default function RecipientDashboard() {
               </View>
 
               {/* 3. Volunteer Details Card */}
+              {!isTargetCurrentActive && liveTrackingData?.volunteer ? (
               <View style={styles.sectionCard}>
                 <View style={styles.sectionCardHeader}>
                   <View style={[styles.sectionIconBadge, { backgroundColor: '#EFF6FF' }]}>
@@ -953,10 +947,10 @@ export default function RecipientDashboard() {
                     </TouchableOpacity>
                   </View>
                 </View>
-
-                <DeliveryPinCard pin={liveTrackingData?.assignment?.deliveryPin} />
+              ) : null}
 
                 {/* 4. Delivery Status & Timeline */}
+              {currentTargetRequest?.status === 'fulfilled' ? (
               <View style={styles.sectionCard}>
                 <View style={styles.sectionCardHeader}>
                   <View style={[styles.sectionIconBadge, { backgroundColor: '#FEF3C7' }]}>
@@ -975,27 +969,14 @@ export default function RecipientDashboard() {
                       ),
                       done: true,
                     },
+                    { title: t('status.approved'), time: 'Completed', done: true, active: false },
+                    { title: t('status.assigned'), time: 'Completed', done: true, active: false },
+                    { title: t('status.picked_up'), time: 'Completed', done: true, active: false },
                     {
-                      title: 'Food Prepared at Relief Hub',
-                      time: 'Hub Ready',
+                      title: t('status.delivered'),
+                      time: t('flow.verificationRequired'),
                       done: true,
-                    },
-                    {
-                      title: 'Courier Picked Up Food',
-                      time: isTargetCurrentActive ? 'En Route' : 'Completed',
-                      done: !isTargetCurrentActive || currentTargetRequest?.status === 'matched',
-                      active: isTargetCurrentActive && currentTargetRequest?.status === 'open',
-                    },
-                    {
-                      title: 'Out for Doorstep Delivery',
-                      time: isTargetCurrentActive ? 'Current Stage' : 'Completed',
-                      done: !isTargetCurrentActive,
-                      active: isTargetCurrentActive && currentTargetRequest?.status === 'matched',
-                    },
-                    {
-                      title: 'Delivered Safely to Doorstep',
-                      time: isTargetCurrentActive ? 'Arriving in ~15 mins' : 'Delivered',
-                      done: !isTargetCurrentActive,
+                      active: false,
                     },
                   ].map((stage, idx) => (
                     <View key={idx} style={styles.stageItem}>
@@ -1036,6 +1017,7 @@ export default function RecipientDashboard() {
                   ))}
                 </View>
               </View>
+              ) : null}
 
               {/* 5. Tracking Options & Actions */}
               <View style={styles.detailsModalActionButtons}>
@@ -1196,11 +1178,7 @@ export default function RecipientDashboard() {
                     )}
                   </MapView>
                 ) : (
-                  <Image
-                    source={{ uri: mapboxTrackingUrl }}
-                    style={styles.mapboxImage}
-                    resizeMode="cover"
-                  />
+                  <MapboxStaticImage uri={mapboxTrackingUrl} style={styles.mapboxImage} />
                 )}
 
                 {/* Floating Live ETA Banner on Map */}
@@ -1270,7 +1248,17 @@ export default function RecipientDashboard() {
                 </TouchableOpacity>
               </View>
 
-              <DeliveryPinCard pin={liveTrackingData?.assignment?.deliveryPin} />
+              <DeliveryPinCard
+                pin={liveTrackingData?.assignment?.deliveryPin}
+                label={t('flow.yourCode')}
+                hint={
+                  liveTrackingData?.mode === 'recipient_pickup'
+                    ? t('flow.yourCodePickupHint')
+                    : liveTrackingData?.mode === 'donor_delivery'
+                      ? t('flow.yourCodeDeliveryHint')
+                      : t('flow.yourCodeVolunteerHint')
+                }
+              />
 
               {/* Route Endpoints Breakdown (Start, Volunteer, Destination) */}
               <View style={styles.locationTraceCard}>
@@ -1352,7 +1340,7 @@ export default function RecipientDashboard() {
           <View style={styles.trackingModalCard}>
             <View style={styles.trackingModalHeader}>
               <View>
-                <Text style={styles.trackingModalTitle}>Request from Donation</Text>
+                <Text style={styles.trackingModalTitle}>{t('flow.claim')}</Text>
                 <Text style={styles.trackingModalSubtitle}>
                   {selectedDistribution?.title} • {selectedDistribution?.donorName}
                 </Text>
@@ -1375,9 +1363,16 @@ export default function RecipientDashboard() {
 
               <Text style={styles.donationModalTitle}>{selectedDistribution?.title}</Text>
               <Text style={styles.donationModalSubtitle}>{selectedDistribution?.subtitle}</Text>
+              {selectedDistribution?.expiresAt ? (
+                <SafeTimePill expiresAt={selectedDistribution.expiresAt} style={{ marginTop: 8 }} />
+              ) : null}
+              <View style={styles.claimNotice}>
+                <Ionicons name="shield-checkmark-outline" size={16} color="#5A1626" />
+                <Text style={styles.claimNoticeText}>{t('flow.generalHint')}</Text>
+              </View>
 
               {/* Servings counter */}
-              <Text style={styles.modalInputLabel}>Number of Portions Needed</Text>
+              <Text style={styles.modalInputLabel}>{t('flow.claimServings')}</Text>
               <View style={styles.portionsCounterRow}>
                 <TouchableOpacity
                   style={styles.counterBtn}
@@ -1398,7 +1393,7 @@ export default function RecipientDashboard() {
               </View>
 
               {/* Delivery destination */}
-              <Text style={styles.modalInputLabel}>Delivery Dropoff Address</Text>
+              <Text style={styles.modalInputLabel}>{t('flow.deliverTo')}</Text>
               <View style={styles.addressDisplayBox}>
                 <Ionicons name="location" size={18} color="#4A1521" />
                 <Text style={styles.addressDisplayText}>
@@ -1407,7 +1402,7 @@ export default function RecipientDashboard() {
               </View>
 
               {/* Special notes */}
-              <Text style={styles.modalInputLabel}>Note for Donor / Dietary Instructions</Text>
+              <Text style={styles.modalInputLabel}>{t('flow.claimNote')}</Text>
               <TextInput
                 style={styles.modalTextInput}
                 placeholder="e.g. For elderly family members, low spice please..."
@@ -1434,9 +1429,9 @@ export default function RecipientDashboard() {
                 ) : (
                   <>
                     <Text style={styles.confirmRequestBtnText}>
-                      Confirm Request & Notify Donor
+                      {t('flow.claimFor', { count: requestedPortions })}
                     </Text>
-                    <Ionicons name="send" size={16} color="#FFFFFF" />
+                    <Ionicons name="hand-left" size={16} color="#FFFFFF" />
                   </>
                 )}
               </TouchableOpacity>
@@ -1445,99 +1440,6 @@ export default function RecipientDashboard() {
         </View>
       </Modal>
 
-      {/* POPUP 3: Notifications Center Modal */}
-      <Modal visible={notificationsModalVisible} transparent animationType="slide">
-        <View style={styles.trackingModalContainer}>
-          <View style={[styles.trackingModalCard, { maxHeight: '85%' }]}>
-            {/* Modal Header */}
-            <View style={styles.trackingModalHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={styles.notifIconCircle}>
-                  <Ionicons name="notifications" size={18} color="#0F7B4F" />
-                </View>
-                <View>
-                  <Text style={styles.trackingModalTitle}>App Notifications</Text>
-                  <Text style={styles.trackingModalSubtitle}>
-                    {notificationsList.length} total alerts & delivery updates
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={() => setNotificationsModalVisible(false)}
-                style={styles.closeBtn}
-              >
-                <Ionicons name="close" size={20} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Notification Items List */}
-              {notificationsList.length === 0 ? (
-                <View style={styles.emptyNotifBox}>
-                  <Ionicons name="notifications-off-outline" size={44} color="#D1D5DB" />
-                  <Text style={styles.emptyNotifTitle}>No Notifications Yet</Text>
-                  <Text style={styles.emptyNotifSubtitle}>
-                    When a volunteer is assigned to your request or tracking status changes, you will receive instant alerts on your phone!
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.notifListWrap}>
-                  {notificationsList.map((item) => {
-                    const iconName =
-                      item.type === 'volunteer_assigned'
-                        ? 'bicycle'
-                        : item.type === 'tracking_update'
-                        ? 'location'
-                        : item.type === 'request_created'
-                        ? 'restaurant'
-                        : item.type === 'meal_requested'
-                        ? 'mail'
-                        : 'information-circle';
-
-                    const iconColor =
-                      item.type === 'volunteer_assigned'
-                        ? '#0284C7'
-                        : item.type === 'tracking_update'
-                        ? '#059669'
-                        : item.type === 'request_created'
-                        ? '#D97706'
-                        : '#7C3AED';
-
-                    const timeStr = item.timestamp
-                      ? new Date(item.timestamp).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : 'Just now';
-
-                    return (
-                      <View key={item.id} style={styles.notifItemCard}>
-                        <View style={[styles.notifBadgeCircle, { backgroundColor: `${iconColor}15` }]}>
-                          <Ionicons name={iconName as any} size={18} color={iconColor} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.notifHeaderLine}>
-                            <Text style={styles.notifItemTitle}>{item.title}</Text>
-                            <Text style={styles.notifItemTime}>{timeStr}</Text>
-                          </View>
-                          <Text style={styles.notifItemBody}>{item.body}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={styles.doneTrackingBtn}
-                onPress={() => setNotificationsModalVisible(false)}
-              >
-                <Text style={styles.doneTrackingBtnText}>Close Notifications</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1650,16 +1552,9 @@ const styles = StyleSheet.create({
     width: 140,
     height: 42,
   },
-  notificationDot: {
-    position: 'absolute',
-    top: 10,
-    right: 11,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#F59E0B',
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+  headerSpacer: {
+    width: 44,
+    height: 44,
   },
 
   /* Greeting & User Subheader */
@@ -1951,7 +1846,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   distCard: {
-    width: 140,
+    width: 156,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
@@ -1962,6 +1857,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 2,
+  },
+  distCardUrgent: {
+    borderColor: '#FDBA74',
+    borderWidth: 1.5,
+  },
+  distSafePill: {
+    marginBottom: 8,
+  },
+  claimNotice: {
+    alignItems: 'flex-start',
+    backgroundColor: '#F8EEF0',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    padding: 12,
+  },
+  claimNoticeText: {
+    color: '#5A1626',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
   },
   distImageWrapper: {
     width: '100%',
@@ -2540,76 +2458,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  /* Notifications & Simulator Styles */
-  notifIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#D7F3E3',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyNotifBox: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 20,
-  },
-  emptyNotifTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  emptyNotifSubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  notifListWrap: {
-    gap: 10,
-    marginBottom: 16,
-  },
-  notifItemCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FAF8F5',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#ECE7E1',
-    gap: 12,
-  },
-  notifBadgeCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notifHeaderLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  notifItemTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    flex: 1,
-  },
-  notifItemTime: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginLeft: 6,
-  },
-  notifItemBody: {
-    fontSize: 12,
-    color: '#4B5563',
-    lineHeight: 16,
-  },
+  /* Simulator Styles */
   testNotifSection: {
     backgroundColor: '#F9FAFB',
     borderRadius: 14,

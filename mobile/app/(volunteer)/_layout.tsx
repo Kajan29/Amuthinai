@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RoleGuard } from '@/components/RoleGuard';
 import { chrome, roleTabBarStyle } from '@/theme/chrome';
+import { tabPushTransition, tabSwitchTransition } from '@/theme/transitions';
 
 export default function VolunteerLayout() {
   const { t } = useTranslation();
@@ -16,6 +17,7 @@ export default function VolunteerLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
+          ...tabSwitchTransition,
           tabBarActiveTintColor: chrome.accent,
           tabBarInactiveTintColor: chrome.muted,
           tabBarStyle: roleTabBarStyle(bottomPadding),
@@ -37,7 +39,11 @@ export default function VolunteerLayout() {
           options={{
             title: t('nav.tasks'),
             tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons name={focused ? 'clipboard' : 'clipboard-outline'} color={color} size={size} />
+              <Ionicons
+                name={focused ? 'clipboard' : 'clipboard-outline'}
+                color={color}
+                size={size}
+              />
             ),
           }}
         />
@@ -68,10 +74,22 @@ export default function VolunteerLayout() {
             ),
           }}
         />
-        <Tabs.Screen name="assignment/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="pickup/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="delivery/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="raise-concern" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen
+          name="assignment/[id]"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="pickup/[id]"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="delivery/[id]"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="raise-concern"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
       </Tabs>
     </RoleGuard>
   );

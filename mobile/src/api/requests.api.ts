@@ -3,9 +3,10 @@ import { client, request } from './client';
 import type {
   Address,
   Assignment,
+  AssignmentMode,
   ContactPreference,
+  DeliveryMethod,
   DeliveryProof,
-  Donation,
   DonationStatus,
   Enquiry,
   FoodRequest,
@@ -15,6 +16,7 @@ import type {
   StatusEvent,
 } from '@/types';
 
+import type { AvailableDonation } from './donations.api';
 import type { CreateEnquiryPayload } from './enquiries.api';
 
 export interface CreateRequestPayload {
@@ -41,7 +43,12 @@ export interface RecipientStats {
 
 export interface RequestTrackingInfo {
   request: FoodRequest;
-  /** `deliveryPin` is included only for the recipient who owns the request. */
+  mode?: AssignmentMode;
+  deliveryMethod?: DeliveryMethod | null;
+  deliveryMethodConfirmed?: boolean;
+  /** In-person handovers: who to meet, and where to collect for recipient self-pickup. */
+  donor?: { name: string; phone: string | null; pickupAddress: Address | null } | null;
+  /** `deliveryPin` is included only for the recipient, once the delivery is accepted. */
   assignment: Assignment | null;
   volunteer: {
     id: string;
@@ -57,6 +64,7 @@ export interface RequestTrackingInfo {
     pickupAddress: { city: string; district?: string };
     servings: number;
     status: DonationStatus;
+    cookedAt?: string;
     expiresAt: string;
     photoUrls: string[];
   } | null;
@@ -83,9 +91,11 @@ export const requestsApi = {
   /** Recipient dashboard stats */
   stats: () => request<RecipientStats>(client.get('/food-requests/stats')),
 
-  /** Available distributions near recipient */
+  /** General donations nobody has claimed yet, soonest-expiring first. */
   availableDistributions: (params?: { page?: number; pageSize?: number }) =>
-    request<Paginated<Donation>>(client.get('/food-requests/available-distributions', { params })),
+    request<Paginated<AvailableDonation>>(
+      client.get('/food-requests/available-distributions', { params }),
+    ),
 
   /** Active requests within the radius (1 km duplicate prevention). Identities are not shared. */
   nearbyActive: (lat: number, lng: number, radiusKm: number = 1) =>

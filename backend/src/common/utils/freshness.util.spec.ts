@@ -1,6 +1,8 @@
 import { FoodType } from '../enums/food-type.enum';
 import {
+  assertPrepareTimeForPost,
   clampSafeHours,
+  COOKED_POST_MAX_AGE_HOURS,
   expiresAt,
   isExpired,
   isUrgent,
@@ -13,6 +15,32 @@ describe('freshness.util', () => {
   describe('expiresAt', () => {
     it('adds the safe window to the cooked time', () => {
       expect(expiresAt(cookedAt, 6).toISOString()).toBe('2026-01-01T16:00:00.000Z');
+    });
+  });
+
+  describe('assertPrepareTimeForPost', () => {
+    const now = new Date('2026-01-01T16:00:00.000Z');
+
+    it('allows cooked food prepared within 6 hours', () => {
+      expect(() =>
+        assertPrepareTimeForPost(FoodType.Cooked, new Date('2026-01-01T11:00:00.000Z'), now),
+      ).not.toThrow();
+    });
+
+    it('rejects cooked food prepared more than 6 hours ago', () => {
+      expect(() =>
+        assertPrepareTimeForPost(FoodType.Cooked, new Date('2026-01-01T09:00:00.000Z'), now),
+      ).toThrow('Cooked food must be posted within 6 hours of preparation');
+    });
+
+    it('rejects a prepare time in the future', () => {
+      expect(() =>
+        assertPrepareTimeForPost(FoodType.Cooked, new Date('2026-01-01T17:00:00.000Z'), now),
+      ).toThrow('Prepare time cannot be in the future');
+    });
+
+    it(`uses a ${COOKED_POST_MAX_AGE_HOURS}-hour window for cooked meals`, () => {
+      expect(COOKED_POST_MAX_AGE_HOURS).toBe(6);
     });
   });
 

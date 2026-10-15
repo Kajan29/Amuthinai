@@ -4,6 +4,7 @@ import type {
   Address,
   Assignment,
   ChatMessage,
+  DeliveryMethod,
   DeliveryProof,
   Donation,
   Enquiry,
@@ -56,15 +57,40 @@ export interface UnfulfilledArea {
   servingsNeeded: number;
 }
 
+export type VolunteerAvailability = 'available' | 'busy' | 'off_duty' | 'out_of_range';
+
 export interface VolunteerSuggestion {
   volunteer: User;
   distanceKm: number;
+  etaMinutes: number;
   activeAssignments: number;
+  isAvailable: boolean;
+  withinRadius: boolean;
+  travelRadiusKm: number;
+  capacityServings: number;
+  canCarryLoad: boolean;
+  completedDeliveries: number;
+  availability: VolunteerAvailability;
+  /** Off-duty or out-of-range volunteers are shown but cannot be picked. */
+  assignable: boolean;
   score: number;
+}
+
+export interface DispatchRecipient extends TaskRequestInfo {
+  origin: 'request' | 'claim';
+  name: string;
+  phone: string | null;
+  distanceKm: number;
 }
 
 export interface AssignmentOptions {
   donation: Donation;
+  /** The recipient this donation is confirmed for; null for an unclaimed general donation. */
+  recipient: DispatchRecipient | null;
+  deliveryMethod: DeliveryMethod | null;
+  deliveryMethodConfirmed: boolean;
+  minutesLeft: number;
+  isUrgent: boolean;
   volunteers: VolunteerSuggestion[];
   requests: (TaskRequestInfo & { distanceKm: number })[];
   ngos: { id: string; name: string; contactPhone: string; address: Address; distanceKm: number }[];
@@ -193,6 +219,16 @@ export const adminApi = {
 
   assignVolunteer: (donationId: string, volunteerId: string, requestId?: string) =>
     request<Assignment>(client.post('/assignments', { donationId, volunteerId, requestId })),
+
+  /** Pair an unclaimed general donation with an open recipient request. */
+  linkRequest: (donationId: string, requestId: string) =>
+    request<Donation>(client.post(`/donations/${donationId}/link-request`, { requestId })),
+
+  /** After approval: volunteer delivery, recipient self-pickup or donor self-delivery. */
+  chooseDeliveryMethod: (donationId: string, method: DeliveryMethod) =>
+    request<{ donation: Donation; assignment: Assignment | null }>(
+      client.post('/assignments/method', { donationId, method }),
+    ),
 
   reassign: (assignmentId: string, volunteerId: string, reason?: string) =>
     request<Assignment>(

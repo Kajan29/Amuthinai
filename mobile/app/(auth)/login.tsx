@@ -20,7 +20,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '@/hooks/useAuth';
 import { HOME_ROUTE } from '@/store/auth.store';
-import { logo } from '@/constants';
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, logo } from '@/constants';
+import type { Role } from '@/types';
 
 // Direct import of login background
 const loginBackground = require('../../assets/images/login.png');
@@ -42,6 +43,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [quickRole, setQuickRole] = useState<Role | null>(null);
 
   // Dynamic sizing based on screen height
   const isScreenSmall = windowHeight < 700;
@@ -65,6 +67,29 @@ export default function Login() {
       setError(cause instanceof Error ? cause.message : 'Login failed');
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleQuickLogin(role: Role) {
+    const account = DEMO_ACCOUNTS[role];
+    setError(null);
+    setQuickRole(role);
+    setIsSubmitting(true);
+    setEmail(account.email);
+    setPassword(DEMO_PASSWORD);
+
+    try {
+      const user = await login(account.email, DEMO_PASSWORD);
+      router.replace((user.role ? HOME_ROUTE[user.role] : HOME_ROUTE[role]) as never);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : `Could not open the ${account.name} dashboard. Seed that account first.`,
+      );
+    } finally {
+      setIsSubmitting(false);
+      setQuickRole(null);
     }
   }
 
@@ -256,10 +281,54 @@ export default function Login() {
                 ]}
               >
                 <Ionicons name="logo-google" size={24} color="#fff" />
-                <Text style={styles.googleButtonText}>
-                  {isSubmitting ? 'Signing in...' : 'Continue with Google'}
-                </Text>
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
               </Pressable>
+
+              {/* Advanced Login — one tap per role dashboard */}
+              <View style={styles.advancedBlock}>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>ADVANCED LOGIN</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <Text style={styles.advancedHint}>
+                  Tap a role to sign in automatically and open that dashboard
+                </Text>
+                <View style={styles.advancedGrid}>
+                  {(
+                    [
+                      { role: 'donor', icon: 'restaurant-outline', label: 'Donor' },
+                      { role: 'volunteer', icon: 'bicycle-outline', label: 'Volunteer' },
+                      { role: 'recipient', icon: 'heart-outline', label: 'Recipient' },
+                      { role: 'admin', icon: 'shield-outline', label: 'Admin' },
+                    ] as const
+                  ).map((item) => {
+                    const busy = quickRole === item.role;
+                    return (
+                      <Pressable
+                        key={item.role}
+                        onPress={() => void handleQuickLogin(item.role)}
+                        disabled={isSubmitting}
+                        style={({ pressed }) => [
+                          styles.advancedBtn,
+                          busy && styles.advancedBtnActive,
+                          isSubmitting && !busy && styles.signInButtonDisabled,
+                          pressed && styles.buttonPressed,
+                        ]}
+                      >
+                        <Ionicons
+                          name={busy ? 'hourglass-outline' : item.icon}
+                          size={18}
+                          color="#F8E7D2"
+                        />
+                        <Text style={styles.advancedBtnText}>
+                          {busy ? 'Opening…' : item.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
 
               {/* Register Link */}
               <View style={styles.registerContainer}>
@@ -516,5 +585,44 @@ const styles = StyleSheet.create({
     fontSize: isSmallScreen ? 13 : 14,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  advancedBlock: {
+    marginBottom: isSmallScreen ? 16 : 20,
+  },
+  advancedHint: {
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: isSmallScreen ? 12 : 13,
+    textAlign: 'center',
+    marginBottom: 12,
+    marginTop: -4,
+  },
+  advancedGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  advancedBtn: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 90, 60, 0.55)',
+    borderColor: 'rgba(212, 165, 116, 0.45)',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    flexBasis: '47%',
+    flexGrow: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  advancedBtnActive: {
+    backgroundColor: 'rgba(212, 165, 116, 0.35)',
+    borderColor: '#D4A574',
+  },
+  advancedBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

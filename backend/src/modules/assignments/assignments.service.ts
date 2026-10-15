@@ -12,13 +12,16 @@ import { FilterQuery, Model, Types } from 'mongoose';
 import type { AuthUser } from 'src/common/decorators/current-user.decorator';
 import { paginate, PaginationQueryDto, type PaginatedDto } from 'src/common/dto/pagination.dto';
 import { AssignmentStatus } from 'src/common/enums/assignment-status.enum';
+import { DeliveryMethod } from 'src/common/enums/donation-details.enum';
 import { DonationStatus } from 'src/common/enums/donation-status.enum';
+import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { VEHICLE_CAPACITY_SERVINGS } from 'src/common/enums/vehicle-type.enum';
 import { URGENT_THRESHOLD_MINUTES, minutesUntilExpiry } from 'src/common/utils/freshness.util';
 import { distanceKm } from 'src/common/utils/geo.util';
 import { generateDeliveryPin } from 'src/common/utils/pin.util';
 import { DeliveryProofService } from 'src/modules/delivery-proof/delivery-proof.service';
+import type { HandoverDto } from 'src/modules/delivery-proof/dto/handover.dto';
 import type { SubmitProofDto } from 'src/modules/delivery-proof/dto/submit-proof.dto';
 import type { DeliveryProofDocument } from 'src/modules/delivery-proof/schemas/delivery-proof.schema';
 import { DonationsService } from 'src/modules/donations/donations.service';
@@ -31,12 +34,29 @@ import { POINTS, PointsService } from 'src/modules/points/points.service';
 import type { UserDocument } from 'src/modules/users/schemas/user.schema';
 import { UsersService } from 'src/modules/users/users.service';
 
-import { Assignment, AssignmentDocument } from './schemas/assignment.schema';
+import {
+  Assignment,
+  AssignmentDocument,
+  type AssignmentMode,
+} from './schemas/assignment.schema';
+
+export type VolunteerAvailability = 'available' | 'busy' | 'off_duty' | 'out_of_range';
 
 export interface VolunteerSuggestion {
   volunteer: UserDocument;
   distanceKm: number;
+  /** Rough minutes for the volunteer to reach the pickup. */
+  etaMinutes: number;
   activeAssignments: number;
+  isAvailable: boolean;
+  withinRadius: boolean;
+  travelRadiusKm: number;
+  capacityServings: number;
+  canCarryLoad: boolean;
+  completedDeliveries: number;
+  availability: VolunteerAvailability;
+  /** Only `available` and `busy` volunteers can be assigned. */
+  assignable: boolean;
   /** 0–1; higher is a better match. */
   score: number;
 }
@@ -115,16 +135,17 @@ export class AssignmentsService {
   // ─── Admin: matching and assignment ───────────────────────────────────────────
 
   /**
-   * FR6, FR7 — ranks verified, available volunteers for a donation. A volunteer is excluded
-   * when the pickup falls outside their declared travel radius; the rest are scored on how
-   * close they are, whether their vehicle can carry the load, and how busy they already are.
+   * FR6, FR7 — every verified volunteer within 50 km of the pickup, with what the admin needs
+   * to choose: distance, ETA, availability, current workload and vehicle capacity. Volunteers
+   * who are off duty or outside their declared travel radius are listed but cannot be picked.
    */
   async suggestVolunteers(donationId: string): Promise<VolunteerSuggestion[]> {
     const donation = await this.donationsService.findById(donationId);
     const pickup = donation.pickupAddress.location.coordinates;
 
-    // Search the widest radius any volunteer may declare, then filter per volunteer below.
-    const candidates = await this.usersService.findVolunteersNear(pickup, 50);
+    const candidates = await this.usersService.findVolunteersNear(pickup, 50, {
+      includeUnavailable: true,
+    });
 
     const scored = await Promise.all(
       candidates.map(async (volunteer) => {
@@ -133,50 +154,92 @@ export class AssignmentsService {
 
         const distance = distanceKm(home, pickup);
         const radius = volunteer.travelRadiusKm ?? DEFAULT_RADIUS_KM;
-        if (distance > radius) return null;
+        const withinRadius = distance <= radius;
+        const isAvailable = volunteer.isAvailable !== false;
 
         const activeAssignments = await this.model.countDocuments({
           volunteerId: volunteer._id,
+          mode: { $ne: 'recipient_pickup' },
           status: { $in: LIVE_STATUSES },
         });
 
         const capacity = volunteer.vehicleType ? VEHICLE_CAPACITY_SERVINGS[volunteer.vehicleType] : 0;
 
-        const proximityScore = 1 - distance / radius;
+        const proximityScore = Math.max(0, 1 - distance / Math.max(radius, 1));
         const capacityScore = capacity >= donation.servings ? 1 : capacity / donation.servings;
         const workloadScore = 1 / (1 + activeAssignments);
+
+        const availability: VolunteerAvailability = !isAvailable
+          ? 'off_duty'
+          : !withinRadius
+            ? 'out_of_range'
+            : activeAssignments > 0
+              ? 'busy'
+              : 'available';
+        const assignable = availability === 'available' || availability === 'busy';
 
         return {
           volunteer,
           distanceKm: distance,
+          etaMinutes: estimateMinutes(distance),
           activeAssignments,
-          score:
-            proximityScore * WEIGHTS.proximity +
-            capacityScore * WEIGHTS.capacity +
-            workloadScore * WEIGHTS.workload,
+          isAvailable,
+          withinRadius,
+          travelRadiusKm: radius,
+          capacityServings: capacity,
+          canCarryLoad: capacity >= donation.servings,
+          completedDeliveries: volunteer.completedDeliveriesCount ?? 0,
+          availability,
+          assignable,
+          score: assignable
+            ? proximityScore * WEIGHTS.proximity +
+              capacityScore * WEIGHTS.capacity +
+              workloadScore * WEIGHTS.workload
+            : 0,
         } satisfies VolunteerSuggestion;
       }),
     );
 
     return scored
       .filter((entry): entry is VolunteerSuggestion => entry !== null)
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => {
+        if (a.assignable !== b.assignable) return a.assignable ? -1 : 1;
+        if (a.assignable) return b.score - a.score;
+        return a.distanceKm - b.distanceKm;
+      });
   }
 
-  /** Everything the admin assignment screen needs in one call. */
+  /** Everything the admin dispatch screen needs in one call. */
   async assignmentOptions(donationId: string) {
     const donation = await this.donationsService.findById(donationId);
     const pickup = donation.pickupAddress.location.coordinates;
 
-    const [volunteers, requests, ngos, current] = await Promise.all([
+    const linked = await this.donationsService.recipientOf(donation);
+    const [volunteers, requests, ngos, current, recipientUser] = await Promise.all([
       this.suggestVolunteers(donationId),
-      this.foodRequestsService.findOpenNear(pickup, MATCH_RADIUS_KM),
+      linked ? Promise.resolve([]) : this.foodRequestsService.findOpenNear(pickup, MATCH_RADIUS_KM),
       this.ngosService.findNear(pickup, MATCH_RADIUS_KM),
       this.model.findOne({ donationId: donation._id, status: { $in: LIVE_STATUSES } }).exec(),
+      linked
+        ? this.usersService.findById(linked.recipientId.toString()).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
     return {
       donation,
+      recipient: linked
+        ? {
+            ...this.requestInfo(linked),
+            origin: linked.origin ?? 'request',
+            name: recipientUser?.name ?? 'Recipient',
+            phone: linked.contactPhone || recipientUser?.phone || null,
+            distanceKm: distanceKm(pickup, linked.dropAddress.location.coordinates),
+          }
+        : null,
+      deliveryMethod: donation.deliveryMethod ?? null,
+      deliveryMethodConfirmed: Boolean(donation.deliveryMethodConfirmedAt),
+      minutesLeft: minutesUntilExpiry(donation.expiresAt),
+      isUrgent: minutesUntilExpiry(donation.expiresAt) <= URGENT_THRESHOLD_MINUTES,
       volunteers,
       requests: requests.map((request) => ({
         ...this.requestInfo(request),
@@ -193,7 +256,7 @@ export class AssignmentsService {
     };
   }
 
-  /** FR6 — admin creates the offer; the donation moves to `assigned`. */
+  /** FR6 — admin offers the delivery to a volunteer; the donation moves to `assigned`. */
   async create(
     adminId: string,
     input: { donationId: string; volunteerId: string; requestId?: string },
@@ -208,14 +271,22 @@ export class AssignmentsService {
     if (!volunteer.isVerified || volunteer.role !== Role.Volunteer || volunteer.isActive === false) {
       throw new BadRequestException('That user is not an active, verified volunteer');
     }
+    if (volunteer.isAvailable === false) {
+      throw new BadRequestException(`${volunteer.name} is off duty right now`);
+    }
 
-    const request = await this.resolveRequest(donation, input.requestId);
+    const request = await this.resolveRequest(donation, adminId, input.requestId);
+    if (!request) {
+      throw new BadRequestException('Choose a recipient for this donation before assigning');
+    }
     const home = volunteer.address?.location.coordinates;
 
+    await this.donationsService.confirmDeliveryMethod(input.donationId, DeliveryMethod.VolunteerRider);
     const assignment = await this.createLive({
       donationId: donation._id,
       volunteerId: volunteer._id,
-      requestId: request?._id,
+      requestId: request._id,
+      mode: 'volunteer',
       distanceKm: home ? distanceKm(home, donation.pickupAddress.location.coordinates) : 0,
       status: AssignmentStatus.Offered,
     });
@@ -223,28 +294,227 @@ export class AssignmentsService {
     await this.donationsService.transition(input.donationId, DonationStatus.Assigned, {
       actorId: adminId,
       actorRole: Role.Admin,
-      note: `Offered to ${volunteer.name}`,
+      note: `Volunteer delivery — offered to ${volunteer.name}`,
     });
 
-    if (request) {
-      await this.foodRequestsService.markMatched(request.id as string, input.donationId);
-      await this.notificationsService.sendToUsers([request.recipientId.toString()], {
-        title: 'Volunteer assigned',
-        body: `A volunteer has been assigned to deliver ${donation.title}. Track it on your dashboard.`,
-        type: 'assignment',
-        data: { requestId: request.id as string, assignmentId: assignment.id as string },
-      });
-    }
+    await this.foodRequestsService.markMatched(request.id as string, input.donationId);
+    await this.notificationsService.sendToUsers([request.recipientId.toString()], {
+      title: 'Volunteer delivery arranged',
+      body: `A volunteer has been asked to deliver ${donation.title}. You'll get your delivery code once they accept.`,
+      type: 'assignment',
+      data: { requestId: request.id as string, assignmentId: assignment.id as string },
+    });
 
-    // FR8
+    // FR8 — the offer carries what the volunteer needs to decide: food, place, and time.
+    const area = [donation.pickupAddress.line1, donation.pickupAddress.city]
+      .filter(Boolean)
+      .join(', ');
     await this.notificationsService.sendToUsers([input.volunteerId], {
       title: 'New pickup assigned to you',
-      body: `${donation.title} — ${donation.servings} servings, ${assignment.distanceKm} km away`,
+      body: `${donation.title} — ${donation.servings} servings. Pickup: ${area} (${assignment.distanceKm} km). Safe until ${formatTime(donation.expiresAt)}.`,
       type: 'assignment',
-      data: { assignmentId: assignment.id as string },
+      data: { assignmentId: assignment.id as string, donationId: input.donationId },
     });
 
     return assignment;
+  }
+
+  /**
+   * After approval the admin confirms how the food moves. Volunteer delivery waits for a
+   * volunteer to be assigned; the two in-person options start straight away and send the
+   * recipient the code the donor will check at handover.
+   */
+  async chooseDeliveryMethod(adminId: string, donationId: string, method: DeliveryMethod) {
+    const donation = await this.donationsService.findById(donationId);
+    if (donation.status !== DonationStatus.Approved) {
+      throw new BadRequestException('Approve the donation before choosing how it is delivered');
+    }
+    this.assertFresh(donation);
+
+    const request = await this.resolveRequest(donation, adminId);
+    if (!request) {
+      throw new BadRequestException('Choose a recipient for this donation first');
+    }
+
+    if (method === DeliveryMethod.VolunteerRider) {
+      const updated = await this.donationsService.confirmDeliveryMethod(donationId, method);
+      if (minutesUntilExpiry(updated.expiresAt) <= URGENT_THRESHOLD_MINUTES) {
+        await this.donationsService.alertQuickCollection(updated);
+      }
+      return { donation: updated, assignment: null };
+    }
+
+    const mode: AssignmentMode =
+      method === DeliveryMethod.RecipientPickup ? 'recipient_pickup' : 'donor_delivery';
+    const carrierId = mode === 'recipient_pickup' ? request.recipientId : donation.donorId;
+    const routeKm = distanceKm(
+      donation.pickupAddress.location.coordinates,
+      request.dropAddress.location.coordinates,
+    );
+
+    await this.donationsService.confirmDeliveryMethod(donationId, method);
+    const assignment = await this.createLive({
+      donationId: donation._id,
+      volunteerId: carrierId,
+      requestId: request._id,
+      mode,
+      distanceKm: routeKm,
+      status: AssignmentStatus.Accepted,
+      acceptedAt: new Date(),
+    });
+
+    try {
+      await this.donationsService.transition(donationId, DonationStatus.Assigned, {
+        actorId: adminId,
+        actorRole: Role.Admin,
+        note:
+          mode === 'recipient_pickup'
+            ? 'Recipient self-pickup — the recipient will collect from the donor'
+            : 'Donor self-delivery — the donor will take the food to the recipient',
+      });
+    } catch (error) {
+      await this.model.deleteOne({ _id: assignment._id }).exec();
+      throw error;
+    }
+
+    await this.foodRequestsService.markMatched(request.id as string, donationId);
+    await this.notifyHandoverCodes(assignment.id as string, donation, request, mode);
+
+    return { donation: await this.donationsService.findById(donationId), assignment };
+  }
+
+  /** Donor self-delivery: the donor marks that they have left with the food. */
+  async departWithFood(id: string, donorId: string) {
+    const assignment = await this.findById(id);
+    if (assignment.mode !== 'donor_delivery') {
+      throw new BadRequestException('Only a donor self-delivery can be started by the donor');
+    }
+    const donation = await this.donationsService.findById(assignment.donationId.toString());
+    if (donation.donorId.toString() !== donorId) {
+      throw new ForbiddenException('This donation belongs to another donor');
+    }
+    if (assignment.status !== AssignmentStatus.Accepted || donation.status !== DonationStatus.Assigned) {
+      throw new BadRequestException('This delivery has already started');
+    }
+    this.assertFresh(donation);
+
+    const actor = { actorId: donorId, actorRole: Role.Donor };
+    await this.donationsService.transition(donation.id as string, DonationStatus.PickedUp, {
+      ...actor,
+      note: 'Donor collected the food for delivery',
+    });
+    await this.donationsService.transition(donation.id as string, DonationStatus.InTransit, {
+      ...actor,
+      note: 'Donor on the way to the recipient',
+    });
+    assignment.pickedUpAt = new Date();
+    await assignment.save();
+
+    if (assignment.requestId) {
+      const request = await this.foodRequestsService
+        .findById(assignment.requestId.toString())
+        .catch(() => null);
+      if (request) {
+        await this.notificationsService.sendToUsers([request.recipientId.toString()], {
+          title: 'The donor is on the way',
+          body: `${donation.title} is on its way to you. Keep your handover code ready.`,
+          type: 'pickup',
+          data: { requestId: request.id as string },
+        });
+      }
+    }
+    return this.donationsService.findById(donation.id as string);
+  }
+
+  /**
+   * Recipient self-pickup and donor self-delivery both finish the same way: the donor types
+   * the code the recipient reads out. Only a matching code marks the donation delivered.
+   */
+  async confirmHandover(id: string, user: AuthUser, dto: HandoverDto) {
+    const assignment = await this.model.findById(id).select('+deliveryPin').exec();
+    if (!assignment) throw new NotFoundException('Assignment not found');
+    if (assignment.mode !== 'recipient_pickup' && assignment.mode !== 'donor_delivery') {
+      throw new BadRequestException('This delivery is handled by a volunteer');
+    }
+
+    const donationId = assignment.donationId.toString();
+    const donation = await this.donationsService.findById(donationId);
+    if (user.role !== Role.Admin && donation.donorId.toString() !== user.id) {
+      throw new ForbiddenException('Only the donor can confirm this handover');
+    }
+    if (assignment.status !== AssignmentStatus.Accepted) {
+      throw new BadRequestException('This handover is already closed');
+    }
+    this.assertFresh(donation);
+
+    if (dto.pin !== assignment.deliveryPin) {
+      throw new BadRequestException("That code does not match the recipient's code");
+    }
+
+    const actorRole = user.role === Role.Admin ? Role.Admin : Role.Donor;
+    const actor = { actorId: user.id, actorRole };
+    if (donation.status === DonationStatus.Assigned) {
+      await this.donationsService.transition(donationId, DonationStatus.PickedUp, {
+        ...actor,
+        note:
+          assignment.mode === 'recipient_pickup'
+            ? 'Collected by the recipient from the donor'
+            : 'Donor collected the food for delivery',
+      });
+    }
+    const proof = await this.deliveryProofService.record(
+      id,
+      'delivery',
+      dto,
+      true,
+      actorRole === Role.Admin ? 'admin' : 'donor',
+    );
+    await this.donationsService.transition(donationId, DonationStatus.Delivered, {
+      ...actor,
+      note: "Handed over — recipient's code verified",
+    });
+
+    assignment.status = AssignmentStatus.Completed;
+    assignment.pickedUpAt = assignment.pickedUpAt ?? new Date();
+    assignment.completedAt = new Date();
+    await assignment.save();
+
+    const donorId = donation.donorId.toString();
+    const awards = [
+      this.pointsService.award(donorId, 'Donation delivered', POINTS.donationDelivered, donationId),
+    ];
+    if (assignment.mode === 'donor_delivery') {
+      awards.push(
+        this.pointsService.award(donorId, 'Self delivery completed', POINTS.selfDelivery, donationId),
+      );
+    }
+    await Promise.all(awards);
+
+    const earned =
+      POINTS.donationDelivered + (assignment.mode === 'donor_delivery' ? POINTS.selfDelivery : 0);
+    await this.notificationsService.sendToUsers([donorId], {
+      title: 'Donation delivered',
+      body: `${donation.title} reached the recipient. +${earned} reward points.`,
+      type: 'points',
+      data: { donationId },
+    });
+
+    if (assignment.requestId) {
+      await this.foodRequestsService.markFulfilled(assignment.requestId.toString());
+      const request = await this.foodRequestsService
+        .findById(assignment.requestId.toString())
+        .catch(() => null);
+      if (request) {
+        await this.notificationsService.sendToUsers([request.recipientId.toString()], {
+          title: 'Food received',
+          body: `${donation.title} has been handed over to you. Thank you for using Amuthinai!`,
+          type: 'delivery',
+          data: { requestId: request.id as string },
+        });
+      }
+    }
+
+    return proof;
   }
 
   /** Admin moves a live task to a different volunteer. */
@@ -300,7 +570,7 @@ export class AssignmentsService {
     this.assertFresh(donation);
 
     const ngo = await this.ngosService.findById(input.ngoId);
-    const request = await this.resolveRequest(donation, input.requestId);
+    const request = await this.resolveRequest(donation, adminId, input.requestId);
 
     // The coordinating admin owns the task so they can record pickup and delivery.
     const assignment = await this.createLive({
@@ -504,7 +774,7 @@ export class AssignmentsService {
     this.assertFresh(donation);
 
     if (!assignment.requestId) {
-      const request = await this.resolveRequest(donation);
+      const request = await this.resolveRequest(donation, volunteerId);
       if (request) {
         assignment.requestId = request._id;
         await this.foodRequestsService.markMatched(request.id as string, donation.id as string);
@@ -538,15 +808,26 @@ export class AssignmentsService {
     if (donation.status !== DonationStatus.Approved) {
       throw new ConflictException('Another volunteer has already taken this task');
     }
+    if (
+      donation.deliveryMethod === DeliveryMethod.RecipientPickup ||
+      donation.deliveryMethod === DeliveryMethod.SelfDrop
+    ) {
+      throw new ConflictException('This food is being handed over without a volunteer');
+    }
     this.assertFresh(donation);
 
-    const request = await this.resolveRequest(donation);
+    const request = await this.resolveRequest(donation, volunteerId);
+    if (!request) {
+      throw new BadRequestException('This donation is still waiting for a recipient');
+    }
     const home = volunteer.address?.location?.coordinates;
 
+    await this.donationsService.confirmDeliveryMethod(donationId, DeliveryMethod.VolunteerRider);
     const assignment = await this.createLive({
       donationId: donation._id,
       volunteerId: volunteer._id,
-      requestId: request?._id,
+      requestId: request._id,
+      mode: 'volunteer',
       distanceKm: home ? distanceKm(home, donation.pickupAddress.location.coordinates) : 0,
       status: AssignmentStatus.Accepted,
       acceptedAt: new Date(),
@@ -563,9 +844,7 @@ export class AssignmentsService {
       throw error;
     }
 
-    if (request) {
-      await this.foodRequestsService.markMatched(request.id as string, donationId);
-    }
+    await this.foodRequestsService.markMatched(request.id as string, donationId);
 
     await this.notifyAccepted(assignment, donation);
     await this.notificationsService.sendToAdmins({
@@ -609,8 +888,7 @@ export class AssignmentsService {
       { actorId: volunteerId, actorRole: Role.Volunteer, note: reason ?? 'Offer declined' },
     );
 
-    if (assignment.requestId) await this.foodRequestsService.reopen(assignment.requestId.toString());
-
+    // The recipient stays confirmed for this donation; only the volunteer changes.
     await this.notificationsService.sendToAdmins({
       title: 'Volunteer declined a task',
       body: `${donation.title} needs a new volunteer${reason ? ` — ${reason}` : ''}`,
@@ -888,9 +1166,13 @@ export class AssignmentsService {
     let volunteer: UserDocument | null = null;
     let donation: DonationDocument | null = null;
     let proofs: DeliveryProofDocument[] = [];
+    const mode: AssignmentMode = assignment?.mode ?? 'volunteer';
 
     if (assignment) {
-      volunteer = await this.usersService.findById(assignment.volunteerId.toString()).catch(() => null);
+      volunteer =
+        mode === 'volunteer'
+          ? await this.usersService.findById(assignment.volunteerId.toString()).catch(() => null)
+          : null;
       donation = await this.donationsService.findById(assignment.donationId.toString()).catch(() => null);
       proofs = await this.deliveryProofService.findByAssignment(assignment.id as string);
     } else if (foodReq.matchedDonationId) {
@@ -905,15 +1187,42 @@ export class AssignmentsService {
       : null;
 
     const assignmentJson = assignment ? (assignment.toJSON() as Record<string, unknown>) : null;
-    if (assignmentJson && user.role !== Role.Recipient) delete assignmentJson.deliveryPin;
+    // The code is released only once someone has actually taken on the delivery.
+    if (
+      assignmentJson &&
+      (user.role !== Role.Recipient || assignment?.status === AssignmentStatus.Offered)
+    ) {
+      delete assignmentJson.deliveryPin;
+    }
 
     const routeKm =
       donation && foodReq.dropAddress?.location
         ? distanceKm(donation.pickupAddress.location.coordinates, foodReq.dropAddress.location.coordinates)
         : null;
 
+    // In-person handovers need the other party's details: where to collect, or who is coming.
+    const handoverLive =
+      mode !== 'volunteer' &&
+      assignment !== null &&
+      [AssignmentStatus.Accepted, AssignmentStatus.Completed].includes(assignment.status);
+    const donorUser =
+      handoverLive && donation
+        ? await this.usersService.findById(donation.donorId.toString()).catch(() => null)
+        : null;
+
     return {
       request: foodReq,
+      mode,
+      deliveryMethod: donation?.deliveryMethod ?? null,
+      deliveryMethodConfirmed: Boolean(donation?.deliveryMethodConfirmedAt),
+      donor:
+        handoverLive && donation
+          ? {
+              name: donation.contactPersonName || donorUser?.name || 'Donor',
+              phone: donation.contactPersonPhone || donorUser?.phone || null,
+              pickupAddress: mode === 'recipient_pickup' ? donation.pickupAddress : null,
+            }
+          : null,
       assignment: assignmentJson,
       volunteer: ngo
         ? { id: ngo.id as string, name: ngo.name, phone: ngo.contactPhone, vehicleType: 'NGO partner' }
@@ -934,6 +1243,7 @@ export class AssignmentsService {
             pickupAddress: { city: donation.pickupAddress.city, district: donation.pickupAddress.district },
             servings: donation.servings,
             status: donation.status,
+            cookedAt: donation.cookedAt,
             expiresAt: donation.expiresAt,
             photoUrls: donation.photoUrls,
           }
@@ -960,10 +1270,78 @@ export class AssignmentsService {
       .sort({ offeredAt: -1 })
       .select('+pickupPin')
       .exec();
-    if (!assignment) return { assignment: null, volunteer: null, proofs: [], pickupPin: null };
+
+    let requestDoc: FoodRequestDocument | null = null;
+    if (assignment?.requestId) {
+      requestDoc = await this.foodRequestsService.findById(assignment.requestId.toString()).catch(() => null);
+    }
+    if (!requestDoc && donation.foodRequestId) {
+      requestDoc = await this.foodRequestsService
+        .findById(donation.foodRequestId.toString())
+        .catch(() => null);
+    }
+    if (!requestDoc) {
+      const matched = await this.foodRequestsService.findByDonationIds([donationId]);
+      requestDoc = matched[0] ?? null;
+    }
+
+    const pickupCoords = donation.pickupAddress?.location?.coordinates;
+    const dropCoords = requestDoc?.dropAddress?.location?.coordinates;
+    const routeKm =
+      pickupCoords && dropCoords ? distanceKm(pickupCoords, dropCoords) : null;
+
+    const mode: AssignmentMode = assignment?.mode ?? 'volunteer';
+    const handoverLive =
+      mode !== 'volunteer' && assignment?.status === AssignmentStatus.Accepted;
+    const recipientUser = requestDoc
+      ? await this.usersService.findById(requestDoc.recipientId.toString()).catch(() => null)
+      : null;
+    // Donors see who they are feeding; phone and exact address only when they meet in person.
+    const recipient = requestDoc
+      ? {
+          requestId: requestDoc.id as string,
+          origin: requestDoc.origin ?? 'request',
+          name: recipientUser?.name?.split(' ')[0] ?? 'Recipient',
+          phone: handoverLive ? requestDoc.contactPhone || recipientUser?.phone || null : null,
+          servingsNeeded: requestDoc.servingsNeeded,
+          familySize: requestDoc.familySize ?? null,
+          neededBy: requestDoc.neededBy,
+          notes: requestDoc.notes ?? null,
+          dietaryRequirements: requestDoc.dietaryRequirements ?? [],
+          areaLabel:
+            [requestDoc.dropAddress?.city, requestDoc.dropAddress?.district]
+              .filter(Boolean)
+              .join(', ') || null,
+        }
+      : null;
+
+    const common = {
+      mode,
+      deliveryMethod: donation.deliveryMethod ?? null,
+      deliveryMethodConfirmed: Boolean(donation.deliveryMethodConfirmedAt),
+      recipient,
+      foodRequestId: requestDoc?.id ?? donation.foodRequestId?.toString() ?? null,
+      pickupAddress: donation.pickupAddress,
+      dropAddress:
+        mode === 'donor_delivery' || mode === 'volunteer' ? (requestDoc?.dropAddress ?? null) : null,
+      routeKm,
+      etaMinutes: routeKm !== null ? estimateMinutes(routeKm) : null,
+      canConfirmHandover:
+        handoverLive &&
+        [DonationStatus.Assigned, DonationStatus.PickedUp, DonationStatus.InTransit].includes(
+          donation.status,
+        ),
+      canDepart: handoverLive && mode === 'donor_delivery' && donation.status === DonationStatus.Assigned,
+    };
+
+    if (!assignment) {
+      return { ...common, assignment: null, volunteer: null, proofs: [], pickupPin: null };
+    }
 
     const [volunteer, proofs, ngo] = await Promise.all([
-      assignment.ngoId ? null : this.usersService.findById(assignment.volunteerId.toString()).catch(() => null),
+      assignment.ngoId || mode !== 'volunteer'
+        ? null
+        : this.usersService.findById(assignment.volunteerId.toString()).catch(() => null),
       this.deliveryProofService.findByAssignment(assignment.id as string),
       assignment.ngoId ? this.ngosService.findById(assignment.ngoId.toString()).catch(() => null) : null,
     ]);
@@ -974,11 +1352,14 @@ export class AssignmentsService {
 
     // The PIN is only useful (and only shown) until the food has been collected.
     const pickupPin =
-      assignment.status === AssignmentStatus.Accepted && donation.status === DonationStatus.Assigned
+      mode === 'volunteer' &&
+      assignment.status === AssignmentStatus.Accepted &&
+      donation.status === DonationStatus.Assigned
         ? (assignment.pickupPin ?? null)
         : null;
 
     return {
+      ...common,
       assignment: json,
       pickupPin,
       volunteer: ngo
@@ -1006,11 +1387,11 @@ export class AssignmentsService {
       .find({ donationId: new Types.ObjectId(donationId), status: { $in: LIVE_STATUSES } })
       .exec();
 
+    // The request itself is released by the donation's move to `expired`.
     for (const assignment of live) {
       assignment.status = AssignmentStatus.Cancelled;
       assignment.cancelReason = 'Food passed its safe window';
       await assignment.save();
-      if (assignment.requestId) await this.foodRequestsService.reopen(assignment.requestId.toString());
       await this.notificationsService.sendToUsers([assignment.volunteerId.toString()], {
         title: 'Task cancelled — food expired',
         body: 'The food passed its 6-hour safe window and must not be delivered.',
@@ -1067,28 +1448,80 @@ export class AssignmentsService {
       });
     } catch (error) {
       if ((error as { code?: number }).code === 11000) {
-        throw new ConflictException('Another volunteer has already taken this task');
+        throw new ConflictException('This donation already has a delivery in progress');
       }
       throw error;
     }
   }
 
-  /** Uses the requested recipient if given, otherwise the closest open request. */
+  /**
+   * The recipient a delivery goes to. The donation's own confirmed recipient always wins, so a
+   * donor's chosen request or a recipient's claim can never be swapped for someone else. A
+   * `requestId` is only used to link a recipient to a general donation that has none yet.
+   */
   private async resolveRequest(
     donation: DonationDocument,
+    actorId: string,
     requestId?: string,
   ): Promise<FoodRequestDocument | null> {
-    if (requestId) {
-      const request = await this.foodRequestsService.findById(requestId);
-      if (request.status !== 'open') {
-        throw new BadRequestException('That food request is no longer open');
+    if (donation.foodRequestId) {
+      const request = await this.foodRequestsService
+        .findById(donation.foodRequestId.toString())
+        .catch(() => null);
+      const stillWaiting =
+        request &&
+        (request.status === RequestStatus.Open ||
+          (request.status === RequestStatus.Matched &&
+            request.matchedDonationId?.toString() === (donation.id as string)));
+      if (!stillWaiting) {
+        throw new BadRequestException('The recipient for this donation is no longer waiting');
       }
       return request;
     }
-    return this.foodRequestsService.findBestOpenMatch(
-      donation.pickupAddress.location.coordinates,
-      MATCH_RADIUS_KM,
-    );
+    if (requestId) {
+      await this.donationsService.linkRequest(donation.id as string, requestId, actorId);
+      return this.foodRequestsService.findById(requestId);
+    }
+    return null;
+  }
+
+  /** In-person handovers: the recipient gets the code, the donor gets the instructions. */
+  private async notifyHandoverCodes(
+    assignmentId: string,
+    donation: DonationDocument,
+    request: FoodRequestDocument,
+    mode: AssignmentMode,
+  ) {
+    const withPin = await this.model.findById(assignmentId).select('+deliveryPin').exec();
+    const code = withPin?.deliveryPin ?? '';
+    const recipient = await this.usersService
+      .findById(request.recipientId.toString())
+      .catch(() => null);
+    const recipientName = recipient?.name?.split(' ')[0] ?? 'The recipient';
+    const pickupAt = [donation.pickupAddress.line1, donation.pickupAddress.city]
+      .filter(Boolean)
+      .join(', ');
+    const dropAt = [request.dropAddress.line1, request.dropAddress.city].filter(Boolean).join(', ');
+
+    await this.notificationsService.sendToUsers([request.recipientId.toString()], {
+      title: mode === 'recipient_pickup' ? 'Collect your food' : 'The donor will bring your food',
+      body:
+        mode === 'recipient_pickup'
+          ? `Please collect ${donation.title} from ${pickupAt} before ${formatTime(donation.expiresAt)}. Your handover code is ${code} — show it to the donor.`
+          : `${donation.title} will be delivered by the donor. Your handover code is ${code} — share it only when you receive the food.`,
+      type: 'assignment',
+      data: { requestId: request.id as string, assignmentId },
+    });
+
+    await this.notificationsService.sendToUsers([donation.donorId.toString()], {
+      title: mode === 'recipient_pickup' ? 'Recipient will collect' : 'Please deliver your donation',
+      body:
+        mode === 'recipient_pickup'
+          ? `${recipientName} will collect ${donation.title} from you. Ask for their 4-digit code and enter it in the app to confirm the handover.`
+          : `Please take ${donation.title} to ${recipientName} at ${dropAt}. Ask for their 4-digit code at handover and enter it in the app.`,
+      type: 'assignment',
+      data: { donationId: donation.id as string },
+    });
   }
 
   private assertFresh(donation: DonationDocument): void {
@@ -1097,11 +1530,22 @@ export class AssignmentsService {
     }
   }
 
+  /**
+   * Once a volunteer accepts, each side receives its own verification code: the donor's
+   * pickup code (given to the volunteer at collection) and the recipient's delivery code.
+   */
   private async notifyAccepted(assignment: AssignmentDocument, donation: DonationDocument) {
-    const volunteer = await this.usersService.findById(assignment.volunteerId.toString()).catch(() => null);
+    const [volunteer, withPins] = await Promise.all([
+      this.usersService.findById(assignment.volunteerId.toString()).catch(() => null),
+      this.model.findById(assignment._id).select('+pickupPin +deliveryPin').exec(),
+    ]);
+    const name = volunteer?.name ?? 'A volunteer';
+
     await this.notificationsService.sendToUsers([donation.donorId.toString()], {
       title: 'Volunteer on the way',
-      body: `${volunteer?.name ?? 'A volunteer'} will collect ${donation.title}. Open the donation to see your handover PIN.`,
+      body: withPins?.pickupPin
+        ? `${name} will collect ${donation.title}. Your pickup code is ${withPins.pickupPin} — give it to the volunteer at collection.`
+        : `${name} will collect ${donation.title}.`,
       type: 'assignment',
       data: { donationId: donation.id as string },
     });
@@ -1113,7 +1557,7 @@ export class AssignmentsService {
       if (request) {
         await this.notificationsService.sendToUsers([request.recipientId.toString()], {
           title: 'Volunteer assigned',
-          body: `${volunteer?.name ?? 'A volunteer'} accepted your delivery and will collect the food soon.`,
+          body: `${name} accepted your delivery of ${donation.title}. Your delivery code is ${withPins?.deliveryPin ?? '----'} — share it only when the food reaches you.`,
           type: 'assignment',
           data: { requestId: request.id as string, assignmentId: assignment.id as string },
         });
@@ -1127,7 +1571,9 @@ export class AssignmentsService {
     from?: [number, number],
   ): Promise<TaskView> {
     const pickup = donation.pickupAddress.location.coordinates;
-    const request = await this.foodRequestsService.findBestOpenMatch(pickup, MATCH_RADIUS_KM);
+    const request = donation.foodRequestId
+      ? await this.foodRequestsService.findById(donation.foodRequestId.toString()).catch(() => null)
+      : null;
     const minutesLeft = minutesUntilExpiry(donation.expiresAt);
     const dist = from ? distanceKm(from, pickup) : 0;
 
@@ -1161,15 +1607,11 @@ export class AssignmentsService {
     if (assignments.length === 0) return [];
 
     const donationIds = assignments.map((assignment) => assignment.donationId.toString());
-    const requestIds = assignments
-      .map((assignment) => assignment.requestId?.toString())
-      .filter((id): id is string => Boolean(id));
 
-    const [donations, requests, proofs] = await Promise.all([
+    const [donations, proofs] = await Promise.all([
       Promise.all(
         [...new Set(donationIds)].map((id) => this.donationsService.findById(id).catch(() => null)),
       ),
-      this.foodRequestsService.findByIds([...new Set(requestIds)]),
       options.includeProofs
         ? this.deliveryProofService.findByAssignments(assignments.map((a) => a.id as string))
         : Promise.resolve([] as DeliveryProofDocument[]),
@@ -1180,6 +1622,13 @@ export class AssignmentsService {
         .filter((donation): donation is DonationDocument => donation !== null)
         .map((donation) => [donation.id as string, donation]),
     );
+    const requestIdOf = (assignment: AssignmentDocument) =>
+      assignment.requestId?.toString() ??
+      donationById.get(assignment.donationId.toString())?.foodRequestId?.toString();
+    const requestIds = assignments
+      .map(requestIdOf)
+      .filter((id): id is string => Boolean(id));
+    const requests = await this.foodRequestsService.findByIds([...new Set(requestIds)]);
     const requestById = new Map(requests.map((request) => [request.id as string, request]));
 
     let userById = new Map<string, UserDocument>();
@@ -1200,9 +1649,8 @@ export class AssignmentsService {
         continue;
       }
 
-      const request = assignment.requestId
-        ? requestById.get(assignment.requestId.toString())
-        : undefined;
+      const requestId = requestIdOf(assignment);
+      const request = requestId ? requestById.get(requestId) : undefined;
       const pickup = donation.pickupAddress.location.coordinates;
       const minutesLeft = minutesUntilExpiry(donation.expiresAt);
       const dist = options.from ? distanceKm(options.from, pickup) : assignment.distanceKm;
@@ -1268,6 +1716,14 @@ const CITY_SPEED_KMH = 20;
 
 export function estimateMinutes(km: number): number {
   return Math.max(1, Math.round((km / CITY_SPEED_KMH) * 60));
+}
+
+function formatTime(date: Date): string {
+  return new Date(date).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Colombo',
+  });
 }
 
 function withoutContacts(donation: DonationDocument): Record<string, unknown> {

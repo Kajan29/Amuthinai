@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +15,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
+import { WizardListingBanner } from '@/components/donor/WizardListingBanner';
 import { cloudinaryService } from '@/services/cloudinary';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
@@ -89,24 +89,27 @@ export default function Step1Food() {
     update({ dietaryTags: next });
   }
 
-  async function addPhoto() {
+  function addPhoto() {
     if (photos.length >= 3 || uploading) return;
     setPhotoError(null);
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setPhotoError(t('donor.photoDenied'));
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
-    const asset = result.canceled ? null : result.assets[0];
-    if (!asset) return;
+    Alert.alert(t('donor.addPhoto'), t('donor.choosePhoto'), [
+      { text: t('donor.useCamera'), onPress: () => void capturePhoto('camera') },
+      { text: t('donor.useGallery'), onPress: () => void capturePhoto('gallery') },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  }
 
+  async function capturePhoto(source: 'camera' | 'gallery') {
+    if (photos.length >= 3 || uploading) return;
+    setPhotoError(null);
     setUploading(true);
     try {
-      const uploaded = await cloudinaryService.uploadImage(asset.uri, 'amuthinai/donations');
+      const uri = await cloudinaryService.pickOrCapture(source);
+      if (!uri) return;
+      const uploaded = await cloudinaryService.uploadImage(uri, 'amuthinai/donations');
       update({ photoUrls: [...photos, uploaded.url] });
-    } catch {
-      setPhotoError(t('donor.photoFailed'));
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : t('donor.photoFailed'));
     } finally {
       setUploading(false);
     }
@@ -118,24 +121,11 @@ export default function Step1Food() {
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.topBar}>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.back}>
-            <Ionicons name="chevron-back" size={22} color={donorColors.ink} />
-          </Pressable>
-          <View style={styles.brandBlock}>
-            <View style={styles.brandRow}>
-              <Ionicons name="restaurant" size={14} color={donorColors.orange} />
-              <Text style={styles.brand}>
-                Jaffna <Text style={styles.brandAccent}>Connect</Text>
-              </Text>
-            </View>
-            <View style={styles.subtitleRow}>
-              <View style={styles.liveDot} />
-              <Text style={styles.subtitle}>{t('donor.donateSurplus')}</Text>
-            </View>
-          </View>
-          <View style={styles.back} />
-        </View>
+        <DonorWizardHeader
+          onBack={() => router.back()}
+          onClose={() => router.replace('/(donor)/dashboard')}
+          subtitle={t('donor.donateSurplus')}
+        />
 
         <View style={styles.steps}>
           <Step n={1} label={t('donor.stepFood')} active />
@@ -145,14 +135,7 @@ export default function Step1Food() {
           <Step n={3} label={t('donor.stepReview')} />
         </View>
 
-        {draft.foodRequestId ? (
-          <View style={styles.requestBanner}>
-            <Ionicons name="people" size={16} color={donorColors.plum} />
-            <Text style={styles.requestBannerText}>
-              {t('donor.fulfillingRequest', { count: servings })}
-            </Text>
-          </View>
-        ) : null}
+        <WizardListingBanner />
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>{t('donor.selectCategory')}</Text>
@@ -167,11 +150,7 @@ export default function Step1Food() {
                 onPress={() => update({ foodType: category.type })}
                 style={[styles.category, selected && styles.categorySelected]}
               >
-                {selected ? (
-                  <View style={styles.selectedMark}>
-                    <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-                  </View>
-                ) : null}
+                {selected ? <Text style={styles.selectedLabel}>{t('donor.selected')}</Text> : null}
                 <View style={[styles.catIcon, selected && styles.catIconOn]}>
                   <Ionicons
                     name={category.icon}
@@ -222,14 +201,40 @@ export default function Step1Food() {
                 </Pressable>
               </View>
             </View>
-            <View style={styles.splitCol}>
+            <View style={[styles.splitCol, styles.dropdownCol]}>
               <Text style={styles.fieldLabel}>{t('donor.unitType')}</Text>
-              <Pressable onPress={() => setUnitOpen(true)} style={styles.dropdown}>
+              <Pressable onPress={() => setUnitOpen((open) => !open)} style={styles.dropdown}>
                 <Text style={styles.dropdownText} numberOfLines={1}>
                   {t(UNITS.find((unit) => unit.value === quantityUnit)?.labelKey ?? 'donor.unitPackets')}
                 </Text>
-                <Ionicons name="chevron-down" size={16} color={donorColors.muted} />
+                <Ionicons
+                  name={unitOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={donorColors.muted}
+                />
               </Pressable>
+              {unitOpen ? (
+                <View style={styles.dropdownMenu}>
+                  {UNITS.map((unit) => {
+                    const on = quantityUnit === unit.value;
+                    return (
+                      <Pressable
+                        key={unit.value}
+                        onPress={() => {
+                          update({ quantityUnit: unit.value });
+                          setUnitOpen(false);
+                        }}
+                        style={[styles.dropdownItem, on && styles.dropdownItemOn]}
+                      >
+                        <Text style={[styles.sheetText, on && styles.dropdownItemTextOn]}>
+                          {t(unit.labelKey)}
+                        </Text>
+                        {on ? <Ionicons name="checkmark" size={16} color={donorColors.plum} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
           </View>
           <Text style={styles.quickLabel}>{t('donor.quickAmount')}</Text>
@@ -357,27 +362,6 @@ export default function Step1Food() {
         </Pressable>
       </View>
 
-      <Modal visible={unitOpen} transparent animationType="fade" onRequestClose={() => setUnitOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setUnitOpen(false)}>
-          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
-            {UNITS.map((unit) => (
-              <Pressable
-                key={unit.value}
-                onPress={() => {
-                  update({ quantityUnit: unit.value });
-                  setUnitOpen(false);
-                }}
-                style={styles.sheetRow}
-              >
-                <Text style={styles.sheetText}>{t(unit.labelKey)}</Text>
-                {quantityUnit === unit.value ? (
-                  <Ionicons name="checkmark" size={18} color={donorColors.plum} />
-                ) : null}
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -453,16 +437,14 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   categorySelected: { backgroundColor: '#FBF6F8', borderColor: donorColors.plum, borderWidth: 1.5 },
-  selectedMark: {
-    alignItems: 'center',
-    backgroundColor: donorColors.plum,
-    borderRadius: 9,
-    height: 18,
-    justifyContent: 'center',
+  selectedLabel: {
+    color: donorColors.plum,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
     position: 'absolute',
     right: 8,
     top: 8,
-    width: 18,
   },
   catIcon: {
     alignItems: 'center',
@@ -503,8 +485,9 @@ const styles = StyleSheet.create({
   },
   input: { color: donorColors.ink, flex: 1, fontSize: 14, paddingVertical: 14 },
   help: { color: donorColors.muted, fontSize: 12, marginTop: -6 },
-  split: { flexDirection: 'row', gap: 10 },
+  split: { flexDirection: 'row', gap: 10, zIndex: 2 },
   splitCol: { flex: 1, gap: 8 },
+  dropdownCol: { zIndex: 4 },
   stepper: {
     alignItems: 'center',
     backgroundColor: donorColors.background,
@@ -545,6 +528,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   dropdownText: { color: donorColors.ink, flex: 1, fontSize: 13 },
+  dropdownMenu: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EFEAE4',
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 4,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    top: 76,
+    zIndex: 20,
+  },
+  dropdownItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  dropdownItemOn: { backgroundColor: '#FBF6F8' },
+  dropdownItemTextOn: { color: donorColors.plum, fontWeight: '700' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: {
     alignItems: 'center',
@@ -649,18 +657,5 @@ const styles = StyleSheet.create({
   },
   nextDisabled: { opacity: 0.45 },
   nextLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  backdrop: { backgroundColor: 'rgba(28,22,20,0.35)', flex: 1, justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 16,
-  },
-  sheetRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-  },
-  sheetText: { color: donorColors.ink, fontSize: 15 },
+  sheetText: { color: donorColors.ink, fontSize: 14 },
 });

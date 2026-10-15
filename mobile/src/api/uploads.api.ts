@@ -28,7 +28,7 @@ export const uploadsApi = {
 
     return request<UploadResult>(
       client.post('/uploads/image', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60_000,
       }),
     );
   },

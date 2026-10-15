@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RoleGuard } from '@/components/RoleGuard';
 import { chrome, roleTabBarStyle } from '@/theme/chrome';
+import { tabPushTransition, tabSwitchTransition } from '@/theme/transitions';
 
 export default function AdminLayout() {
   const { t } = useTranslation();
@@ -16,6 +17,7 @@ export default function AdminLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
+          ...tabSwitchTransition,
           tabBarActiveTintColor: chrome.accent,
           tabBarInactiveTintColor: chrome.muted,
           tabBarStyle: roleTabBarStyle(bottomPadding),
@@ -59,7 +61,11 @@ export default function AdminLayout() {
           options={{
             title: t('nav.analytics'),
             tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons name={focused ? 'bar-chart' : 'bar-chart-outline'} color={color} size={size} />
+              <Ionicons
+                name={focused ? 'bar-chart' : 'bar-chart-outline'}
+                color={color}
+                size={size}
+              />
             ),
           }}
         />
@@ -72,10 +78,22 @@ export default function AdminLayout() {
             ),
           }}
         />
-        <Tabs.Screen name="recipients" options={{ href: null, tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="map" options={{ href: null, tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="disputes" options={{ href: null, tabBarStyle: { display: 'none' } }} />
-        <Tabs.Screen name="assign/[donationId]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen
+          name="recipients"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="map"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="disputes"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
+        <Tabs.Screen
+          name="assign/[donationId]"
+          options={{ href: null, ...tabPushTransition, tabBarStyle: { display: 'none' } }}
+        />
       </Tabs>
     </RoleGuard>
   );

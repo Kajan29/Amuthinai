@@ -2,13 +2,18 @@ import { Injectable } from '@nestjs/common';
 
 import { AssignmentStatus } from 'src/common/enums/assignment-status.enum';
 import { DonationStatus, TERMINAL_DONATION_STATUSES } from 'src/common/enums/donation-status.enum';
-import { QuantityUnit } from 'src/common/enums/donation-details.enum';
+import { DeliveryMethod, QuantityUnit } from 'src/common/enums/donation-details.enum';
 import { FoodType } from 'src/common/enums/food-type.enum';
+import { URGENT_THRESHOLD_MINUTES } from 'src/common/utils/freshness.util';
 import { AssignmentsService } from 'src/modules/assignments/assignments.service';
 import type { AssignmentDocument } from 'src/modules/assignments/schemas/assignment.schema';
 import { DonationsService } from 'src/modules/donations/donations.service';
 import type { DonationDocument } from 'src/modules/donations/schemas/donation.schema';
-import { FoodRequestsService } from 'src/modules/food-requests/food-requests.service';
+import {
+  FoodRequestsService,
+  toDonorRequestView,
+  type DonorRequestView,
+} from 'src/modules/food-requests/food-requests.service';
 import type { FoodRequestDocument } from 'src/modules/food-requests/schemas/food-request.schema';
 import { PointsService } from 'src/modules/points/points.service';
 import { UsersService } from 'src/modules/users/users.service';
@@ -57,19 +62,23 @@ export interface DonorDashboardDonation {
   pickup: { latitude: number; longitude: number } | null;
   volunteer: DonorDashboardVolunteer | null;
   expiresInMinutes: number | null;
+  /** Minutes of safe time left while the food is still live; null once it is closed out. */
+  minutesLeft: number | null;
+  expiresAt: string;
+  isUrgent: boolean;
   ridersPinged: number;
   deliveredTo: string | null;
   karmaEarned: number | null;
+  /** General donations have no recipient until one claims it. */
+  listing: 'request' | 'general';
+  recipientName: string | null;
+  deliveryMethod: DeliveryMethod | null;
+  deliveryMethodConfirmed: boolean;
+  /** True when the donor has to act: verify a recipient's code or deliver the food. */
+  awaitingDonorHandover: boolean;
 }
 
-export interface DonorOpenRequest {
-  id: string;
-  recipientName: string;
-  servingsNeeded: number;
-  neededBy: string;
-  notes: string | null;
-  locationLabel: string;
-}
+export type DonorOpenRequest = DonorRequestView;
 
 export interface DonorDashboard {
   donor: {
@@ -116,7 +125,12 @@ export class DonorDashboardService {
     const extraRequestIds = assignments
       .map((assignment: AssignmentDocument) => assignment.requestId?.toString())
       .filter((id): id is string => Boolean(id));
-    const linkedRequests = await this.foodRequestsService.findByIds(extraRequestIds);
+    const linkedRequestIds = donations
+      .map((donation) => donation.foodRequestId?.toString())
+      .filter((id): id is string => Boolean(id));
+    const linkedRequests = await this.foodRequestsService.findByIds([
+      ...new Set([...extraRequestIds, ...linkedRequestIds]),
+    ]);
 
     const requestById = new Map<string, FoodRequestDocument>();
     const requestByDonation = new Map<string, FoodRequestDocument>();
@@ -130,7 +144,7 @@ export class DonorDashboardService {
     const volunteerIds = assignments
       .filter((assignment: AssignmentDocument) => assignment.status === AssignmentStatus.Accepted)
       .map((assignment: AssignmentDocument) => assignment.volunteerId.toString());
-    const recipientIds = openRequests.map((request) => request.recipientId.toString());
+    const recipientIds = [...requestById.values()].map((request) => request.recipientId.toString());
     const [volunteers, recipients] = await Promise.all([
       this.usersService.findManyByIds([...new Set(volunteerIds)]),
       this.usersService.findManyByIds([...new Set(recipientIds)]),
@@ -151,6 +165,7 @@ export class DonorDashboardService {
         requestByDonation,
         requestById,
         volunteerName,
+        recipientName,
         pointsByDonation,
       }),
     );
@@ -188,19 +203,7 @@ export class DonorDashboardService {
         karmaPoints,
       },
       donations: cards,
-      openRequests: openRequests.map((request) => {
-        const name = recipientName.get(request.recipientId.toString());
-        return {
-          id: request.id as string,
-          recipientName: name ? firstNameOf(name) : 'Recipient',
-          servingsNeeded: request.servingsNeeded,
-          neededBy: request.neededBy.toISOString(),
-          notes: request.notes ?? null,
-          locationLabel: [request.dropAddress?.line1, request.dropAddress?.city]
-            .filter(Boolean)
-            .join(', '),
-        };
-      }),
+      openRequests: openRequests.map(toDonorRequestView),
     };
   }
 
@@ -211,6 +214,7 @@ export class DonorDashboardService {
       requestByDonation: Map<string, FoodRequestDocument>;
       requestById: Map<string, FoodRequestDocument>;
       volunteerName: Map<string, string>;
+      recipientName: Map<string, string>;
       pointsByDonation: Map<string, number>;
     },
   ): DonorDashboardDonation {
@@ -227,7 +231,7 @@ export class DonorDashboardService {
       ? context.volunteerName.get(accepted.volunteerId.toString())
       : undefined;
     const volunteer =
-      accepted && moving
+      accepted && moving && (accepted.mode ?? 'volunteer') === 'volunteer'
         ? {
             name: shortName(volunteerName ?? 'Volunteer'),
             minutesAway: minutesFromDistance(accepted.distanceKm),
@@ -235,6 +239,9 @@ export class DonorDashboardService {
         : null;
 
     const request =
+      (donation.foodRequestId
+        ? context.requestById.get(donation.foodRequestId.toString())
+        : undefined) ??
       context.requestByDonation.get(id) ??
       (accepted?.requestId ? context.requestById.get(accepted.requestId.toString()) : undefined) ??
       context.assignments
@@ -253,6 +260,15 @@ export class DonorDashboardService {
       donation.status === DonationStatus.Assigned;
 
     const coordinates = donation.pickupAddress?.location?.coordinates;
+    const live = !TERMINAL_DONATION_STATUSES.includes(donation.status);
+    const handover = context.assignments.find(
+      (assignment: AssignmentDocument) =>
+        assignment.status === AssignmentStatus.Accepted &&
+        (assignment.mode === 'recipient_pickup' || assignment.mode === 'donor_delivery'),
+    );
+    const recipientFullName = request
+      ? context.recipientName.get(request.recipientId.toString())
+      : undefined;
 
     return {
       id,
@@ -268,9 +284,17 @@ export class DonorDashboardService {
       volunteer,
       expiresInMinutes:
         stillCollectable && minutesLeft > 0 && minutesLeft <= 180 ? minutesLeft : null,
+      minutesLeft: live ? Math.max(0, minutesLeft) : null,
+      expiresAt: donation.expiresAt.toISOString(),
+      isUrgent: live && minutesLeft > 0 && minutesLeft <= URGENT_THRESHOLD_MINUTES,
       ridersPinged,
       deliveredTo: delivered ? (request?.dropAddress.line1 ?? null) : null,
       karmaEarned: delivered ? (context.pointsByDonation.get(id) ?? 0) : null,
+      listing: donation.foodRequestId ? 'request' : 'general',
+      recipientName: recipientFullName ? firstNameOf(recipientFullName) : null,
+      deliveryMethod: donation.deliveryMethod ?? null,
+      deliveryMethodConfirmed: Boolean(donation.deliveryMethodConfirmedAt),
+      awaitingDonorHandover: Boolean(handover) && live,
     };
   }
 }

@@ -4,10 +4,12 @@ import { StyleSheet, Text, View } from 'react-native';
 
 interface DeliveryPinCardProps {
   pin?: string | null;
+  label?: string;
+  hint?: string;
 }
 
-/** Shows the recipient-only delivery PIN used to confirm handover. */
-export function DeliveryPinCard({ pin }: DeliveryPinCardProps) {
+/** Shows the handover PIN — delivery PIN for recipients, pickup PIN for donors. */
+export function DeliveryPinCard({ pin, label, hint }: DeliveryPinCardProps) {
   const { t } = useTranslation();
   if (!pin) return null;
 
@@ -17,9 +19,9 @@ export function DeliveryPinCard({ pin }: DeliveryPinCardProps) {
         <Ionicons name="keypad-outline" size={18} color="#5A1626" />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.label}>{t('recipient.deliveryPin')}</Text>
+        <Text style={styles.label}>{label ?? t('recipient.deliveryPin')}</Text>
         <Text style={styles.pin}>{pin}</Text>
-        <Text style={styles.hint}>{t('recipient.deliveryPinHint')}</Text>
+        <Text style={styles.hint}>{hint ?? t('recipient.deliveryPinHint')}</Text>
       </View>
     </View>
   );

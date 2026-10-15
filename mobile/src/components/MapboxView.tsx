@@ -1,16 +1,10 @@
-// @ts-ignore - optional native mapbox module
-import Mapbox from '@rnmapbox/maps';
-import { useEffect, useState } from 'react';
-import { StyleSheet, View, Platform, Text } from 'react-native';
-import { MAPBOX_ACCESS_TOKEN } from '@/constants';
+import { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
+
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import type { GeoPoint } from '@/types';
 import { toLatLng } from '@/utils/geo';
-import { colors } from '@/theme';
-
-// Initialize Mapbox
-if (MAPBOX_ACCESS_TOKEN && Platform.OS !== 'web') {
-  Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
-}
 
 interface MapboxViewProps {
   center?: GeoPoint;
@@ -21,85 +15,39 @@ interface MapboxViewProps {
     description?: string;
   }>;
   onPress?: (coordinate: { latitude: number; longitude: number }) => void;
-  style?: any;
+  style?: object;
   zoomLevel?: number;
   showUserLocation?: boolean;
 }
 
-export function MapboxView({
-  center,
-  markers = [],
-  onPress,
-  style,
-  zoomLevel = 12,
-  showUserLocation = true,
-}: MapboxViewProps) {
-  const [cameraCenter, setCameraCenter] = useState<[number, number]>(
-    center ? [center.coordinates[0], center.coordinates[1]] : [79.8612, 6.9271] // Colombo
+const JAFFNA = { latitude: 9.6645, longitude: 80.02 };
+
+export function MapboxView({ center, markers = [], style, zoomLevel = 12 }: MapboxViewProps) {
+  const camera = center ? toLatLng(center) : JAFFNA;
+
+  const staticUrl = useMemo(
+    () =>
+      getMapboxStaticMapUrl({
+        center: camera,
+        zoom: zoomLevel,
+        width: 600,
+        height: 400,
+        markers: markers.map((marker, index) => {
+          const point = toLatLng(marker.coordinate);
+          return {
+            latitude: point.latitude,
+            longitude: point.longitude,
+            label: String((index % 9) + 1),
+            color: 'D97706',
+          };
+        }),
+      }),
+    [camera.latitude, camera.longitude, markers, zoomLevel],
   );
-
-  useEffect(() => {
-    if (center) {
-      setCameraCenter([center.coordinates[0], center.coordinates[1]]);
-    }
-  }, [center]);
-
-  const handleMapPress = (feature: any) => {
-    if (onPress && feature.geometry) {
-      const [longitude, latitude] = feature.geometry.coordinates;
-      onPress({ latitude, longitude });
-    }
-  };
-
-  // Web fallback
-  if (Platform.OS === 'web' || !MAPBOX_ACCESS_TOKEN) {
-    return (
-      <View style={[styles.container, styles.fallback, style]}>
-        <Text style={styles.fallbackText}>Map not available</Text>
-        <Text style={styles.fallbackHint}>Please use mobile app</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={[styles.container, style]}>
-      <Mapbox.MapView
-        style={styles.map}
-        styleURL={Mapbox.StyleURL.Street}
-        onPress={handleMapPress}
-      >
-        <Mapbox.Camera
-          zoomLevel={zoomLevel}
-          centerCoordinate={cameraCenter}
-          animationMode="flyTo"
-          animationDuration={1000}
-        />
-
-        {showUserLocation && (
-          <Mapbox.UserLocation
-            visible={true}
-            showsUserHeadingIndicator={true}
-          />
-        )}
-
-        {markers.map((marker) => {
-          const latLng = toLatLng(marker.coordinate);
-          return (
-            <Mapbox.PointAnnotation
-              key={marker.id}
-              id={marker.id}
-              coordinate={[latLng.longitude, latLng.latitude]}
-            >
-              <View style={styles.markerContainer}>
-                <View style={styles.marker} />
-              </View>
-              {marker.title && (
-                <Mapbox.Callout title={marker.title} />
-              )}
-            </Mapbox.PointAnnotation>
-          );
-        })}
-      </Mapbox.MapView>
+      <MapboxStaticImage uri={staticUrl} />
     </View>
   );
 }
@@ -107,41 +55,7 @@ export function MapboxView({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  map: {
-    flex: 1,
-  },
-  markerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 30,
-    height: 30,
-  },
-  marker: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#D97706',
-    borderWidth: 3,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 5,
-  },
-  fallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
-  fallbackText: {
-    fontSize: 16,
-    color: colors.textMuted,
-    marginBottom: 8,
-  },
-  fallbackHint: {
-    fontSize: 14,
-    color: colors.textMuted,
+    overflow: 'hidden',
+    backgroundColor: '#E4EFF5',
   },
 });

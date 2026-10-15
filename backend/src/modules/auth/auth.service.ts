@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
@@ -16,6 +16,7 @@ import { GoogleAuthDto } from './dto/google-auth.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import type { JwtPayload } from './strategies/jwt.strategy';
 
 export interface AuthResponse {
@@ -188,6 +189,26 @@ export class AuthService {
     await this.emailService.sendPasswordResetSuccessEmail(user.email, user.name);
 
     return { message: 'Password reset successfully' };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
+    const user = await this.usersService.findByIdWithPassword(userId);
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account uses Google sign-in. Use Forgot Password to set a password first.',
+      );
+    }
+
+    const matches = await this.usersService.comparePassword(dto.currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+
+    await this.usersService.setPassword(userId, dto.newPassword);
+    return { message: 'Password updated successfully' };
   }
 
   /**

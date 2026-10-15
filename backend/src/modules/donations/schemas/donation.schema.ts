@@ -81,9 +81,14 @@ export class Donation {
   @Prop({ type: [String], enum: HandlingInstruction, default: [] })
   handling!: HandlingInstruction[];
 
+  /** The donor's preference until an admin confirms it (see deliveryMethodConfirmedAt). */
   @ApiPropertyOptional({ enum: DeliveryMethod })
   @Prop({ type: String, enum: DeliveryMethod })
   deliveryMethod?: DeliveryMethod;
+
+  @ApiPropertyOptional()
+  @Prop()
+  deliveryMethodConfirmedAt?: Date;
 
   @ApiPropertyOptional()
   @Prop({ trim: true, maxlength: 150 })
@@ -107,10 +112,17 @@ export class Donation {
   @Prop({ type: AddressSchema, required: true })
   pickupAddress!: Address;
 
-  /** Set when this donation answers a recipient's open request. */
+  /**
+   * The one recipient this donation is confirmed for: either the request the donor answered,
+   * or the request created when a recipient claimed a general donation.
+   */
   @ApiPropertyOptional()
-  @Prop({ type: Types.ObjectId, ref: 'FoodRequest' })
+  @Prop({ type: Types.ObjectId, ref: 'FoodRequest', index: true })
   foodRequestId?: Types.ObjectId;
+
+  @ApiPropertyOptional()
+  @Prop()
+  claimedAt?: Date;
 
   @ApiProperty({ enum: DonationStatus })
   @Prop({

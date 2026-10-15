@@ -6,6 +6,9 @@ import { AssignmentStatus } from 'src/common/enums/assignment-status.enum';
 
 export type AssignmentDocument = HydratedDocument<Assignment>;
 
+export const ASSIGNMENT_MODES = ['volunteer', 'recipient_pickup', 'donor_delivery'] as const;
+export type AssignmentMode = (typeof ASSIGNMENT_MODES)[number];
+
 /** FR6 — links one donation to one volunteer, and optionally to the request it fulfils. */
 @Schema({
   timestamps: true,
@@ -27,9 +30,17 @@ export class Assignment {
   @Prop({ type: Types.ObjectId, ref: 'FoodRequest' })
   requestId?: Types.ObjectId;
 
+  /**
+   * Whoever carries the food: the volunteer, or for in-person handovers the recipient
+   * (`recipient_pickup`) or the donor (`donor_delivery`).
+   */
   @ApiProperty()
   @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
   volunteerId!: Types.ObjectId;
+
+  @ApiProperty({ enum: ASSIGNMENT_MODES })
+  @Prop({ type: String, enum: ASSIGNMENT_MODES, default: 'volunteer' })
+  mode!: AssignmentMode;
 
   @ApiProperty({ enum: AssignmentStatus })
   @Prop({

@@ -2,11 +2,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { CreateDonationPayload } from '@/api/donations.api';
+import type { CreateDonationPayload, DonorOpenRequest } from '@/api/donations.api';
 import { DEFAULT_SAFE_HOURS } from '@/constants';
 import { validatePrepareTime } from '@/utils/freshness';
 
-export type DonationDraft = Partial<CreateDonationPayload> & { foodRequestId?: string };
+/**
+ * `requestSummary` is display-only: it lets every wizard step show who the donor is answering
+ * without refetching, and is stripped before the donation is posted.
+ */
+export type DonationDraft = Partial<CreateDonationPayload> & {
+  foodRequestId?: string;
+  requestSummary?: DonorOpenRequest;
+};
 
 interface DonationDraftState {
   draft: DonationDraft;

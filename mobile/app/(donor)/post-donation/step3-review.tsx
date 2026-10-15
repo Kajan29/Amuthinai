@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { donationsApi, type CreateDonationPayload } from '@/api/donations.api';
 import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
+import { WizardListingBanner } from '@/components/donor/WizardListingBanner';
+import { deliveryMethodMeta } from '@/components/flow/deliveryMethods';
 import { queryClient } from '@/api/queryClient';
 import { cloudinaryService } from '@/services/cloudinary';
 import { useDonationDraft } from '@/store/donationDraft.store';
@@ -82,12 +84,14 @@ export default function Step3Review() {
   const co2Kg = Math.round(people * 0.48);
 
   const submit = useMutation({
-    mutationFn: () =>
-      donationsApi.create({
-        ...(draft as CreateDonationPayload),
+    mutationFn: () => {
+      const { requestSummary: _display, ...payload } = draft;
+      return donationsApi.create({
+        ...(payload as CreateDonationPayload),
         foodSafetyVerified: true,
         photoUrls: photos,
-      }),
+      });
+    },
     async onSuccess(created) {
       const donationId = String(created.id);
       reset();
@@ -154,6 +158,8 @@ export default function Step3Review() {
 
         <Text style={styles.title}>{t('donor.verifyTitle')}</Text>
         <Text style={styles.lead}>{t('donor.verifyLead')}</Text>
+
+        <WizardListingBanner />
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>
@@ -289,10 +295,9 @@ export default function Step3Review() {
 
           <SummaryRow icon="bicycle-outline" label={t('donor.fulfillment')}>
             <Text style={styles.value}>
-              {draft.deliveryMethod === 'self_drop'
-                ? t('donor.selfDrop')
-                : t('donor.volunteerDispatch')}
+              {t(deliveryMethodMeta(draft.deliveryMethod)?.labelKey ?? 'flow.methodVolunteer')}
             </Text>
+            <Text style={styles.sub}>{t('flow.adminConfirms')}</Text>
           </SummaryRow>
         </View>
 

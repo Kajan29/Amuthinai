@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -23,10 +24,11 @@ import { queryClient } from '@/api/queryClient';
 import { requestsApi } from '@/api/requests.api';
 import { DeliveryPinCard } from '@/components/DeliveryPinCard';
 import { MapboxStaticImage } from '@/components/MapboxStaticImage';
+import { RecipientDeliveryCard } from '@/components/flow/RecipientDeliveryCard';
 import { Badge, Card, EmptyState } from '@/components/ui';
 import { getMapboxStaticMapUrl } from '@/services/mapbox';
 import { colors, radius, spacing, typography } from '@/theme';
-import type { FoodRequest } from '@/types';
+import type { Donation, DonationStatus, FoodRequest } from '@/types';
 import { formatDateTime } from '@/utils/date';
 import { MapView, Marker, Polyline } from '@/utils/maps';
 
@@ -40,7 +42,13 @@ const CONCERN_REASONS = [
   'Other issue',
 ];
 
+function linkedDonationStatus(request?: FoodRequest | null): DonationStatus | null {
+  const linked = request?.matchedDonationId;
+  return linked && typeof linked === 'object' ? (linked as Donation).status : null;
+}
+
 export default function RecipientRequestsScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   // 1. Separate into Current Requests and Past Requests
   const [activeTab, setActiveTab] = useState<RequestTab>('current');
@@ -81,8 +89,10 @@ export default function RecipientRequestsScreen() {
   const { data: liveTrackingData } = useQuery({
     queryKey: ['recipient', 'tracking', selectedRequest?.id],
     queryFn: () => (selectedRequest ? requestsApi.tracking(selectedRequest.id) : null),
-    enabled: Boolean(selectedRequest && trackingModalVisible),
+    enabled: Boolean(selectedRequest),
+    refetchInterval: selectedRequest?.status === 'matched' ? 20_000 : false,
   });
+  const selectedDonationStatus = liveTrackingData?.donation?.status ?? linkedDonationStatus(selectedRequest);
 
   // Cancel / Delete Mutation
   const cancelMutation = useMutation({
@@ -285,13 +295,18 @@ export default function RecipientRequestsScreen() {
             ? 'warning'
             : 'danger';
 
-          const statusLabel = isMatched
-            ? 'VOLUNTEER ASSIGNED'
-            : isPending
-            ? 'SEARCHING VOLUNTEER'
-            : isFulfilled
-            ? 'DELIVERED'
-            : 'CANCELLED';
+          const donationStatus = linkedDonationStatus(item);
+          const statusLabel = (
+            isMatched
+              ? donationStatus
+                ? t(`status.${donationStatus}`)
+                : t('flow.claimedGeneral')
+              : isPending
+                ? t('flow.waitingDonor')
+                : isFulfilled
+                  ? t('status.delivered')
+                  : t('status.cancelled')
+          ).toUpperCase();
 
           return (
             <TouchableOpacity
@@ -418,20 +433,22 @@ export default function RecipientRequestsScreen() {
                     ]}
                   >
                     {selectedRequest?.status === 'matched'
-                      ? 'Volunteer Assigned • In Transit'
+                      ? selectedDonationStatus
+                        ? t(`status.${selectedDonationStatus}`)
+                        : t('flow.claimedGeneral')
                       : selectedRequest?.status === 'open'
-                      ? 'Request Placed • Matching with Hub'
+                      ? t('flow.waitingDonor')
                       : selectedRequest?.status === 'fulfilled'
-                      ? 'Delivered Safely to Doorstep'
-                      : 'Request Cancelled'}
+                      ? t('status.delivered')
+                      : t('status.cancelled')}
                   </Text>
                   <Text style={styles.statusBannerSub}>
                     {selectedRequest?.status === 'matched'
-                      ? 'A verified courier has accepted this delivery and is en route.'
+                      ? liveTrackingData?.donation?.title ?? t('flow.claimedBody')
                       : selectedRequest?.status === 'open'
-                      ? 'Your request is in the matching queue for nearby relief hubs.'
+                      ? t('flow.waitingDonorHint')
                       : selectedRequest?.status === 'fulfilled'
-                      ? 'This delivery was successfully completed.'
+                      ? t('flow.verificationRequired')
                       : 'This order was cancelled.'}
                   </Text>
                 </View>
@@ -471,7 +488,12 @@ export default function RecipientRequestsScreen() {
                 ) : null}
               </View>
 
+              {selectedRequest?.status === 'open' || selectedRequest?.status === 'matched' ? (
+                <RecipientDeliveryCard info={liveTrackingData} />
+              ) : null}
+
               {/* Delivery History & Progress Timeline */}
+              {selectedRequest?.status === 'fulfilled' ? (
               <View style={styles.detailSectionBox}>
                 <View style={styles.detailSectionHeader}>
                   <Ionicons name="time" size={16} color="#5A1626" />
@@ -485,22 +507,13 @@ export default function RecipientRequestsScreen() {
                       time: selectedRequest ? new Date(selectedRequest.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
                       done: true,
                     },
+                    { title: t('status.approved'), time: 'Completed', done: true, active: false },
+                    { title: t('status.picked_up'), time: 'Completed', done: true, active: false },
                     {
-                      title: 'Hub Verified & Food Prepared',
-                      time: selectedRequest?.status !== 'open' ? 'Completed' : 'Hub Queue',
-                      done: selectedRequest?.status !== 'open',
-                      active: selectedRequest?.status === 'open',
-                    },
-                    {
-                      title: 'Volunteer Courier Picked Up',
-                      time: selectedRequest?.status === 'matched' ? 'En Route' : selectedRequest?.status === 'fulfilled' ? 'Completed' : 'Pending',
-                      done: selectedRequest?.status === 'fulfilled' || selectedRequest?.status === 'matched',
-                      active: selectedRequest?.status === 'matched',
-                    },
-                    {
-                      title: 'Delivered Safely to Doorstep',
-                      time: selectedRequest?.status === 'fulfilled' ? 'Delivered' : 'Awaiting Delivery',
-                      done: selectedRequest?.status === 'fulfilled',
+                      title: t('status.delivered'),
+                      time: t('flow.verificationRequired'),
+                      done: true,
+                      active: false,
                     },
                   ].map((step, idx) => (
                     <View key={idx} style={styles.timelineItem}>
@@ -526,6 +539,7 @@ export default function RecipientRequestsScreen() {
                   ))}
                 </View>
               </View>
+              ) : null}
 
               {/* Action Buttons: Tracking, Raise Concern, Edit/Cancel */}
               <View style={styles.modalActionButtonsGrid}>
@@ -804,7 +818,17 @@ export default function RecipientRequestsScreen() {
                 </TouchableOpacity>
               </View>
 
-              <DeliveryPinCard pin={liveTrackingData?.assignment?.deliveryPin} />
+              <DeliveryPinCard
+                pin={liveTrackingData?.assignment?.deliveryPin}
+                label={t('flow.yourCode')}
+                hint={
+                  liveTrackingData?.mode === 'recipient_pickup'
+                    ? t('flow.yourCodePickupHint')
+                    : liveTrackingData?.mode === 'donor_delivery'
+                      ? t('flow.yourCodeDeliveryHint')
+                      : t('flow.yourCodeVolunteerHint')
+                }
+              />
 
               {/* Endpoints Trace */}
               <View style={styles.endpointsCard}>

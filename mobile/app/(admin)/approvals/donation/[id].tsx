@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -21,6 +22,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { adminApi } from '@/api/admin.api';
 import { queryClient } from '@/api/queryClient';
 import { AdminHeader } from '@/components/AdminHeader';
+import { DonationProgress } from '@/components/flow/DonationProgress';
+import { RecipientInfoCard } from '@/components/flow/RecipientInfoCard';
+import { SafeTimePill } from '@/components/flow/SafeTimePill';
+import { deliveryMethodMeta } from '@/components/flow/deliveryMethods';
 import { colors, radius, spacing } from '@/theme';
 import {
   formatAddress,
@@ -32,6 +37,7 @@ import {
 
 export default function DonationInspectionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { t } = useTranslation();
 
   const [activePhotoModal, setActivePhotoModal] = useState<string | null>(null);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -54,6 +60,10 @@ export default function DonationInspectionDetail() {
   const contactPhone = realDonation?.contactPersonPhone || realDonation?.donor?.phone || '';
   const contactName = realDonation?.contactPersonName || realDonation?.donor?.name || 'Donor';
   const dietary = realDonation?.dietaryTags?.map(titleCase).join(', ') || 'Not specified';
+  const recipient = realDonation?.recipient ?? null;
+  const preferredMethod = deliveryMethodMeta(realDonation?.deliveryMethod);
+  const isPendingApproval = realDonation?.status === 'pending_approval';
+  const canDispatch = realDonation?.status === 'approved';
 
   const approveMutation = useMutation({
     mutationFn: async () => {
@@ -61,14 +71,19 @@ export default function DonationInspectionDetail() {
       await adminApi.approveDonation(id);
     },
     async onSuccess() {
-      await queryClient.invalidateQueries({ queryKey: ['admin.pendingDonations'] });
-      await queryClient.invalidateQueries({ queryKey: ['admin.kpis'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['admin.pendingDonations'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin.kpis'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin.donation', id] }),
+      ]);
       Alert.alert(
         'Donation Approved',
-        'Food safety standards verified. Now proceeding to volunteer courier dispatch.',
+        recipient
+          ? 'Food safety verified. Now choose how the food reaches the recipient.'
+          : 'Food safety verified. It is now open for eligible recipients to claim.',
         [
           {
-            text: 'Dispatch Volunteer',
+            text: t('flow.chooseMethod'),
             onPress: () => router.push(`/(admin)/assign/${id}` as any),
           },
           { text: 'Back to Queues', onPress: () => router.back() },
@@ -181,6 +196,71 @@ export default function DonationInspectionDetail() {
             </Text>
           </View>
         </View>
+
+        {realDonation ? (
+          <View style={styles.flowCard}>
+            <View style={styles.flowTopRow}>
+              <Text style={styles.sectionTitle}>{t('flow.lifecycle').toUpperCase()}</Text>
+              {realDonation.expiresAt ? <SafeTimePill expiresAt={realDonation.expiresAt} /> : null}
+            </View>
+            <DonationProgress status={realDonation.status} accent={colors.adminMaroon} />
+          </View>
+        ) : null}
+
+        {/* Listing type & recipient */}
+        {realDonation ? (
+          <View style={styles.sectionWrap}>
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>
+                {(recipient ? t('flow.recipientDetails') : t('flow.generalDonation')).toUpperCase()}
+              </Text>
+            </View>
+            {recipient ? (
+              <RecipientInfoCard
+                accent={colors.adminMaroon}
+                title={recipient.origin === 'claim' ? t('flow.claimedGeneral') : t('flow.forRequest')}
+                recipient={{
+                  name: recipient.name,
+                  servingsNeeded: recipient.servingsNeeded,
+                  familySize: recipient.familySize,
+                  neededBy: recipient.neededBy,
+                  notes: recipient.notes,
+                  dietaryRequirements: recipient.dietaryRequirements,
+                  areaLabel: formatAddress(recipient.dropAddress) || null,
+                  phone: recipient.phone,
+                  origin: recipient.origin,
+                }}
+              />
+            ) : (
+              <View style={styles.noRecipientCard}>
+                <Ionicons name="people-outline" size={20} color={colors.adminMaroon} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.noRecipientTitle}>{t('flow.noRecipient')}</Text>
+                  <Text style={styles.checkDesc}>{t('flow.generalHint')}</Text>
+                </View>
+              </View>
+            )}
+          </View>
+        ) : null}
+
+        {realDonation ? (
+          <View style={styles.preferredRow}>
+            <View style={styles.preferredIcon}>
+              <Ionicons
+                name={preferredMethod?.icon ?? 'help-outline'}
+                size={16}
+                color={colors.adminMaroon}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>{t('flow.preferredMethod')}</Text>
+              <Text style={styles.noRecipientTitle}>
+                {preferredMethod ? t(preferredMethod.labelKey) : t('flow.methodPending')}
+              </Text>
+              <Text style={styles.checkDesc}>{t('flow.adminConfirms')}</Text>
+            </View>
+          </View>
+        ) : null}
 
         {/* Inspection Photos Gallery (Screenshot 4 Match) */}
         <View style={styles.sectionWrap}>
@@ -337,7 +417,19 @@ export default function DonationInspectionDetail() {
           </View>
         </View>
 
+        {canDispatch ? (
+          <TouchableOpacity
+            style={styles.approveDispatchBtn}
+            onPress={() => router.push(`/(admin)/assign/${id}` as any)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="git-branch-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.approveDispatchText}>{t('flow.chooseMethod')}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {/* Action Buttons (Screenshot 4 Match) */}
+        {isPendingApproval ? (
         <View style={styles.actionsBar}>
           <TouchableOpacity
             style={styles.flagRejectBtn}
@@ -367,6 +459,7 @@ export default function DonationInspectionDetail() {
             )}
           </TouchableOpacity>
         </View>
+        ) : null}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -569,6 +662,56 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     marginBottom: spacing.md,
+  },
+  flowCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: colors.cardBorder,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  flowTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  noRecipientCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: colors.cardBorder,
+    borderRadius: radius.lg,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  noRecipientTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  preferredRow: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: colors.cardBorder,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  preferredIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FBEFF2',
+    borderRadius: 12,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
   },
   sectionTitleRow: {
     flexDirection: 'row',

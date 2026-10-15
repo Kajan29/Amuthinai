@@ -87,7 +87,15 @@ export default function HubMapScreen() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'open' | 'meals' | 'nearby'>('all');
 
   useEffect(() => {
-    if (!selectedHubId && liveHubs[0]) setSelectedHubId(liveHubs[0].id);
+    const first = liveHubs[0];
+    if (selectedHubId || !first) return;
+    setSelectedHubId(first.id);
+    mapRef.current?.animateToRegion?.({
+      latitude: first.lat,
+      longitude: first.lng,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.05,
+    });
   }, [liveHubs, selectedHubId]);
 
   // Compute live distances for each hub
@@ -128,9 +136,16 @@ export default function HubMapScreen() {
       filteredHubs.find((h) => h.id === selectedHubId) ||
       hubsWithDistance.find((h) => h.id === selectedHubId) ||
       filteredHubs[0] ||
-      hubsWithDistance[0]!
+      hubsWithDistance[0]
     );
   }, [filteredHubs, hubsWithDistance, selectedHubId]);
+  const mapCenter = useMemo(
+    () =>
+      selectedHub
+        ? { latitude: selectedHub.lat, longitude: selectedHub.lng }
+        : { latitude: userLat, longitude: userLng },
+    [selectedHub, userLat, userLng],
+  );
 
   // Handle selecting a hub on map or list
   const handleSelectHub = (hub: (typeof hubsWithDistance)[0], scrollCarousel = true) => {
@@ -202,7 +217,7 @@ export default function HubMapScreen() {
   const mapboxStaticUrl = useMemo(
     () =>
       getMapboxStaticMapUrl({
-        center: { latitude: selectedHub.lat, longitude: selectedHub.lng },
+        center: mapCenter,
         zoom: 12.5,
         width: 650,
         height: 450,
@@ -216,7 +231,7 @@ export default function HubMapScreen() {
           })),
         ],
       }),
-    [filteredHubs, selectedHubId, selectedHub, userLng, userLat],
+    [filteredHubs, selectedHubId, mapCenter, userLng, userLat],
   );
 
   return (
@@ -360,8 +375,7 @@ export default function HubMapScreen() {
                 ref={mapRef}
                 style={styles.mapComponent}
                 initialRegion={{
-                  latitude: selectedHub.lat,
-                  longitude: selectedHub.lng,
+                  ...mapCenter,
                   latitudeDelta: 0.05,
                   longitudeDelta: 0.05,
                 }}
@@ -371,6 +385,7 @@ export default function HubMapScreen() {
                   coordinate={{ latitude: userLat, longitude: userLng }}
                   title="Your Registered Location"
                   description="Delivery Drop Point"
+                  pinColor="#F59E0B"
                 >
                   <View style={styles.userMarkerWrapper}>
                     <View style={styles.userMarkerBadge}>
@@ -389,6 +404,7 @@ export default function HubMapScreen() {
                       coordinate={{ latitude: hub.lat, longitude: hub.lng }}
                       title={hub.name}
                       description={`${hub.address} • ${hub.availableMeals} packs ready`}
+                      pinColor={isSelected ? '#5A1626' : '#0F7B4F'}
                       onPress={() => handleSelectHub(hub, true)}
                     >
                       <View style={[styles.hubMarkerPinWrap, isSelected && styles.hubMarkerSelectedWrap]}>
@@ -474,7 +490,13 @@ export default function HubMapScreen() {
             <View style={styles.floatingHubIndicator}>
               <View style={styles.greenPulseDot} />
               <Text style={styles.floatingIndicatorText}>
-                Selected: <Text style={{ fontWeight: '800' }}>{selectedHub.name}</Text>
+                {selectedHub ? (
+                  <>
+                    Selected: <Text style={{ fontWeight: '800' }}>{selectedHub.name}</Text>
+                  </>
+                ) : (
+                  'No partner hubs yet'
+                )}
               </Text>
             </View>
           </View>

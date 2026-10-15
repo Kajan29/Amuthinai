@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -13,7 +12,6 @@ import {
   View,
 } from 'react-native';
 
-import { notificationsApi } from '@/api/notifications.api';
 import { logo } from '@/constants/images';
 import { useAuth } from '@/hooks/useAuth';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -26,29 +24,11 @@ interface AdminHeaderProps {
     icon: keyof typeof Ionicons.glyphMap;
     onPress: () => void;
   };
-  unreadAlertsCount?: number;
 }
 
-export function AdminHeader({
-  showBack = false,
-  onBack,
-  subtitle,
-  rightAction,
-  unreadAlertsCount,
-}: AdminHeaderProps) {
+export function AdminHeader({ showBack = false, onBack, subtitle, rightAction }: AdminHeaderProps) {
   const { user, confirmLogout } = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
-  const [alertsVisible, setAlertsVisible] = useState(false);
-  const unread = useQuery({
-    queryKey: ['notifications.unread'],
-    queryFn: notificationsApi.unreadCount,
-  });
-  const alerts = useQuery({
-    queryKey: ['notifications', 'admin-header'],
-    queryFn: () => notificationsApi.list({ pageSize: 8 }),
-    enabled: alertsVisible,
-  });
-  const alertCount = unreadAlertsCount ?? unread.data?.unread ?? 0;
 
   const handleBack = () => {
     if (onBack) {
@@ -103,22 +83,7 @@ export function AdminHeader({
             <TouchableOpacity onPress={rightAction.onPress} style={styles.iconButton} hitSlop={12}>
               <Ionicons name={rightAction.icon} size={22} color={colors.adminMaroon} />
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={() => setAlertsVisible(true)}
-              style={styles.iconButton}
-              hitSlop={12}
-            >
-              <Ionicons name="notifications-outline" size={24} color={colors.adminMaroon} />
-              {alertCount > 0 && (
-                <View style={styles.badgeDot}>
-                  <Text style={styles.badgeDotText}>
-                    {alertCount > 9 ? '9+' : alertCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
+          ) : null}
         </View>
       </View>
 
@@ -170,45 +135,6 @@ export function AdminHeader({
           </Pressable>
         </Pressable>
       </Modal>
-
-      {/* Operations Alert Center Modal */}
-      <Modal visible={alertsVisible} animationType="slide" transparent>
-        <Pressable style={styles.modalOverlay} onPress={() => setAlertsVisible(false)}>
-          <View style={styles.alertCard}>
-            <View style={styles.alertHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                <Ionicons name="alert-circle" size={22} color={colors.urgentRed} />
-                <Text style={styles.alertTitle}>Operational Alerts ({alertCount})</Text>
-              </View>
-              <TouchableOpacity onPress={() => setAlertsVisible(false)}>
-                <Ionicons name="close" size={22} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {(alerts.data?.items ?? []).length === 0 ? (
-              <Text style={styles.alertItemDesc}>No new operational alerts.</Text>
-            ) : (
-              (alerts.data?.items ?? []).map((alert) => (
-                <View key={alert.id} style={styles.alertItem}>
-                  <View style={[styles.alertDot, { backgroundColor: colors.urgentRed }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.alertItemTitle}>{alert.title}</Text>
-                    <Text style={styles.alertItemDesc}>{alert.body}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setAlertsVisible(false);
-                        router.push('/(admin)/approvals');
-                      }}
-                    >
-                      <Text style={styles.alertAction}>Open queue →</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-        </Pressable>
-      </Modal>
     </>
   );
 }
@@ -257,23 +183,6 @@ const styles = StyleSheet.create({
     color: '#6E4852',
     marginTop: 2,
     textTransform: 'uppercase',
-  },
-  badgeDot: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: colors.urgentRed,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  badgeDotText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
@@ -346,55 +255,5 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.danger,
     fontWeight: '600',
-  },
-  alertCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    padding: spacing.lg,
-    gap: spacing.md,
-    maxHeight: '70%',
-  },
-  alertHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomColor: colors.cardBorder,
-    borderBottomWidth: 1,
-    paddingBottom: spacing.sm,
-  },
-  alertTitle: {
-    ...typography.bodyStrong,
-    color: colors.text,
-    fontSize: 16,
-  },
-  alertItem: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    backgroundColor: '#FAF7F5',
-    padding: spacing.md,
-    borderRadius: radius.md,
-  },
-  alertDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 5,
-  },
-  alertItemTitle: {
-    ...typography.bodyStrong,
-    fontSize: 14,
-    color: colors.text,
-  },
-  alertItemDesc: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: 2,
-    marginBottom: spacing.xs,
-  },
-  alertAction: {
-    ...typography.caption,
-    color: colors.adminMaroon,
-    fontWeight: '700',
   },
 });

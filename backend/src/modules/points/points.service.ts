@@ -13,6 +13,8 @@ export const POINTS = {
   donationDelivered: 50,
   deliveryCompleted: 30,
   firstDonation: 100,
+  /** Extra for a donor who carried the food to the recipient themselves. */
+  selfDelivery: 20,
 } as const;
 
 const TIER_THRESHOLDS: { tier: KarmaTier; min: number }[] = [

@@ -10,6 +10,7 @@ import { UsersService } from 'src/modules/users/users.service';
 
 import { DonationsService } from './donations.service';
 import type { DonationDocument } from './schemas/donation.schema';
+import { ClaimDonationDto, LinkRequestDto } from './dto/claim-donation.dto';
 import { CreateDonationDto } from './dto/create-donation.dto';
 import { QueryDonationsDto } from './dto/query-donations.dto';
 import { RejectDonationDto } from './dto/review-donation.dto';
@@ -61,8 +62,33 @@ export class DonationsController {
         ? await this.donationsService.findOwned(id, user.id)
         : await this.donationsService.findById(id);
     if (user.role !== Role.Admin) return donation;
-    const [withDonor] = await this.withDonor([donation]);
-    return withDonor;
+    const [[withDonor], recipient] = await Promise.all([
+      this.withDonor([donation]),
+      this.recipientFor(donation),
+    ]);
+    return { ...withDonor, recipient };
+  }
+
+  @Post(':id/claim')
+  @Roles(Role.Recipient)
+  @ApiOperation({ summary: 'Claim a general donation; only the first recipient succeeds' })
+  claim(
+    @CurrentUser('id') recipientId: string,
+    @Param('id') id: string,
+    @Body() dto: ClaimDonationDto,
+  ) {
+    return this.donationsService.claim(id, recipientId, dto);
+  }
+
+  @Post(':id/link-request')
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Pair an unclaimed general donation with an open recipient request' })
+  linkRequest(
+    @CurrentUser('id') adminId: string,
+    @Param('id') id: string,
+    @Body() dto: LinkRequestDto,
+  ) {
+    return this.donationsService.linkRequest(id, dto.requestId, adminId);
   }
 
   @Get(':id/timeline')
@@ -131,5 +157,25 @@ export class DonationsController {
           : null,
       };
     });
+  }
+
+  /** The recipient the admin is approving this donation for, if one is confirmed. */
+  private async recipientFor(donation: DonationDocument) {
+    const request = await this.donationsService.recipientOf(donation);
+    if (!request) return null;
+    const [person] = await this.usersService.findManyByIds([request.recipientId.toString()]);
+    return {
+      requestId: request.id as string,
+      origin: request.origin ?? 'request',
+      status: request.status,
+      name: person?.name ?? 'Recipient',
+      phone: request.contactPhone ?? person?.phone ?? null,
+      servingsNeeded: request.servingsNeeded,
+      familySize: request.familySize ?? null,
+      neededBy: request.neededBy,
+      notes: request.notes ?? null,
+      dietaryRequirements: request.dietaryRequirements ?? [],
+      dropAddress: request.dropAddress,
+    };
   }
 }

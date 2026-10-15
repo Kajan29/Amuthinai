@@ -6,7 +6,10 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
+import { DELIVERY_METHODS } from '@/components/flow/deliveryMethods';
 import { MAX_SAFE_HOURS } from '@/constants';
+import { useAuth } from '@/hooks/useAuth';
+import { useLocation } from '@/hooks/useLocation';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
 import type { Address, DeliveryMethod, FoodType, HandlingInstruction, PickupSource } from '@/types';
@@ -14,8 +17,8 @@ import { validatePrepareTime } from '@/utils/freshness';
 
 const NOTE_LIMIT = 150;
 
-/** Nallur pickup used as the donor's registered address in the logistics design. */
-const REGISTERED_ADDRESS: Address = {
+/** Used when the donor has not saved an address on their profile yet. */
+const FALLBACK_ADDRESS: Address = {
   line1: 'Nallur Kovil Road, Jaffna',
   city: 'Jaffna',
   district: 'Opposite Hindu College Playground, Ground Floor Entrance',
@@ -37,7 +40,15 @@ type Picking = 'ready' | 'consume' | 'cooked' | null;
 export default function Step2Timing() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { draft, update } = useDonationDraft();
+  const gps = useLocation(false);
+  const REGISTERED_ADDRESS: Address = user?.address?.location?.coordinates?.length
+    ? user.address
+    : FALLBACK_ADDRESS;
+  const [customPoint, setCustomPoint] = useState<Address['location'] | null>(
+    draft.pickupSource === 'custom' ? (draft.pickupAddress?.location ?? null) : null,
+  );
   const [picking, setPicking] = useState<Picking>(null);
   const [clock, setClock] = useState<Clock>({ hour: 2, minute: 30, period: 'PM' });
   const [customLine, setCustomLine] = useState(
@@ -108,9 +119,18 @@ export default function Step2Timing() {
         line1: customLine,
         city: customCity || 'Jaffna',
         district: customNote || undefined,
-        location: REGISTERED_ADDRESS.location,
+        location: customPoint ?? REGISTERED_ADDRESS.location,
       },
     });
+  }
+
+  async function pinCurrentLocation() {
+    const point = await gps.refresh().catch(() => null);
+    if (!point) {
+      Alert.alert(t('flow.useCurrentLocation'), t('flow.locationFailed'));
+      return;
+    }
+    setCustomPoint(point);
   }
 
   function toggleHandling(id: HandlingInstruction) {
@@ -171,7 +191,7 @@ export default function Step2Timing() {
             line1: customLine.trim(),
             city: customCity.trim(),
             district: customNote.trim() || undefined,
-            location: REGISTERED_ADDRESS.location,
+            location: customPoint ?? REGISTERED_ADDRESS.location,
           };
     const maxHours = MAX_SAFE_HOURS[foodType];
     const hoursFromCooked = Math.ceil(
@@ -270,6 +290,24 @@ export default function Step2Timing() {
                 placeholderTextColor="#B3AAA3"
                 style={styles.field}
               />
+              <Pressable
+                onPress={() => void pinCurrentLocation()}
+                style={[styles.gpsBtn, customPoint && styles.gpsBtnOn]}
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name={customPoint ? 'checkmark-circle' : 'locate'}
+                  size={16}
+                  color={customPoint ? donorColors.green : donorColors.plum}
+                />
+                <Text style={[styles.gpsBtnText, customPoint && { color: donorColors.green }]}>
+                  {gps.isLoading
+                    ? '…'
+                    : customPoint
+                      ? `${t('flow.locationSet')} · ${formatGps({ ...REGISTERED_ADDRESS, location: customPoint }).replace('GPS: ', '').replace(' (Verified)', '')}`
+                      : t('flow.useCurrentLocation')}
+                </Text>
+              </Pressable>
             </View>
           ) : null}
         </Pressable>
@@ -351,32 +389,41 @@ export default function Step2Timing() {
           })}
         </View>
 
-        <Text style={styles.sectionTitle}>{t('donor.deliveryTitle')}</Text>
-        <Pressable
-          onPress={() => update({ deliveryMethod: 'volunteer_rider' })}
-          style={[styles.card, method === 'volunteer_rider' && styles.cardOn]}
-        >
-          <View style={styles.cardTop}>
-            <Radio on={method === 'volunteer_rider'} />
-            <View style={styles.cardCopy}>
-              <Text style={styles.cardTitle}>{t('donor.volunteerPickup')}</Text>
-              <Text style={styles.cardMeta}>{t('donor.volunteerPickupHint')}</Text>
-            </View>
-            <Text style={styles.recommend}>{t('donor.recommended')}</Text>
-          </View>
-        </Pressable>
-        <Pressable
-          onPress={() => update({ deliveryMethod: 'self_drop' })}
-          style={[styles.card, method === 'self_drop' && styles.cardOn]}
-        >
-          <View style={styles.cardTop}>
-            <Radio on={method === 'self_drop'} />
-            <View style={styles.cardCopy}>
-              <Text style={styles.cardTitle}>{t('donor.selfDrop')}</Text>
-              <Text style={styles.cardMeta}>{t('donor.selfDropHint')}</Text>
-            </View>
-          </View>
-        </Pressable>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>{t('flow.preferredMethod')}</Text>
+        </View>
+        {DELIVERY_METHODS.map((option) => {
+          const on = method === option.method;
+          return (
+            <Pressable
+              key={option.method}
+              onPress={() => update({ deliveryMethod: option.method })}
+              style={[styles.card, on && styles.cardOn]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+            >
+              <View style={styles.cardTop}>
+                <Radio on={on} />
+                <View style={styles.methodIcon}>
+                  <Ionicons name={option.icon} size={16} color={donorColors.plum} />
+                </View>
+                <View style={styles.cardCopy}>
+                  <Text style={styles.cardTitle}>{t(option.labelKey)}</Text>
+                  <Text style={styles.cardMeta}>{t(option.hintKey)}</Text>
+                </View>
+                {option.method === 'volunteer_rider' ? (
+                  <Text style={styles.recommend}>{t('donor.recommended')}</Text>
+                ) : null}
+              </View>
+            </Pressable>
+          );
+        })}
+        <View style={styles.methodNote}>
+          <Ionicons name="shield-checkmark-outline" size={14} color={donorColors.muted} />
+          <Text style={styles.methodNoteText}>
+            {t('flow.adminConfirms')} {t('flow.verificationRequired')}
+          </Text>
+        </View>
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>{t('donor.handoverTitle')}</Text>
@@ -655,6 +702,29 @@ const styles = StyleSheet.create({
   radioOn: { borderColor: donorColors.plum },
   radioDot: { backgroundColor: donorColors.plum, borderRadius: 5, height: 10, width: 10 },
   customFields: { gap: 8, marginTop: 10 },
+  gpsBtn: {
+    alignItems: 'center',
+    borderColor: donorColors.plum,
+    borderRadius: 12,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  gpsBtnOn: { borderColor: donorColors.green, borderStyle: 'solid', backgroundColor: donorColors.greenSoft },
+  gpsBtnText: { color: donorColors.plum, flex: 1, fontSize: 12, fontWeight: '700' },
+  methodIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F4E9EC',
+    borderRadius: 10,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  methodNote: { alignItems: 'flex-start', flexDirection: 'row', gap: 6, marginTop: -2 },
+  methodNoteText: { color: donorColors.muted, flex: 1, fontSize: 11, lineHeight: 16 },
   field: {
     backgroundColor: donorColors.background,
     borderRadius: 12,

@@ -86,6 +86,14 @@ export class FoodRequest {
   @ApiPropertyOptional()
   @Prop({ type: Types.ObjectId, ref: 'Donation' })
   matchedDonationId?: Types.ObjectId;
+
+  /**
+   * `claim` requests exist only because the recipient claimed a general donation, so they are
+   * cancelled (not reopened) if that donation falls through.
+   */
+  @ApiPropertyOptional({ enum: ['request', 'claim'] })
+  @Prop({ type: String, enum: ['request', 'claim'], default: 'request' })
+  origin!: 'request' | 'claim';
 }
 
 export const FoodRequestSchema = SchemaFactory.createForClass(FoodRequest);

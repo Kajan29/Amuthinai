@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { NgosModule } from 'src/modules/ngos/ngos.module';
 import { NotificationsModule } from 'src/modules/notifications/notifications.module';
+import { UsersModule } from 'src/modules/users/users.module';
 
 import { FoodRequestsController } from './food-requests.controller';
 import { FoodRequestsService } from './food-requests.service';
@@ -15,6 +16,7 @@ import { DonationsModule } from '../donations/donations.module';
     DonationsModule,
     NgosModule,
     NotificationsModule,
+    UsersModule,
   ],
   controllers: [FoodRequestsController],
   providers: [FoodRequestsService],

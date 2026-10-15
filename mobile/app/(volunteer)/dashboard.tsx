@@ -17,10 +17,9 @@ import {
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 
 import { assignmentsApi, type NearbyTask } from '@/api/assignments.api';
-import { notificationsApi } from '@/api/notifications.api';
 import { pointsApi } from '@/api/points.api';
 import { usersApi } from '@/api/users.api';
 import { logo, URGENT_THRESHOLD_MINUTES } from '@/constants';
@@ -60,12 +59,6 @@ export default function VolunteerDashboard() {
   // 2. Data Queries
   const tasks = useVolunteerTasks();
   const pointsSummary = useOfflineQuery('volunteer.points', () => pointsApi.summary());
-  const unread = useQuery({
-    queryKey: ['notifications.unread'],
-    queryFn: notificationsApi.unreadCount,
-    refetchInterval: 60_000,
-  });
-
   const items: NearbyTask[] = tasks.live;
 
   // "Ready for deliveries" is stored on the profile so the server stops offering tasks when off.
@@ -270,17 +263,8 @@ export default function VolunteerDashboard() {
           {/* Center Logo */}
           <Image source={logo} style={styles.logoImage} resizeMode="contain" />
 
-          {/* Right: Notifications & User Avatar */}
+          {/* Right: User Avatar */}
           <View style={styles.headerRightActions}>
-            <TouchableOpacity
-              style={styles.circularHeaderButton}
-              onPress={() => router.push('/notifications' as never)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="notifications-outline" size={20} color="#1F2937" />
-              {(unread.data?.unread ?? 0) > 0 && <View style={styles.notificationDot} />}
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.avatarButton}
               onPress={() => router.push('/(volunteer)/profile')}
@@ -787,17 +771,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-  },
-  notificationDot: {
-    position: 'absolute',
-    top: 9,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#F59E0B',
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
   },
   avatarButton: {
     width: 42,

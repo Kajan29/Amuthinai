@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsMongoId, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsMongoId, IsOptional, IsString, MaxLength } from 'class-validator';
+
+import { DeliveryMethod } from 'src/common/enums/donation-details.enum';
 
 /** FR6 — admin confirms a donation/volunteer pairing. */
 export class CreateAssignmentDto {
@@ -27,6 +29,17 @@ export class ReassignDto {
   @IsString()
   @MaxLength(200)
   reason?: string;
+}
+
+/** Admin confirms how an approved donation reaches its recipient. */
+export class ChooseDeliveryMethodDto {
+  @ApiProperty()
+  @IsMongoId()
+  donationId!: string;
+
+  @ApiProperty({ enum: DeliveryMethod })
+  @IsEnum(DeliveryMethod)
+  method!: DeliveryMethod;
 }
 
 export class NgoFallbackDto {

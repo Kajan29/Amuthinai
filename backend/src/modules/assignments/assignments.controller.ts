@@ -5,10 +5,16 @@ import { CurrentUser, type AuthUser } from 'src/common/decorators/current-user.d
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import { Role } from 'src/common/enums/role.enum';
+import { HandoverDto } from 'src/modules/delivery-proof/dto/handover.dto';
 import { SubmitProofDto } from 'src/modules/delivery-proof/dto/submit-proof.dto';
 
 import { AssignmentsService } from './assignments.service';
-import { CreateAssignmentDto, NgoFallbackDto, ReassignDto } from './dto/create-assignment.dto';
+import {
+  ChooseDeliveryMethodDto,
+  CreateAssignmentDto,
+  NgoFallbackDto,
+  ReassignDto,
+} from './dto/create-assignment.dto';
 import { DeclineAssignmentDto } from './dto/decline-assignment.dto';
 import { NearbyQueryDto } from './dto/nearby-query.dto';
 import { QueryAssignmentsDto } from './dto/query-assignments.dto';
@@ -52,6 +58,15 @@ export class AssignmentsController {
   @ApiOperation({ summary: 'FR6 — offer a donation to a volunteer' })
   create(@CurrentUser('id') adminId: string, @Body() dto: CreateAssignmentDto) {
     return this.assignmentsService.create(adminId, dto);
+  }
+
+  @Post('method')
+  @Roles(Role.Admin)
+  @ApiOperation({
+    summary: 'Choose volunteer delivery, recipient self-pickup or donor self-delivery',
+  })
+  chooseMethod(@CurrentUser('id') adminId: string, @Body() dto: ChooseDeliveryMethodDto) {
+    return this.assignmentsService.chooseDeliveryMethod(adminId, dto.donationId, dto.method);
   }
 
   @Post('ngo')
@@ -166,5 +181,19 @@ export class AssignmentsController {
     @Body() dto: SubmitProofDto,
   ) {
     return this.assignmentsService.confirmDelivery(id, volunteerId, dto);
+  }
+
+  @Post(':id/depart')
+  @Roles(Role.Donor)
+  @ApiOperation({ summary: 'Donor self-delivery — the donor has left with the food' })
+  depart(@CurrentUser('id') donorId: string, @Param('id') id: string) {
+    return this.assignmentsService.departWithFood(id, donorId);
+  }
+
+  @Post(':id/handover')
+  @Roles(Role.Donor, Role.Admin)
+  @ApiOperation({ summary: "In-person handover, confirmed with the recipient's code" })
+  handover(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: HandoverDto) {
+    return this.assignmentsService.confirmHandover(id, user, dto);
   }
 }

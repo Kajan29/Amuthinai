@@ -4,6 +4,7 @@ import {
   forwardRef,
   isValidElement,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -336,6 +337,10 @@ export const MapView = forwardRef(function MapView(
     if (!readyRef.current) return;
     inject(webRef, `window.__apply(${JSON.stringify(layerPayload)})`);
   }, [layerPayload]);
+
+  useEffect(() => {
+    pushState();
+  }, [pushState]);
 
   useImperativeHandle(ref, () => ({
     animateToRegion(region) {

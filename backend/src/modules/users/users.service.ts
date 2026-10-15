@@ -221,18 +221,33 @@ export class UsersService {
     return { total, verified, pending: Math.max(0, total - verified), flagged };
   }
 
-  /** FR6, FR7 — verified volunteers whose home base is within `radiusKm` of the pickup. */
-  findVolunteersNear(coordinates: [number, number], radiusKm: number) {
-    return this.userModel
-      .find({
-        role: Role.Volunteer,
-        isVerified: true,
-        isAvailable: { $ne: false },
-        isActive: { $ne: false },
-        'address.location': nearSphere(coordinates, radiusKm),
-      })
-      .limit(25)
+  /**
+   * FR6, FR7 — verified volunteers whose home base is within `radiusKm` of the pickup. Admins
+   * pass `includeUnavailable` so off-duty volunteers can be shown (but not picked).
+   */
+  findVolunteersNear(
+    coordinates: [number, number],
+    radiusKm: number,
+    options: { includeUnavailable?: boolean } = {},
+  ) {
+    const filter: FilterQuery<User> = {
+      role: Role.Volunteer,
+      isVerified: true,
+      isActive: { $ne: false },
+      'address.location': nearSphere(coordinates, radiusKm),
+    };
+    if (!options.includeUnavailable) filter.isAvailable = { $ne: false };
+    return this.userModel.find(filter).limit(25).exec();
+  }
+
+  /** Active donors, used to tell donors that a new recipient request needs answering. */
+  async donorIds(limit = 200): Promise<string[]> {
+    const donors = await this.userModel
+      .find({ role: Role.Donor, isActive: { $ne: false } })
+      .select('_id')
+      .limit(limit)
       .exec();
+    return donors.map((donor) => donor.id as string);
   }
 
   /** FR10 — called by the points module; never decrements below zero. */

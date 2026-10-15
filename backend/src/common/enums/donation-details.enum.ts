@@ -21,9 +21,15 @@ export enum HandlingInstruction {
   FragileLiquid = 'fragile_liquid',
 }
 
-/** Who moves the food from the donor. */
+/**
+ * Who moves the food from the donor. The donor states a preference when posting; the admin
+ * confirms the final method after approval.
+ */
 export enum DeliveryMethod {
   VolunteerRider = 'volunteer_rider',
+  /** The recipient collects from the donor; the donor checks the recipient's code. */
+  RecipientPickup = 'recipient_pickup',
+  /** The donor carries the food to the recipient; the recipient's code confirms handover. */
   SelfDrop = 'self_drop',
 }
 

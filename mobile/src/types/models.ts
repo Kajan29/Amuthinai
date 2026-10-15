@@ -32,7 +32,11 @@ export type HandlingInstruction =
   | 'individually_packed'
   | 'fragile_liquid';
 
-export type DeliveryMethod = 'volunteer_rider' | 'self_drop';
+/** `self_drop` is donor self-delivery; `recipient_pickup` is recipient self-pickup. */
+export type DeliveryMethod = 'volunteer_rider' | 'recipient_pickup' | 'self_drop';
+
+/** Who carries the food on an assignment. */
+export type AssignmentMode = 'volunteer' | 'recipient_pickup' | 'donor_delivery';
 
 export type DietaryTag =
   | 'pure_vegetarian'
@@ -101,13 +105,18 @@ export interface Donation {
   readyFrom?: string;
   consumeBefore?: string;
   handling?: HandlingInstruction[];
+  /** The donor's preference until `deliveryMethodConfirmedAt` is set by an admin. */
   deliveryMethod?: DeliveryMethod;
+  deliveryMethodConfirmedAt?: string;
   handoverInstructions?: string;
   /** FR3 — when the food was cooked and how long it stays safe. */
   cookedAt: string;
   safeForHours: number;
   expiresAt: string;
   pickupAddress: Address;
+  /** The one recipient request this donation is confirmed for. */
+  foodRequestId?: string;
+  claimedAt?: string;
   status: DonationStatus;
   rejectionReason?: string;
   isFlagged?: boolean;
@@ -140,7 +149,10 @@ export interface FoodRequest {
   contactPhone?: string;
   dropAddress: Address;
   status: RequestStatus;
-  matchedDonationId?: string;
+  /** Populated with the donation on the recipient's own list. */
+  matchedDonationId?: string | Donation;
+  /** `claim` when the recipient claimed a general donation. */
+  origin?: 'request' | 'claim';
   fulfilledAt?: string;
   cancelledAt?: string;
   createdAt: string;
@@ -152,6 +164,7 @@ export interface Assignment {
   donationId: string;
   requestId?: string;
   volunteerId: string;
+  mode?: AssignmentMode;
   ngoId?: string;
   status: AssignmentStatus;
   /** FR9 — only ever present in the recipient's tracking payload. */
@@ -171,10 +184,12 @@ export interface DeliveryProof {
   id: string;
   assignmentId: string;
   stage: 'pickup' | 'delivery';
-  photoUrl: string;
+  /** Optional for in-person donor/recipient handovers. */
+  photoUrl?: string;
   capturedAt: string;
-  location: GeoPoint;
+  location?: GeoPoint;
   pinVerified: boolean;
+  recordedBy?: 'volunteer' | 'donor' | 'admin';
   quantityConfirmed?: number;
   note?: string;
 }

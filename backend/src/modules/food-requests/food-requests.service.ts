@@ -12,6 +12,7 @@ import { RequestStatus } from 'src/common/enums/request-status.enum';
 import { nearSphere } from 'src/common/utils/geo.util';
 import { NgosService } from 'src/modules/ngos/ngos.service';
 import { NotificationsService } from 'src/modules/notifications/notifications.service';
+import { UsersService } from 'src/modules/users/users.service';
 
 import { CreateFoodRequestDto } from './dto/create-food-request.dto';
 import { FoodRequest, FoodRequestDocument } from './schemas/food-request.schema';
@@ -25,6 +26,7 @@ export class FoodRequestsService {
     @InjectModel(FoodRequest.name) private readonly model: Model<FoodRequest>,
     private readonly ngosService: NgosService,
     private readonly notifications: NotificationsService,
+    private readonly usersService: UsersService,
   ) {}
 
   /** FR5 — one open request per recipient keeps the matching queue honest. */
@@ -57,7 +59,26 @@ export class FoodRequestsService {
       data: { requestId: request.id as string },
     });
 
+    // Donors answer requests from their dashboard, so let them know a new one is waiting.
+    const donors = await this.usersService.donorIds();
+    await this.notifications.sendToUsers(donors, {
+      title: 'A family needs food',
+      body: `${request.servingsNeeded} servings needed in ${area} by ${formatTime(request.neededBy)}. Open your dashboard to help.`,
+      type: 'request',
+      data: { requestId: request.id as string },
+    });
+
     return request;
+  }
+
+  /** What a donor sees before choosing to answer a request: enough to decide, no contact details. */
+  async openRequestForDonor(id: string) {
+    const request = await this.model
+      .findOne({ _id: id, origin: { $ne: 'claim' } })
+      .populate('recipientId', 'name')
+      .exec();
+    if (!request) throw new NotFoundException('Request not found');
+    return toDonorRequestView(request);
   }
 
   async findMine(
@@ -194,6 +215,7 @@ export class FoodRequestsService {
   listOpenForDonors(): Promise<FoodRequestDocument[]> {
     return this.model
       .find({ status: RequestStatus.Open, neededBy: { $gt: new Date() } })
+      .populate('recipientId', 'name')
       .sort({ neededBy: 1 })
       .limit(30)
       .exec();
@@ -388,4 +410,58 @@ export class FoodRequestsService {
       nearbyHubs,
     };
   }
+}
+
+/** Requests whose deadline is this close are shown as urgent to donors. */
+const URGENT_REQUEST_MINUTES = 120;
+
+export interface DonorRequestView {
+  id: string;
+  recipientName: string;
+  servingsNeeded: number;
+  familySize: number | null;
+  neededBy: string;
+  minutesLeft: number;
+  isUrgent: boolean;
+  notes: string | null;
+  foodCategory: string | null;
+  dietaryRequirements: string[];
+  preferredHandover: 'doorstep' | 'hub_pickup';
+  locationLabel: string;
+  status: RequestStatus;
+  createdAt: string;
+}
+
+export function toDonorRequestView(request: FoodRequestDocument): DonorRequestView {
+  const recipient = request.recipientId as unknown as { name?: string } | null;
+  const neededBy = new Date(request.neededBy);
+  const minutesLeft = Math.max(0, Math.round((neededBy.getTime() - Date.now()) / 60_000));
+  return {
+    id: request.id as string,
+    // Donors only ever see a first name; full contact details stay with the admin.
+    recipientName: recipient?.name?.split(' ')[0] || 'A family',
+    servingsNeeded: request.servingsNeeded,
+    familySize: request.familySize ?? null,
+    neededBy: neededBy.toISOString(),
+    minutesLeft,
+    isUrgent: minutesLeft <= URGENT_REQUEST_MINUTES,
+    notes: request.notes ?? null,
+    foodCategory: request.foodCategory ?? null,
+    dietaryRequirements: request.dietaryRequirements ?? [],
+    preferredHandover: request.deliveryMethod ?? 'doorstep',
+    locationLabel:
+      [request.dropAddress?.city, request.dropAddress?.district].filter(Boolean).join(', ') ||
+      request.dropAddress?.line1 ||
+      'Nearby',
+    status: request.status,
+    createdAt: new Date(request.createdAt).toISOString(),
+  };
+}
+
+function formatTime(date: Date): string {
+  return new Date(date).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Colombo',
+  });
 }

@@ -13,6 +13,11 @@ import { useAuthStore } from '@/store/auth.store';
 import { useOnboardingStore } from '@/store/onboarding.store';
 import { useLanguageStore } from '@/store/language.store';
 import { colors } from '@/theme';
+import {
+  stackFadeTransition,
+  stackPushTransition,
+  stackSheetTransition,
+} from '@/theme/transitions';
 import { configureGoogleSignIn } from '@/utils/googleAuth';
 
 function PushRegistration() {
@@ -46,16 +51,29 @@ export default function RootLayout() {
               headerTintColor: colors.text,
               headerTitleStyle: { fontWeight: '600' },
               contentStyle: { backgroundColor: colors.surface },
+              ...stackPushTransition,
             }}
           >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(donor)" options={{ headerShown: false }} />
-            <Stack.Screen name="(volunteer)" options={{ headerShown: false }} />
-            <Stack.Screen name="(recipient)" options={{ headerShown: false }} />
-            <Stack.Screen name="(admin)" options={{ headerShown: false }} />
-            <Stack.Screen name="notifications" options={{ headerShown: false }} />
+            <Stack.Screen name="index" options={{ headerShown: false, ...stackFadeTransition }} />
+            <Stack.Screen
+              name="onboarding"
+              options={{ headerShown: false, ...stackFadeTransition }}
+            />
+            <Stack.Screen name="(auth)" options={{ headerShown: false, ...stackFadeTransition }} />
+            <Stack.Screen name="(donor)" options={{ headerShown: false, ...stackFadeTransition }} />
+            <Stack.Screen
+              name="(volunteer)"
+              options={{ headerShown: false, ...stackFadeTransition }}
+            />
+            <Stack.Screen
+              name="(recipient)"
+              options={{ headerShown: false, ...stackFadeTransition }}
+            />
+            <Stack.Screen name="(admin)" options={{ headerShown: false, ...stackFadeTransition }} />
+            <Stack.Screen
+              name="notifications"
+              options={{ headerShown: false, ...stackSheetTransition }}
+            />
           </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>

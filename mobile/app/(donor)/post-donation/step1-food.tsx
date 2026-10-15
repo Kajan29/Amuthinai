@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
+import { WizardListingBanner } from '@/components/donor/WizardListingBanner';
 import { cloudinaryService } from '@/services/cloudinary';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
@@ -134,14 +135,7 @@ export default function Step1Food() {
           <Step n={3} label={t('donor.stepReview')} />
         </View>
 
-        {draft.foodRequestId ? (
-          <View style={styles.requestBanner}>
-            <Ionicons name="people" size={16} color={donorColors.plum} />
-            <Text style={styles.requestBannerText}>
-              {t('donor.fulfillingRequest', { count: servings })}
-            </Text>
-          </View>
-        ) : null}
+        <WizardListingBanner />
 
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>{t('donor.selectCategory')}</Text>
@@ -452,15 +446,6 @@ const styles = StyleSheet.create({
     right: 8,
     top: 8,
   },
-  requestBanner: {
-    alignItems: 'center',
-    backgroundColor: '#F8E8EE',
-    borderRadius: 14,
-    flexDirection: 'row',
-    gap: 8,
-    padding: 12,
-  },
-  requestBannerText: { color: donorColors.plum, flex: 1, fontSize: 13, fontWeight: '600' },
   catIcon: {
     alignItems: 'center',
     backgroundColor: donorColors.iconWell,

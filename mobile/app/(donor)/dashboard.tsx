@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,14 +13,17 @@ import {
   View,
 } from 'react-native';
 
+import type { DonorOpenRequest } from '@/api/donations.api';
 import { DonorDonationCard } from '@/components/donor/DonorDonationCard';
 import { DonorShell } from '@/components/donor/DonorShell';
+import { RecipientInfoCard } from '@/components/flow/RecipientInfoCard';
 import { EmptyState } from '@/components/ui';
 import { IN_TRANSIT_STATUSES, TERMINAL_STATUSES } from '@/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { useDonorDashboard } from '@/hooks/useDonorDashboard';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
+import { formatClock } from '@/utils/format';
 
 type Tab = 'all' | 'inTransit' | 'history';
 
@@ -37,8 +41,11 @@ export default function DonorDashboard() {
   const draftTitle = useDonationDraft((state) => state.draft.title);
   const hasDraft = Boolean(draftTitle?.trim());
   const [tab, setTab] = useState<Tab>('all');
+  const [selectedRequest, setSelectedRequest] = useState<DonorOpenRequest | null>(null);
 
   const items = useMemo(() => dashboard.data?.donations ?? [], [dashboard.data]);
+  const openRequests = dashboard.data?.openRequests ?? [];
+  const needsAction = items.filter((item) => item.awaitingDonorHandover);
   const counts = useMemo(
     () => ({
       all: items.length,
@@ -63,7 +70,18 @@ export default function DonorDashboard() {
   }
 
   function postWithoutRequest() {
-    updateDraft({ foodRequestId: undefined });
+    updateDraft({ foodRequestId: undefined, requestSummary: undefined });
+    router.push('/(donor)/post-donation/step1-food');
+  }
+
+  /** The donor accepts a recipient's request: the wizard is prefilled for that need. */
+  function answerRequest(request: DonorOpenRequest) {
+    setSelectedRequest(null);
+    updateDraft({
+      foodRequestId: request.id,
+      requestSummary: request,
+      servings: request.servingsNeeded,
+    });
     router.push('/(donor)/post-donation/step1-food');
   }
 
@@ -78,7 +96,7 @@ export default function DonorDashboard() {
   }
 
   return (
-    <DonorShell active="home" hasAlerts={Boolean(donor?.hasAlerts)}>
+    <DonorShell active="home">
       <View style={styles.root}>
         <FlatList
           data={visible}
@@ -125,6 +143,108 @@ export default function DonorDashboard() {
                   tone="karma"
                 />
               </View>
+
+              {needsAction.map((item) => (
+                <Pressable
+                  key={`action-${item.id}`}
+                  onPress={() => openDonation(item.id)}
+                  style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.actionIcon}>
+                    <Ionicons
+                      name={item.deliveryMethod === 'self_drop' ? 'car' : 'keypad'}
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.actionKicker}>{t('flow.awaitingYou')}</Text>
+                    <Text style={styles.actionTitle} numberOfLines={1}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.actionBody} numberOfLines={2}>
+                      {item.deliveryMethod === 'self_drop'
+                        ? t('flow.methodDonorDeliveryHint')
+                        : t('flow.methodRecipientPickupHint')}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={donorColors.plum} />
+                </Pressable>
+              ))}
+
+              <View style={styles.needsHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>{t('donor.needsTitle')}</Text>
+                  <Text style={styles.sectionLead}>
+                    {openRequests.length
+                      ? t('flow.familiesWaiting', { count: openRequests.length })
+                      : t('donor.needsLead')}
+                  </Text>
+                </View>
+              </View>
+              {openRequests.length ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.needsRow}
+                >
+                  {openRequests.map((request) => (
+                    <Pressable
+                      key={request.id}
+                      onPress={() => setSelectedRequest(request)}
+                      style={({ pressed }) => [
+                        styles.needCard,
+                        request.isUrgent && styles.needCardUrgent,
+                        pressed && styles.pressed,
+                      ]}
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.needTop}>
+                        <View style={styles.needAvatar}>
+                          <Text style={styles.needAvatarText}>
+                            {request.recipientName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        {request.isUrgent ? (
+                          <View style={styles.urgentTag}>
+                            <Ionicons name="flame" size={10} color="#C2410C" />
+                            <Text style={styles.urgentTagText}>{t('flow.urgent')}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.needName} numberOfLines={1}>
+                        {request.recipientName}
+                      </Text>
+                      <Text style={styles.needMeals}>
+                        {t('donor.needsMeals', { count: request.servingsNeeded })}
+                      </Text>
+                      <Text style={styles.needMeta} numberOfLines={1}>
+                        <Ionicons name="location-outline" size={11} color={donorColors.muted} />{' '}
+                        {request.locationLabel}
+                      </Text>
+                      <Text
+                        style={[styles.needMeta, request.isUrgent && styles.needMetaUrgent]}
+                        numberOfLines={1}
+                      >
+                        {t('donor.needsBy', { time: formatClock(request.neededBy) })}
+                      </Text>
+                      <View style={styles.helpPill}>
+                        <Text style={styles.helpPillText}>{t('donor.helpNow')}</Text>
+                        <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              ) : (
+                <View style={styles.needsEmpty}>
+                  <Ionicons name="heart-outline" size={18} color={donorColors.muted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.needsEmptyTitle}>{t('donor.needsEmpty')}</Text>
+                    <Text style={styles.needsEmptyHint}>{t('donor.needsEmptyHint')}</Text>
+                  </View>
+                </View>
+              )}
 
               <ScrollView
                 horizontal
@@ -176,11 +296,48 @@ export default function DonorDashboard() {
               <Ionicons name="add" size={16} color="#FFFFFF" />
             </View>
             <Text style={styles.ctaLabel}>
-              {hasDraft ? t('donor.continueDraft') : t('donor.postSurplus')}
+              {hasDraft ? t('donor.continueDraft') : t('flow.postGeneral')}
             </Text>
           </Pressable>
         </View>
       </View>
+
+      <Modal
+        visible={selectedRequest !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedRequest(null)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setSelectedRequest(null)} />
+        {selectedRequest ? (
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{t('donor.fulfillRequest')}</Text>
+            <RecipientInfoCard
+              accent={donorColors.plum}
+              recipient={{
+                name: selectedRequest.recipientName,
+                servingsNeeded: selectedRequest.servingsNeeded,
+                familySize: selectedRequest.familySize,
+                neededBy: selectedRequest.neededBy,
+                notes: selectedRequest.notes,
+                dietaryRequirements: selectedRequest.dietaryRequirements,
+                areaLabel: selectedRequest.locationLabel,
+                isUrgent: selectedRequest.isUrgent,
+              }}
+            />
+            <Text style={styles.sheetHint}>{t('flow.adminConfirms')}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => answerRequest(selectedRequest)}
+              style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
+            >
+              <Ionicons name="hand-left-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.ctaLabel}>{t('flow.answerRequest')}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </Modal>
     </DonorShell>
   );
 }
@@ -321,4 +478,113 @@ const styles = StyleSheet.create({
     width: 20,
   },
   ctaLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  actionCard: {
+    alignItems: 'center',
+    backgroundColor: donorColors.orangeSoft,
+    borderColor: '#F6D3A1',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+  },
+  actionIcon: {
+    alignItems: 'center',
+    backgroundColor: donorColors.orange,
+    borderRadius: 12,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  actionKicker: {
+    color: '#C47A2A',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  actionTitle: { color: donorColors.ink, fontSize: 14, fontWeight: '800', marginTop: 1 },
+  actionBody: { color: donorColors.muted, fontSize: 12, marginTop: 2 },
+  needsHeader: { alignItems: 'flex-end', flexDirection: 'row', marginBottom: -6 },
+  sectionTitle: { color: donorColors.ink, fontSize: 17, fontWeight: '800' },
+  sectionLead: { color: donorColors.muted, fontSize: 12, marginTop: 2 },
+  needsRow: { gap: 10, paddingRight: 4 },
+  needCard: {
+    backgroundColor: donorColors.card,
+    borderColor: donorColors.line,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 3,
+    padding: 12,
+    width: 168,
+  },
+  needCardUrgent: { borderColor: '#FDBA74', backgroundColor: '#FFFBF5' },
+  needTop: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  needAvatar: {
+    alignItems: 'center',
+    backgroundColor: '#F4E9EC',
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    marginBottom: 6,
+    width: 32,
+  },
+  needAvatarText: { color: donorColors.plum, fontSize: 14, fontWeight: '800' },
+  urgentTag: {
+    alignItems: 'center',
+    backgroundColor: '#FFF7ED',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  urgentTagText: { color: '#C2410C', fontSize: 9, fontWeight: '800' },
+  needName: { color: donorColors.ink, fontSize: 14, fontWeight: '800' },
+  needMeals: { color: donorColors.plum, fontSize: 13, fontWeight: '700' },
+  needMeta: { color: donorColors.muted, fontSize: 11 },
+  needMetaUrgent: { color: '#C2410C', fontWeight: '700' },
+  helpPill: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: donorColors.plum,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  helpPillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  needsEmpty: {
+    alignItems: 'center',
+    backgroundColor: donorColors.card,
+    borderColor: donorColors.line,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 14,
+  },
+  needsEmptyTitle: { color: donorColors.ink, fontSize: 13, fontWeight: '700' },
+  needsEmptyHint: { color: donorColors.muted, fontSize: 12, marginTop: 2 },
+  sheetBackdrop: { backgroundColor: 'rgba(28,22,20,0.45)', flex: 1 },
+  sheet: {
+    backgroundColor: donorColors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    gap: 14,
+    paddingBottom: 28,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    backgroundColor: donorColors.badge,
+    borderRadius: 3,
+    height: 5,
+    width: 44,
+  },
+  sheetTitle: { color: donorColors.ink, fontSize: 19, fontWeight: '800' },
+  sheetHint: { color: donorColors.muted, fontSize: 12, textAlign: 'center' },
 });

@@ -22,7 +22,6 @@ export type DonorShellTab = 'home' | 'donations' | 'map' | 'impact' | 'profile';
 interface DonorShellProps {
   active: DonorShellTab;
   children: ReactNode;
-  hasAlerts?: boolean;
 }
 
 function initialsOf(name?: string): string {
@@ -30,7 +29,7 @@ function initialsOf(name?: string): string {
   return parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('') || 'D';
 }
 
-export function DonorShell({ active, children, hasAlerts = false }: DonorShellProps) {
+export function DonorShell({ active, children }: DonorShellProps) {
   const { t } = useTranslation();
   const { user, confirmLogout } = useAuth();
   const [sidebarVisible, setSidebarVisible] = useState(false);
@@ -131,15 +130,6 @@ export function DonorShell({ active, children, hasAlerts = false }: DonorShellPr
         <Image source={logo} style={styles.logoImage} resizeMode="contain" />
 
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.circleBtn}
-            onPress={() => router.push('/notifications' as never)}
-            activeOpacity={0.7}
-            accessibilityLabel={t('donor.alerts')}
-          >
-            <Ionicons name="notifications-outline" size={20} color={donorColors.ink} />
-            {hasAlerts ? <View style={styles.alertDot} /> : null}
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.avatarBtn}
             onPress={() => router.push('/(donor)/profile')}
@@ -281,17 +271,6 @@ const styles = StyleSheet.create({
   },
   logoImage: { height: 38, width: 135 },
   headerRight: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-  alertDot: {
-    backgroundColor: donorColors.alert,
-    borderColor: '#FFFFFF',
-    borderRadius: 4,
-    borderWidth: 1.5,
-    height: 8,
-    position: 'absolute',
-    right: 9,
-    top: 9,
-    width: 8,
-  },
   avatarBtn: {
     alignItems: 'center',
     backgroundColor: donorColors.orange,

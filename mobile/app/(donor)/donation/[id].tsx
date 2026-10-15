@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Platform,
@@ -12,12 +13,17 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
-import { donationsApi } from '@/api/donations.api';
+import { donationsApi, type DonationAssignmentInfo } from '@/api/donations.api';
+import { queryClient } from '@/api/queryClient';
 import { ChatLog } from '@/components/ChatLog';
 import { DeliveryPinCard } from '@/components/DeliveryPinCard';
+import { DonationProgress } from '@/components/flow/DonationProgress';
+import { RecipientInfoCard } from '@/components/flow/RecipientInfoCard';
+import { deliveryMethodMeta, methodOfMode } from '@/components/flow/deliveryMethods';
 import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StatusTimeline } from '@/components/StatusTimeline';
@@ -104,6 +110,20 @@ export default function DonationDetail() {
 
   const item = donation.data;
   const tracking = assignment.data;
+  const mode = tracking?.assignment ? (tracking.mode ?? 'volunteer') : null;
+  const inPerson = mode === 'recipient_pickup' || mode === 'donor_delivery';
+  const method = deliveryMethodMeta(
+    mode ? methodOfMode(mode) : (tracking?.deliveryMethod ?? item?.deliveryMethod),
+  );
+  const methodConfirmed = Boolean(mode) || Boolean(tracking?.deliveryMethodConfirmed);
+
+  async function refreshAll() {
+    await Promise.all([
+      donation.refetch(),
+      assignment.refetch(),
+      queryClient.invalidateQueries({ queryKey: ['donor.dashboard'] }),
+    ]);
+  }
   const pickup =
     toLatLng(tracking?.pickupAddress?.location) ?? toLatLng(item?.pickupAddress?.location);
   const drop = toLatLng(tracking?.dropAddress?.location);
@@ -187,6 +207,9 @@ export default function DonationDetail() {
             {item.servings} servings · {item.foodType}
           </Text>
           <UrgentCountdown cookedAt={item.cookedAt} safeForHours={item.safeForHours} />
+          <View style={styles.progressWrap}>
+            <DonationProgress status={item.status} accent={donorColors.plum} />
+          </View>
           {Boolean(item.rejectionReason) && <Text style={styles.error}>{item.rejectionReason}</Text>}
         </Card>
 
@@ -255,6 +278,57 @@ export default function DonationDetail() {
               </View>
             </View>
 
+            <View style={styles.methodCard}>
+              <View style={styles.methodIcon}>
+                <Ionicons name={method?.icon ?? 'help-outline'} size={18} color={donorColors.plum} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.endpointLabel}>{t('flow.deliveredHow')}</Text>
+                <Text style={styles.methodTitle}>
+                  {method ? t(method.labelKey) : t('flow.methodPending')}
+                </Text>
+                <Text style={styles.methodHint}>
+                  {methodConfirmed && method ? t(method.hintKey) : t('flow.adminConfirms')}
+                </Text>
+              </View>
+            </View>
+
+            {tracking?.recipient ? (
+              <RecipientInfoCard
+                accent={donorColors.plum}
+                recipient={{
+                  name: tracking.recipient.name,
+                  servingsNeeded: tracking.recipient.servingsNeeded,
+                  familySize: tracking.recipient.familySize,
+                  neededBy: tracking.recipient.neededBy,
+                  notes: tracking.recipient.notes,
+                  dietaryRequirements: tracking.recipient.dietaryRequirements,
+                  areaLabel: tracking.recipient.areaLabel,
+                  phone: tracking.recipient.phone,
+                  origin: tracking.recipient.origin,
+                }}
+              />
+            ) : item.status === 'pending_approval' || item.status === 'approved' ? (
+              <View style={styles.methodCard}>
+                <View style={styles.methodIcon}>
+                  <Ionicons name="people-outline" size={18} color={donorColors.plum} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.methodTitle}>{t('flow.awaitingClaim')}</Text>
+                  <Text style={styles.methodHint}>{t('flow.generalHint')}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {inPerson && tracking ? (
+              <DonorHandoverPanel
+                info={tracking}
+                recipientName={tracking.recipient?.name ?? t('flow.recipientLabel')}
+                onDone={refreshAll}
+              />
+            ) : null}
+
+            {!inPerson ? (
             <View style={styles.volunteerInfoCard}>
               <View style={styles.volunteerAvatarWrap}>
                 <Text style={styles.volunteerAvatarInitial}>
@@ -287,6 +361,7 @@ export default function DonationDetail() {
                 </Pressable>
               ) : null}
             </View>
+            ) : null}
 
             <DeliveryPinCard
               pin={tracking?.pickupPin}
@@ -301,23 +376,32 @@ export default function DonationDetail() {
                 value={addressLine(tracking?.pickupAddress ?? item.pickupAddress) || t('donor.noMapYet')}
               />
               <View style={styles.endpointLine} />
-              <Endpoint
-                color="#0F7B4F"
-                label={t('donor.volunteerNow')}
-                value={
-                  tracking?.volunteer
-                    ? t('donor.volunteerAway', {
-                        name: tracking.volunteer.name,
-                        minutes: tracking.etaMinutes ?? 0,
-                      })
-                    : t('donor.waitingVolunteer')
-                }
-              />
-              <View style={styles.endpointLine} />
+              {!inPerson ? (
+                <>
+                  <Endpoint
+                    color="#0F7B4F"
+                    label={t('donor.volunteerNow')}
+                    value={
+                      tracking?.volunteer
+                        ? t('donor.volunteerAway', {
+                            name: tracking.volunteer.name,
+                            minutes: tracking.etaMinutes ?? 0,
+                          })
+                        : t('donor.waitingVolunteer')
+                    }
+                  />
+                  <View style={styles.endpointLine} />
+                </>
+              ) : null}
               <Endpoint
                 color="#F59E0B"
                 label={t('donor.destination')}
-                value={addressLine(tracking?.dropAddress) || t('donor.matchingRider')}
+                value={
+                  addressLine(tracking?.dropAddress) ||
+                  (mode === 'recipient_pickup'
+                    ? t('flow.methodRecipientPickup')
+                    : tracking?.recipient?.areaLabel || t('donor.matchingRider'))
+                }
               />
             </View>
 
@@ -327,8 +411,17 @@ export default function DonationDetail() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.proofRow}>
                   {tracking.proofs.map((proof) => (
                     <View key={proof.id} style={styles.proofSlot}>
-                      <Image source={{ uri: proof.photoUrl }} style={styles.proofImage} />
-                      <Text style={styles.proofLabel}>{proof.stage}</Text>
+                      {proof.photoUrl ? (
+                        <Image source={{ uri: proof.photoUrl }} style={styles.proofImage} />
+                      ) : (
+                        <View style={[styles.proofImage, styles.proofVerified]}>
+                          <Ionicons name="shield-checkmark" size={26} color={donorColors.green} />
+                        </View>
+                      )}
+                      <Text style={styles.proofLabel}>
+                        {proof.stage}
+                        {proof.pinVerified ? ' · ✓' : ''}
+                      </Text>
                     </View>
                   ))}
                 </ScrollView>
@@ -354,6 +447,121 @@ export default function DonationDetail() {
         ) : null}
       </Screen>
     </>
+  );
+}
+
+/**
+ * Recipient self-pickup and donor self-delivery: the donor confirms the handover by typing
+ * the recipient's code. For self-delivery they first mark that they have set off.
+ */
+function DonorHandoverPanel({
+  info,
+  recipientName,
+  onDone,
+}: {
+  info: DonationAssignmentInfo;
+  recipientName: string;
+  onDone: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [code, setCode] = useState('');
+  const assignmentId = info.assignment?.id ?? '';
+  const delivering = info.mode === 'donor_delivery';
+
+  const depart = useMutation({
+    mutationFn: () => donationsApi.depart(assignmentId),
+    onSuccess: onDone,
+    onError: (error) => Alert.alert(t('flow.departTitle'), (error as Error).message),
+  });
+
+  const confirm = useMutation({
+    mutationFn: () => donationsApi.confirmHandover(assignmentId, { pin: code }),
+    async onSuccess() {
+      setCode('');
+      Alert.alert(t('flow.handoverDone'), t('flow.handoverDoneBody'));
+      await onDone();
+    },
+    onError: (error) => Alert.alert(t('flow.handoverTitle'), (error as Error).message),
+  });
+
+  if (info.assignment?.status === 'completed') {
+    return (
+      <View style={[styles.handoverCard, styles.handoverDone]}>
+        <Ionicons name="checkmark-circle" size={22} color={donorColors.green} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.methodTitle}>{t('flow.handoverDone')}</Text>
+          <Text style={styles.methodHint}>{t('flow.verificationRequired')}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.handoverCard}>
+      {info.canDepart ? (
+        <View style={styles.departBlock}>
+          <Text style={styles.methodTitle}>{t('flow.departTitle')}</Text>
+          <Text style={styles.methodHint}>{t('flow.departLead', { name: recipientName })}</Text>
+          <Pressable
+            onPress={() => depart.mutate()}
+            disabled={depart.isPending}
+            style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+          >
+            {depart.isPending ? (
+              <ActivityIndicator color={donorColors.plum} />
+            ) : (
+              <>
+                <Ionicons name="car" size={16} color={donorColors.plum} />
+                <Text style={styles.secondaryBtnText}>{t('flow.departButton')}</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={{ gap: 4 }}>
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: 6 }}>
+          <Ionicons name="keypad" size={16} color={donorColors.orange} />
+          <Text style={styles.methodTitle}>{t('flow.handoverTitle')}</Text>
+        </View>
+        <Text style={styles.methodHint}>
+          {delivering
+            ? t('flow.handoverLeadDelivery', { name: recipientName })
+            : t('flow.handoverLeadPickup', { name: recipientName })}
+        </Text>
+      </View>
+      <TextInput
+        value={code}
+        onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 4))}
+        keyboardType="number-pad"
+        maxLength={4}
+        placeholder={t('flow.handoverCodePlaceholder')}
+        placeholderTextColor="#B3AAA3"
+        style={styles.codeInput}
+        accessibilityLabel={t('flow.handoverCodePlaceholder')}
+      />
+      <Pressable
+        onPress={() => confirm.mutate()}
+        disabled={code.length !== 4 || confirm.isPending || !info.canConfirmHandover}
+        style={({ pressed }) => [
+          styles.primaryBtn,
+          (code.length !== 4 || !info.canConfirmHandover) && { opacity: 0.45 },
+          pressed && { opacity: 0.85 },
+        ]}
+        accessibilityRole="button"
+      >
+        {confirm.isPending ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <>
+            <Ionicons name="shield-checkmark" size={16} color="#FFFFFF" />
+            <Text style={styles.primaryBtnText}>{t('flow.handoverConfirm')}</Text>
+          </>
+        )}
+      </Pressable>
+      <Text style={styles.handoverFoot}>{t('flow.verificationRequired')}</Text>
+    </View>
   );
 }
 
@@ -483,4 +691,82 @@ const styles = StyleSheet.create({
   proofSlot: { width: 110 },
   proofImage: { borderRadius: 10, height: 80, width: 110 },
   proofLabel: { color: donorColors.muted, fontSize: 11, marginTop: 6, textTransform: 'capitalize' },
+  proofVerified: { alignItems: 'center', backgroundColor: donorColors.greenSoft, justifyContent: 'center' },
+  progressWrap: { marginTop: 14 },
+  methodCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#ECE7E1',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+  },
+  methodIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F4E9EC',
+    borderRadius: 12,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  methodTitle: { color: donorColors.ink, fontSize: 14, fontWeight: '800' },
+  methodHint: { color: donorColors.muted, fontSize: 12, lineHeight: 17, marginTop: 2 },
+  handoverCard: {
+    backgroundColor: donorColors.orangeSoft,
+    borderColor: '#F6D3A1',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  handoverDone: {
+    alignItems: 'center',
+    backgroundColor: donorColors.greenSoft,
+    borderColor: '#BFE6CF',
+    flexDirection: 'row',
+  },
+  departBlock: {
+    borderBottomColor: '#F6D3A1',
+    borderBottomWidth: 1,
+    gap: 6,
+    paddingBottom: 12,
+  },
+  codeInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#F0D2A8',
+    borderRadius: 14,
+    borderWidth: 1,
+    color: donorColors.ink,
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: 10,
+    paddingVertical: 12,
+    textAlign: 'center',
+  },
+  primaryBtn: {
+    alignItems: 'center',
+    backgroundColor: donorColors.plum,
+    borderRadius: 14,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  primaryBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  secondaryBtn: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderColor: donorColors.plum,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+    minHeight: 40,
+    paddingHorizontal: 14,
+  },
+  secondaryBtnText: { color: donorColors.plum, fontSize: 13, fontWeight: '800' },
+  handoverFoot: { color: '#9A6B3A', fontSize: 11, textAlign: 'center' },
 });

@@ -60,12 +60,24 @@ export class FreshnessTask {
         data: { donationId: id },
       };
 
-      const volunteerIds = live
+      const carrierIds = live
         .filter((assignment) => assignment.donationId.toString() === id)
         .map((assignment) => assignment.volunteerId.toString());
 
-      await this.notificationsService.sendToUsers([donation.donorId.toString(), ...volunteerIds], payload);
-      await this.notificationsService.sendToAdmins(payload);
+      await this.notificationsService.sendToUsers([donation.donorId.toString(), ...carrierIds], payload);
+
+      if (donation.status === DonationStatus.PendingApproval) {
+        await this.notificationsService.sendToAdmins({
+          ...payload,
+          title: 'Urgent: review this donation now',
+          body: `${donation.title} is still waiting for approval and is safe for ${minutes} more minutes.`,
+        });
+      } else if (carrierIds.length === 0) {
+        // Nobody is moving it yet: admins and nearby available volunteers both hear about it.
+        await this.donationsService.alertQuickCollection(donation);
+      } else {
+        await this.notificationsService.sendToAdmins(payload);
+      }
     }
   }
 

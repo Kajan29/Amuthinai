@@ -17,8 +17,9 @@ export class DeliveryProofService {
   async record(
     assignmentId: string,
     stage: ProofStage,
-    dto: SubmitProofDto,
+    dto: Partial<SubmitProofDto>,
     pinVerified: boolean,
+    recordedBy: 'volunteer' | 'donor' | 'admin' = 'volunteer',
   ): Promise<DeliveryProofDocument> {
     const existing = await this.model.exists({ assignmentId, stage });
     if (existing) throw new ConflictException(`${stage} proof was already submitted`);
@@ -31,6 +32,7 @@ export class DeliveryProofService {
       pinVerified,
       quantityConfirmed: dto.quantityConfirmed,
       note: dto.note,
+      recordedBy,
     });
   }
 

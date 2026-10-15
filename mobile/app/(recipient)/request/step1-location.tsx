@@ -95,7 +95,7 @@ export default function Step1LocationScreen() {
   }>({
     latitude: draft.dropAddress?.location?.coordinates[1] ?? 9.6738,
     longitude: draft.dropAddress?.location?.coordinates[0] ?? 80.0336,
-    addressName: draft.hubAddress || 'Point Pedro Road, Nallur',
+    addressName: draft.dropAddress?.line1 || 'Point Pedro Road, Nallur',
   });
 
   // Manually chosen or nearest relief hub
@@ -179,23 +179,14 @@ export default function Step1LocationScreen() {
     pinLocation.longitude,
   );
 
-  let nearbyActiveDistributionZone: {
-    distanceKm: number;
-    authorizedHelpline: string;
-    sectorLabel: string;
-  } | null = null;
-
-  if (backendNearbyRequests && backendNearbyRequests.length > 0) {
-    const firstNearby = backendNearbyRequests[0]!;
-    const dist = distanceKm(currentPinGeoPoint, firstNearby.dropAddress.location);
-    if (dist <= 1.0) {
-      nearbyActiveDistributionZone = {
-        distanceKm: Number(dist.toFixed(1)),
+  // The backend already limits results to the 1 km radius and omits exact coordinates.
+  const firstNearby = backendNearbyRequests?.[0];
+  const nearbyActiveDistributionZone = firstNearby
+    ? {
         authorizedHelpline: '+94 21 222 4589',
-        sectorLabel: `${firstNearby.dropAddress.city || 'Jaffna'} Relief Sector`,
-      };
-    }
-  }
+        sectorLabel: `${firstNearby.dropAddress?.city || 'Jaffna'} Relief Sector`,
+      }
+    : null;
 
   const { data: ngoPage } = useQuery({
     queryKey: ['ngos'],
@@ -214,28 +205,15 @@ export default function Step1LocationScreen() {
     })
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
-  // Auto-find closest hub if none manually picked
-  const nearestHub = hubsWithDistance[0] ?? {
-    id: '',
-    name: 'No partner hub yet',
-    category: '',
-    address: pinLocation.addressName || 'Drop a pin',
-    city: '',
-    lat: pinLocation.latitude,
-    lng: pinLocation.longitude,
-    openHours: '',
-    status: 'Upcoming' as const,
-    availableMeals: 0,
-    mealType: '',
-    phone: '',
-    coordinator: '',
-    tags: [] as string[],
+  // Hub selection is optional — only set when the recipient explicitly picks one.
+  const selectedHub = selectedHubOverride;
+  const selectedHubDistance = selectedHub
+    ? distanceKm(currentPinGeoPoint, toGeoPoint(selectedHub.lat, selectedHub.lng))
+    : 0;
+
+  const toggleHub = (hub: HubItem) => {
+    setSelectedHubOverride((current) => (current?.id === hub.id ? null : hub));
   };
-  const selectedHub = selectedHubOverride || nearestHub;
-  const selectedHubDistance = distanceKm(
-    currentPinGeoPoint,
-    toGeoPoint(selectedHub.lat, selectedHub.lng),
-  );
 
   // When map is dragged or location is picked
   const handleMapCoordChange = (lat: number, lng: number, placeName?: string) => {
@@ -329,6 +307,10 @@ export default function Step1LocationScreen() {
 
   // Select a Hub from Map Marker or Nearby List
   const handleSelectHub = (hub: HubItem) => {
+    if (selectedHub?.id === hub.id) {
+      setSelectedHubOverride(null);
+      return;
+    }
     setSelectedHubOverride(hub);
     Alert.alert(
       'Relief Hub Selected',
@@ -369,12 +351,12 @@ export default function Step1LocationScreen() {
 
     // Save draft state
     update({
-      hubId: selectedHub.id,
-      hubName: selectedHub.name,
-      hubAddress: selectedHub.address,
-      hubDistance: `${selectedHubDistance.toFixed(1)} km away`,
+      hubId: selectedHub?.id,
+      hubName: selectedHub?.name,
+      hubAddress: selectedHub?.address,
+      hubDistance: selectedHub ? `${selectedHubDistance.toFixed(1)} km away` : undefined,
       dropAddress: {
-        line1: pinLocation.addressName || selectedHub.address,
+        line1: pinLocation.addressName || 'Pinned location',
         city: 'Jaffna',
         location: {
           type: 'Point',
@@ -401,7 +383,9 @@ export default function Step1LocationScreen() {
     width: 600,
     height: 420,
     markers: [
-      { latitude: selectedHub.lat, longitude: selectedHub.lng, label: 'restaurant', color: '5A1626' },
+      ...(selectedHub
+        ? [{ latitude: selectedHub.lat, longitude: selectedHub.lng, label: 'restaurant', color: '5A1626' }]
+        : []),
       { latitude: pinLocation.latitude, longitude: pinLocation.longitude, label: 'home', color: 'F59E0B' },
       ...(previousReqCoords
         ? [
@@ -631,7 +615,7 @@ export default function Step1LocationScreen() {
               >
                 {/* 1. All Nearby Relief Hubs Markers with Available Meals */}
                 {hubsWithDistance.slice(0, 5).map((hub) => {
-                  const isSelected = hub.id === selectedHub.id;
+                  const isSelected = hub.id === selectedHub?.id;
                   return (
                     <Marker
                       key={hub.id}
@@ -716,12 +700,16 @@ export default function Step1LocationScreen() {
 
             {/* Map Top Status Pill */}
             <View style={styles.mapTopOverlay} pointerEvents="box-none">
-              <View style={styles.nearestHubHeaderBadge}>
-                <View style={styles.greenDot} />
-                <Text style={styles.nearestHubHeaderText}>
-                  Selected Hub: {selectedHub.name.split(' ')[0]} ({selectedHubDistance.toFixed(1)} km)
-                </Text>
-              </View>
+              {selectedHub ? (
+                <View style={styles.nearestHubHeaderBadge}>
+                  <View style={styles.greenDot} />
+                  <Text style={styles.nearestHubHeaderText}>
+                    Selected Hub: {selectedHub.name.split(' ')[0]} ({selectedHubDistance.toFixed(1)} km)
+                  </Text>
+                </View>
+              ) : (
+                <View />
+              )}
 
               <TouchableOpacity
                 style={styles.mapCompassBtn}
@@ -749,78 +737,91 @@ export default function Step1LocationScreen() {
             </View>
           </View>
 
-          <View style={styles.locCardDivider} />
+          {selectedHub && (
+            <>
+              <View style={styles.locCardDivider} />
 
-          {/* Selected Relief Hub */}
-          <View style={styles.locCardRow}>
-            <View style={styles.greenIconBox}>
-              <Ionicons name="business" size={18} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.hubHeaderRow}>
-                <Text style={styles.locCardSectionLabel}>SELECTED RELIEF DISTRIBUTION HUB</Text>
-                <View style={styles.distBadge}>
-                  <Text style={styles.distBadgeText}>{selectedHubDistance.toFixed(1)} km away</Text>
+              {/* Selected Relief Hub (optional) */}
+              <View style={styles.locCardRow}>
+                <View style={styles.greenIconBox}>
+                  <Ionicons name="business" size={18} color="#FFFFFF" />
                 </View>
-              </View>
-              <Text style={styles.locCardHubName}>{selectedHub.name}</Text>
-              <Text style={styles.locCardHubAddress}>{selectedHub.address}</Text>
-              <View style={styles.hubCapacityRow}>
-                <View style={styles.mealCountPill}>
-                  <Ionicons name="restaurant" size={12} color="#0F7B4F" />
-                  <Text style={styles.mealCountText}>{selectedHub.availableMeals} Meals Ready</Text>
-                </View>
-                <Text style={styles.locCardHubHours}>⏰ {selectedHub.openHours}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Available Hubs & Food in this Area (Scrollable Horizontal Selector) */}
-        <View style={styles.hubsSectionHeader}>
-          <Text style={styles.hubsSectionTitle}>Nearby Hubs & Available Food</Text>
-          <Text style={styles.hubsSectionSubtitle}>Tap a hub to select distribution source</Text>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hubsHorizontalScroll}
-        >
-          {hubsWithDistance.map((hub) => {
-            const isSelected = hub.id === selectedHub.id;
-            return (
-              <TouchableOpacity
-                key={hub.id}
-                style={[styles.hubCard, isSelected && styles.hubCardSelected]}
-                onPress={() => setSelectedHubOverride(hub)}
-                activeOpacity={0.85}
-              >
-                <View style={styles.hubCardHeader}>
-                  <View
-                    style={[
-                      styles.hubCardBadge,
-                      isSelected ? { backgroundColor: '#0F7B4F' } : { backgroundColor: '#5A1626' },
-                    ]}
-                  >
-                    <Text style={styles.hubCardBadgeText}>{hub.availableMeals} Meals Ready</Text>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.hubHeaderRow}>
+                    <Text style={styles.locCardSectionLabel}>SELECTED RELIEF DISTRIBUTION HUB</Text>
+                    <View style={styles.distBadge}>
+                      <Text style={styles.distBadgeText}>{selectedHubDistance.toFixed(1)} km away</Text>
+                    </View>
                   </View>
-                  <Text style={styles.hubCardDist}>{hub.distanceKm.toFixed(1)} km</Text>
+                  <Text style={styles.locCardHubName}>{selectedHub.name}</Text>
+                  <Text style={styles.locCardHubAddress}>{selectedHub.address}</Text>
+                  <View style={styles.hubCapacityRow}>
+                    <View style={styles.mealCountPill}>
+                      <Ionicons name="restaurant" size={12} color="#0F7B4F" />
+                      <Text style={styles.mealCountText}>{selectedHub.availableMeals} Meals Ready</Text>
+                    </View>
+                    <Text style={styles.locCardHubHours}>⏰ {selectedHub.openHours}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setSelectedHubOverride(null)} activeOpacity={0.7}>
+                    <Text style={styles.clearHubText}>Remove hub</Text>
+                  </TouchableOpacity>
                 </View>
+              </View>
+            </>
+          )}
+        </View>
 
-                <Text style={styles.hubCardName} numberOfLines={1}>{hub.name}</Text>
-                <Text style={styles.hubCardMealType} numberOfLines={1}>{hub.mealType}</Text>
-                <Text style={styles.hubCardAddress} numberOfLines={1}>{hub.address}</Text>
+        {/* Available Hubs & Food in this Area (optional selector) */}
+        {hubsWithDistance.length > 0 && (
+          <>
+            <View style={styles.hubsSectionHeader}>
+              <Text style={styles.hubsSectionTitle}>Nearby Hubs & Available Food (Optional)</Text>
+              <Text style={styles.hubsSectionSubtitle}>
+                Tap a hub if you prefer a specific distribution source — tap again to remove
+              </Text>
+            </View>
 
-                <View style={styles.hubCardFooter}>
-                  <Text style={[styles.selectHubActionText, isSelected && { color: '#0F7B4F', fontWeight: '800' }]}>
-                    {isSelected ? '✓ Selected Hub' : 'Select This Hub ›'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.hubsHorizontalScroll}
+            >
+              {hubsWithDistance.map((hub) => {
+                const isSelected = hub.id === selectedHub?.id;
+                return (
+                  <TouchableOpacity
+                    key={hub.id}
+                    style={[styles.hubCard, isSelected && styles.hubCardSelected]}
+                    onPress={() => toggleHub(hub)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.hubCardHeader}>
+                      <View
+                        style={[
+                          styles.hubCardBadge,
+                          isSelected ? { backgroundColor: '#0F7B4F' } : { backgroundColor: '#5A1626' },
+                        ]}
+                      >
+                        <Text style={styles.hubCardBadgeText}>{hub.availableMeals} Meals Ready</Text>
+                      </View>
+                      <Text style={styles.hubCardDist}>{hub.distanceKm.toFixed(1)} km</Text>
+                    </View>
+
+                    <Text style={styles.hubCardName} numberOfLines={1}>{hub.name}</Text>
+                    <Text style={styles.hubCardMealType} numberOfLines={1}>{hub.mealType}</Text>
+                    <Text style={styles.hubCardAddress} numberOfLines={1}>{hub.address}</Text>
+
+                    <View style={styles.hubCardFooter}>
+                      <Text style={[styles.selectHubActionText, isSelected && { color: '#0F7B4F', fontWeight: '800' }]}>
+                        {isSelected ? '✓ Selected Hub' : 'Select This Hub ›'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
 
         {/* Drag Map Hint */}
         <View style={styles.dragHintBox}>
@@ -848,7 +849,7 @@ export default function Step1LocationScreen() {
             onPress={handleProceed}
             activeOpacity={0.85}
           >
-            <Text style={styles.proceedBtnText}>Confirm Hub & Proceed</Text>
+            <Text style={styles.proceedBtnText}>Confirm Location & Proceed</Text>
             <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -1354,6 +1355,12 @@ const styles = StyleSheet.create({
   locCardHubHours: {
     fontSize: 11,
     color: '#4B5563',
+  },
+  clearHubText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#5A1626',
+    marginTop: 8,
   },
 
   /* Hubs Horizontal List */

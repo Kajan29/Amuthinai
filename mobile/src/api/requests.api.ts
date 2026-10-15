@@ -103,9 +103,9 @@ export const requestsApi = {
       Array<{
         id: string;
         servingsNeeded: number;
-        dropAddress: Address;
+        /** Only city/district are returned — the exact pin stays private. */
+        dropAddress?: Pick<Address, 'city' | 'district'>;
         status: string;
-        recipientId?: { name: string; phone?: string; email?: string };
       }>
     >(client.get('/food-requests/nearby-active', { params: { lat, lng, radiusKm } })),
 

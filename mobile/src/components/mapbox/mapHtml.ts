@@ -163,19 +163,29 @@ export const MAPBOX_GL_HTML = `<!DOCTYPE html>
         send({ type: 'error', message: 'missing-token' });
         return;
       }
+      if (typeof mapboxgl === 'undefined') {
+        send({ type: 'error', message: 'mapbox-gl-not-loaded' });
+        return;
+      }
       mapboxgl.accessToken = payload.token;
       if (map) {
         applyState(payload);
         return;
       }
       var region = payload.region || { latitude: 9.6645, longitude: 80.02, latitudeDelta: 0.08 };
-      map = new mapboxgl.Map({
-        container: 'map',
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: [region.longitude, region.latitude],
-        zoom: zoomFromDelta(region.latitudeDelta),
-        attributionControl: true
-      });
+      try {
+        map = new mapboxgl.Map({
+          container: 'map',
+          style: 'mapbox://styles/mapbox/streets-v12',
+          center: [region.longitude, region.latitude],
+          zoom: zoomFromDelta(region.latitudeDelta),
+          attributionControl: true
+        });
+      } catch (err) {
+        map = null;
+        send({ type: 'error', message: (err && err.message) || 'map-init-failed' });
+        return;
+      }
       map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
       map.on('load', function () {
         ready = true;
@@ -183,7 +193,9 @@ export const MAPBOX_GL_HTML = `<!DOCTYPE html>
         queued = null;
         send({ type: 'ready' });
       });
+      // Tile/sprite hiccups after load are non-fatal — only give up if the style never loads.
       map.on('error', function (e) {
+        if (ready) return;
         send({ type: 'error', message: (e && e.error && e.error.message) || 'map-error' });
       });
       map.on('click', function (e) {

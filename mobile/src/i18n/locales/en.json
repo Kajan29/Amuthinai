@@ -197,6 +197,8 @@
     "streetPlaceholder": "Street and landmark",
     "cityPlaceholder": "City",
     "landmarkPlaceholder": "Entrance or floor",
+    "mapPinned": "Pickup pin set on map",
+    "mapPinMissing": "Tap the map or use your current location to set the pickup point.",
     "cookedAtLabel": "PREPARED / COOKED AT",
     "cookedDeadlineHint": "Cooked food must be posted and collected within 6 hours of preparation.",
     "prepareRequired": "Add the food prepare time to continue.",

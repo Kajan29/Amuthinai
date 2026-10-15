@@ -147,9 +147,11 @@ export default function Step3ReviewScreen() {
               <Ionicons name="location" size={18} color="#0F7B4F" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel}>Selected Hub & Location</Text>
-              <Text style={styles.rowValue}>{draft.hubName || draft.dropAddress?.line1 || 'Selected location'}</Text>
-              <Text style={styles.rowSubvalue}>{draft.hubAddress || 'Hospital Road, Jaffna'}</Text>
+              <Text style={styles.rowLabel}>Delivery Location</Text>
+              <Text style={styles.rowValue}>{draft.dropAddress?.line1 || 'Selected location'}</Text>
+              <Text style={styles.rowSubvalue}>
+                {draft.hubName ? `Preferred hub: ${draft.hubName}` : 'No hub selected (optional)'}
+              </Text>
             </View>
           </View>
 

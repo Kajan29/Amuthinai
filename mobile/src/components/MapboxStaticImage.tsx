@@ -20,7 +20,13 @@ type Props = {
  * paths — a real <img> with absolute fill is reliable there.
  */
 export function MapboxStaticImage({ uri, style }: Props) {
-  const [failed, setFailed] = useState(false);
+  // Error count is tied to the URL it happened on, so a new URL (data loaded, filter
+  // changed) gets a fresh attempt instead of staying stuck on the fallback.
+  const [errors, setErrors] = useState({ uri, count: 0 });
+  const errorCount = errors.uri === uri ? errors.count : 0;
+  const failed = errorCount > 1;
+  const src = errorCount === 1 ? `${uri}${uri.includes('?') ? '&' : '?'}retry=1` : uri;
+  const setFailed = () => setErrors({ uri, count: errorCount + 1 });
 
   const webImgStyle = useMemo(
     () => ({
@@ -39,7 +45,9 @@ export function MapboxStaticImage({ uri, style }: Props) {
   if (!uri || failed) {
     return (
       <View style={[styles.base, styles.fallback, style]}>
-        <Text style={styles.fallbackText}>Map unavailable</Text>
+        <Text style={styles.fallbackText}>
+          {uri ? 'Map unavailable' : 'Map unavailable (Mapbox token missing)'}
+        </Text>
       </View>
     );
   }
@@ -48,9 +56,10 @@ export function MapboxStaticImage({ uri, style }: Props) {
     return (
       <View style={[styles.base, style]}>
         {createElement('img', {
-          src: uri,
+          key: src,
+          src,
           alt: 'Map',
-          onError: () => setFailed(true),
+          onError: setFailed,
           style: webImgStyle,
         })}
       </View>
@@ -60,10 +69,11 @@ export function MapboxStaticImage({ uri, style }: Props) {
   return (
     <View style={[styles.base, style]}>
       <Image
-        source={{ uri }}
+        key={src}
+        source={{ uri: src }}
         style={styles.nativeImage}
         resizeMode="cover"
-        onError={() => setFailed(true)}
+        onError={setFailed}
       />
     </View>
   );

@@ -1,19 +1,23 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MapboxStaticImage } from '@/components/MapboxStaticImage';
 import { DonorWizardHeader } from '@/components/donor/DonorWizardHeader';
 import { DELIVERY_METHODS } from '@/components/flow/deliveryMethods';
 import { MAX_SAFE_HOURS } from '@/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocation } from '@/hooks/useLocation';
+import { getMapboxStaticMapUrl, reverseGeocode } from '@/services/mapbox';
 import { useDonationDraft } from '@/store/donationDraft.store';
 import { donorColors } from '@/theme/donor';
 import type { Address, DeliveryMethod, FoodType, HandlingInstruction, PickupSource } from '@/types';
 import { validatePrepareTime } from '@/utils/freshness';
+import { toGeoPoint, toLatLng } from '@/utils/geo';
+import { MapView, Marker, type MapViewRef } from '@/utils/maps';
 
 const NOTE_LIMIT = 150;
 
@@ -49,6 +53,8 @@ export default function Step2Timing() {
   const [customPoint, setCustomPoint] = useState<Address['location'] | null>(
     draft.pickupSource === 'custom' ? (draft.pickupAddress?.location ?? null) : null,
   );
+  const mapRef = useRef<MapViewRef>(null);
+  const mapCenter = toLatLng(customPoint ?? REGISTERED_ADDRESS.location);
   const [picking, setPicking] = useState<Picking>(null);
   const [clock, setClock] = useState<Clock>({ hour: 2, minute: 30, period: 'PM' });
   const [customLine, setCustomLine] = useState(
@@ -94,7 +100,8 @@ export default function Step2Timing() {
     new Date(consumeBefore).getTime() > Math.max(Date.now(), new Date(readyFrom).getTime()) &&
     new Date(consumeBefore).getTime() > new Date(cookedAt).getTime();
   const prepare = validatePrepareTime(draft.cookedAt ?? cookedAt, foodType);
-  const customOk = customLine.trim().length >= 3 && customCity.trim().length >= 2;
+  const customOk =
+    customLine.trim().length >= 3 && customCity.trim().length >= 2 && customPoint !== null;
   const canContinue = prepare.ok && windowOk && (source === 'registered' || customOk);
 
   function prepareErrorMessage(): string {
@@ -124,13 +131,25 @@ export default function Step2Timing() {
     });
   }
 
+  async function dropPin(point: Address['location']) {
+    setCustomPoint(point);
+    const place = await reverseGeocode(toLatLng(point));
+    if (place?.line1) setCustomLine(place.line1);
+    if (place?.city) setCustomCity(place.city);
+  }
+
   async function pinCurrentLocation() {
     const point = await gps.refresh().catch(() => null);
     if (!point) {
       Alert.alert(t('flow.useCurrentLocation'), t('flow.locationFailed'));
       return;
     }
-    setCustomPoint(point);
+    mapRef.current?.animateToRegion({
+      ...toLatLng(point),
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    });
+    await dropPin(point);
   }
 
   function toggleHandling(id: HandlingInstruction) {
@@ -269,6 +288,42 @@ export default function Step2Timing() {
           </View>
           {source === 'custom' ? (
             <View style={styles.customFields}>
+              <View style={styles.mapBox}>
+                {Platform.OS !== 'web' && MapView ? (
+                  <MapView
+                    ref={mapRef}
+                    style={styles.map}
+                    initialRegion={{ ...mapCenter, latitudeDelta: 0.02, longitudeDelta: 0.02 }}
+                    onPress={(event) => {
+                      const { latitude, longitude } = event.nativeEvent.coordinate;
+                      void dropPin(toGeoPoint(latitude, longitude));
+                    }}
+                  >
+                    {customPoint ? (
+                      <Marker
+                        coordinate={toLatLng(customPoint)}
+                        title={t('donor.mapPinned')}
+                        pinColor={donorColors.plum}
+                      />
+                    ) : null}
+                  </MapView>
+                ) : (
+                  <MapboxStaticImage
+                    uri={getMapboxStaticMapUrl({
+                      center: mapCenter,
+                      zoom: 15,
+                      width: 600,
+                      height: 260,
+                      markers: customPoint ? [{ ...toLatLng(customPoint), color: '5C2438' }] : [],
+                    })}
+                  />
+                )}
+              </View>
+              <Text style={[styles.mapHint, customPoint && { color: donorColors.green }]}>
+                {customPoint
+                  ? `${t('donor.mapPinned')} · ${formatGps({ ...REGISTERED_ADDRESS, location: customPoint }).replace('GPS: ', '').replace(' (Verified)', '')}`
+                  : t('donor.mapPinMissing')}
+              </Text>
               <TextInput
                 value={customLine}
                 onChangeText={setCustomLine}
@@ -702,6 +757,15 @@ const styles = StyleSheet.create({
   radioOn: { borderColor: donorColors.plum },
   radioDot: { backgroundColor: donorColors.plum, borderRadius: 5, height: 10, width: 10 },
   customFields: { gap: 8, marginTop: 10 },
+  mapBox: {
+    borderColor: '#EFEAE4',
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 200,
+    overflow: 'hidden',
+  },
+  map: { flex: 1 },
+  mapHint: { color: donorColors.muted, fontSize: 12, fontWeight: '600', lineHeight: 16 },
   gpsBtn: {
     alignItems: 'center',
     borderColor: donorColors.plum,

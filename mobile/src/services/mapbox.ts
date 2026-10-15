@@ -227,6 +227,30 @@ export async function getMapboxDirections(
 }
 
 /**
+ * Mapbox Geocoding v6 reverse lookup — turns a dropped pin into a street + city.
+ */
+export async function reverseGeocode(
+  point: LatLng,
+): Promise<{ line1: string; city: string } | null> {
+  if (!MAPBOX_ACCESS_TOKEN || !isValidLatLng(point)) return null;
+  try {
+    const url = `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${point.longitude}&latitude=${point.latitude}&limit=1&access_token=${encodeURIComponent(MAPBOX_ACCESS_TOKEN)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const props = data?.features?.[0]?.properties;
+    if (!props) return null;
+    const context = props.context ?? {};
+    const city: string =
+      context.place?.name || context.district?.name || context.region?.name || '';
+    const line1: string = props.name || context.street?.name || context.locality?.name || '';
+    return line1 || city ? { line1, city } : null;
+  } catch (error) {
+    console.warn('Mapbox reverse geocode error:', error);
+    return null;
+  }
+}
+
+/**
  * Admin Dashboard & Operations Map URL with layer-based markers (Hubs, Pickups, Dropoffs, Demand)
  */
 export interface AdminMapPoints {

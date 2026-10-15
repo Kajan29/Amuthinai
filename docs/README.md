@@ -6,6 +6,7 @@
 | `milestones/` | Milestone 01 and Milestone 02 reports |
 | `api/` | REST API reference, generated from the running server |
 | `diagrams/` | Architecture, ER and sequence diagrams |
+| [`dashboards/`](dashboards/README.md) | What each role dashboard (Donor, Volunteer, Recipient, Admin) does, screen by screen |
 
 ## API reference
 

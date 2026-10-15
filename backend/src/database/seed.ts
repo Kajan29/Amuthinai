@@ -96,8 +96,8 @@ function hoursAhead(hours: number): string {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
 }
 
-function asAuth(user: { id: unknown; email: string; role?: Role }): AuthUser {
-  return { id: user.id as string, email: user.email, role: user.role ?? Role.Donor };
+function asAuth(user: { _id: unknown; id?: unknown; email: string; role?: Role }): AuthUser {
+  return { id: String(user.id ?? user._id), email: user.email, role: user.role ?? Role.Donor };
 }
 
 async function seed() {
